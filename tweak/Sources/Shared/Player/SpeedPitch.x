@@ -1190,31 +1190,48 @@ BOOL SGPlayerTryMusicSampleRate(double sampleRate, uint64_t expectedIdentity, NS
     AudioUnit source = output ? atomic_load(&output->source) : NULL;
     AudioStreamBasicDescription client = {0}, mixer = {0};
     UInt32 size = sizeof client;
-    BOOL ready = unit && source && expectedIdentity && atomic_load(&output->identity) == expectedIdentity
-        && atomic_load(&output->taken) && atomic_load(&output->running)
-        && AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &client, &size) == noErr
-        && client.mChannelsPerFrame == 2;
+    NSString *why = nil;
+    BOOL ready = unit && source && expectedIdentity && atomic_load(&output->identity) == expectedIdentity;
+    if (!ready) why = @"Output rebuilding: active output or source identity changed";
+    else if (!atomic_load(&output->running) || !atomic_load(&output->taken)) {
+        ready = NO;
+        why = @"Output rebuilding: the active output is stopped or its replacement callback is not attached";
+    }
+    else if (AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &client, &size) != noErr
+        || client.mChannelsPerFrame != 2) {
+        ready = NO; why = @"Active output does not provide a readable stereo client format";
+    }
     if (ready && fabs(client.mSampleRate - sampleRate) < 0.5 && !refusal(output, &client)) {
         pthread_mutex_unlock(&sg_outputsLock);
         return YES;
     }
     AudioComponentDescription description = {0};
-    if (ready) ready = AudioComponentGetDescription(AudioComponentInstanceGetComponent(source), &description) == noErr
-        && description.componentType == kAudioUnitType_Mixer
-        && description.componentSubType == kAudioUnitSubType_MultiChannelMixer
-        && description.componentManufacturer == kAudioUnitManufacturer_Apple;
+    if (ready) {
+        OSStatus inspected = AudioComponentGetDescription(AudioComponentInstanceGetComponent(source), &description);
+        BOOL mixerUnit = description.componentType == kAudioUnitType_Mixer && description.componentSubType == kAudioUnitSubType_MultiChannelMixer;
+        BOOL converterUnit = description.componentType == kAudioUnitType_FormatConverter && description.componentSubType == kAudioUnitSubType_AUConverter;
+        ready = inspected == noErr && description.componentManufacturer == kAudioUnitManufacturer_Apple && (mixerUnit || converterUnit);
+        if (!ready) why = [NSString stringWithFormat:@"Unsupported source AudioUnit: type=%08x subtype=%08x manufacturer=%08x (status %d)",
+            (unsigned)description.componentType, (unsigned)description.componentSubType, (unsigned)description.componentManufacturer, (int)inspected];
+    }
     // A mixer's other consumers must not inherit this output's rate request.
     for (int i = 0; ready && i < kMaxOutputs; ++i)
-        if (&sg_outputs[i] != output && atomic_load(&sg_outputs[i].unit) && atomic_load(&sg_outputs[i].source) == source) ready = NO;
+        if (&sg_outputs[i] != output && atomic_load(&sg_outputs[i].unit) && atomic_load(&sg_outputs[i].source) == source) {
+            ready = NO; why = @"Source AudioUnit is shared with another output";
+        }
     size = sizeof mixer;
-    if (ready) ready = AudioUnitGetProperty(source, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output,
-        output->sourceBus, &mixer, &size) == noErr && !refusal(output, &client);
+    if (ready) {
+        OSStatus read = AudioUnitGetProperty(source, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, output->sourceBus, &mixer, &size);
+        why = read == noErr ? refusal(output, &client) : [NSString stringWithFormat:@"Cannot read source output format (%d)", (int)read];
+        ready = read == noErr && !why;
+        if (!ready && read == noErr) why = [@"Output rebuilding: " stringByAppendingString:why];
+    }
     if (!ready) {
-        if (error) *error = @"Spotify's active output does not support safe source-rate negotiation";
+        if (error) *error = why ?: @"Source-rate negotiation unavailable";
         pthread_mutex_unlock(&sg_outputsLock);
         return NO;
     }
-    // Only Apple's mixer is reconfigured: its input converters keep Spotify's decoder at its
+    // Only Apple's mixer/converter is reconfigured: its input retains Spotify's decoder at its
     // original format. The lossless selector replaces the mixer's output after that conversion.
     SGPlayerInvalidateSource();
     OSStatus status = sg_stopOutput(unit);

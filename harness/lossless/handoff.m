@@ -5,10 +5,12 @@
 
 // SpeedPitch.x reads the player for its clock away from 1x; the harness has no player.
 void *SGPlayerState(void) { return NULL; }
+// AudioUnit calls below drive lifecycle changes directly; no Spotify state reports are sent.
+void SGAddPlayerStateObserver(id observer) {}
 
 static int failures;
 static SGPreparedPCM *asset;
-static atomic_uint_fast64_t decoded, selected, stageFrames, badSamples, lastSourceEnd;
+static atomic_uint_fast64_t decoded, audible, selected, stageFrames, badSamples, lastSourceEnd;
 static atomic_bool mute;
 static float expectedFirst;
 static BOOL replacedBlock;
@@ -33,6 +35,7 @@ static OSStatus original(void *ref, AudioUnitRenderActionFlags *flags, const Aud
                          UInt32 bus, UInt32 frames, AudioBufferList *data) {
     atomic_fetch_add(&decoded, frames);
     BOOL silent = atomic_load(&mute);
+    if (!silent) atomic_fetch_add(&audible, frames);
     for (UInt32 b=0;b<data->mNumberBuffers;++b) for (UInt32 i=0;i<frames;++i)
         ((float *)data->mBuffers[b].mData)[i] = silent ? 0 : 0.02;
     if (silent) *flags |= kAudioUnitRenderAction_OutputIsSilence;
@@ -185,69 +188,86 @@ static void directTests(void) {
     expect(atomic_load(&torn)==0,"concurrent publication/cancel keeps whole snapshots");
     SGPCMReplacementCancel();
 }
+static NSDictionary *step(double delay, dispatch_block_t action) {
+    return @{@"delay": @(delay), @"action": [action copy]};
+}
+// Only schedule the next phase after the current one finishes. On a loaded simulator an
+// absolute 5.0-second callback could otherwise overtake a nested 4.6 + 0.2-second callback.
+static void runSteps(NSArray<NSDictionary *> *steps, NSUInteger index) {
+    if (index >= steps.count) return;
+    NSDictionary *current = steps[index];
+    later([current[@"delay"] doubleValue], ^{
+        dispatch_block_t action = current[@"action"];
+        action();
+        runSteps(steps, index + 1);
+    });
+}
 static void realTests(void) {
+    __block uint64_t cancelSelected = 0, pausedDecoded = 0, recoveryAudible = 0;
+    __block uint64_t rateIdentity = 0, rateDecoded = 0;
     SGPlayerSetSourceSelector(selector);
     setup();
-    later(0.5,^{
+    NSArray<NSDictionary *> *steps = @[
+    step(0.5,^{
         expect(SGPlayerSpeedAllowed() && SGPlayerMusicOutput()==output,"real mixer-to-RemoteIO seam reached");
         expect(SGPCMReplacementInstall(asset,output,SGPlayerSourceEpoch(),0,0),"prepare real output source");
-    });
-    later(1.2,^{
+    }),
+    step(0.7,^{
         expect(atomic_load(&selected)>0,"replacement runs with no Sing stage registered");
         SGPlayerSetStage(stage);
-    });
-    later(2.0,^{
+    }),
+    step(0.8,^{
         expect(atomic_load(&stageFrames)>0,"existing stage receives replacement PCM");
         expect(atomic_load(&badSamples)==0,"source waveform and native advancement agree");
         SGSetPlayerSpeed(1.5);
-    });
-    later(2.8,^{
+    }),
+    step(0.8,^{
         expect(atomic_load(&badSamples)==0,"speed processing pulls the same source before the stage");
         SGSetPlayerSpeed(1);
         SGPCMReplacementCancel();
-        later(0.1,^{
-            uint64_t at=atomic_load(&selected);
-            later(0.15,^{expect(atomic_load(&selected)==at,"cancelled source stops replacement");});
-        });
-    });
-    later(3.3,^{
+    }),
+    step(0.1,^{ cancelSelected = atomic_load(&selected); }),
+    step(0.15,^{ expect(atomic_load(&selected)==cancelSelected,"cancelled source stops replacement"); }),
+    step(0.25,^{
         uint64_t epoch=SGPlayerSourceEpoch();
         expect(SGPCMReplacementInstall(asset,output,epoch,0,0),"re-arm current occurrence");
         SGPlayerInvalidateSource(); // the playback owner must do this on seek/skip, even on the same URI
         expect(!SGPCMReplacementInstall(asset,output,epoch,0,0),"seek/repeat generation rejects late preparation");
-    });
-    later(3.8,^{
+    }),
+    step(0.5,^{
         SGPCMReplacementCancel();
         check(AudioOutputUnitStop(output),"pause original output");
-        uint64_t d=atomic_load(&decoded);
-        later(0.2,^{expect(atomic_load(&decoded)==d,"pause stops native decoder advancement");});
-    });
-    later(4.2,^{
+        pausedDecoded = atomic_load(&decoded);
+    }),
+    step(0.2,^{ expect(atomic_load(&decoded)==pausedDecoded,"pause stops native decoder advancement"); }),
+    step(0.2,^{
         check(AudioOutputUnitStart(output),"resume original output");
         expect(SGPCMReplacementInstall(asset,output,SGPlayerSourceEpoch(),0,0),"re-arm after output restart");
         stallEpoch=SGPlayerSourceEpoch();
         atomic_store(&mute,true);
-    });
-    later(4.6,^{
-        uint64_t at=atomic_load(&selected);
+    }),
+    step(0.4,^{
         expect(SGPlayerSourceEpoch()!=stallEpoch,"native stall invalidates the recording/frame anchor");
-        later(0.2,^{
-            expect(atomic_load(&selected)==at,"native silent/stalled spans cannot be replaced");
-            stallSelected=atomic_load(&selected);
-            atomic_store(&mute,false);
-        });
-    });
-    later(5.0,^{
+        stallSelected = atomic_load(&selected);
+    }),
+    step(0.2,^{
+        expect(atomic_load(&selected)==stallSelected,"native silent/stalled spans cannot be replaced");
+        recoveryAudible = atomic_load(&audible);
+        atomic_store(&mute,false);
+    }),
+    step(0.2,^{
+        expect(atomic_load(&audible)>recoveryAudible,"native input actually recovers after silence");
         expect(atomic_load(&selected)==stallSelected,"native recovery cannot reuse the pre-stall anchor");
         uint64_t epoch=SGPlayerSourceEpoch();
         AudioStreamBasicDescription format={44100,kAudioFormatLinearPCM,kAudioFormatFlagsNativeFloatPacked|kAudioFormatFlagIsNonInterleaved,4,1,4,2,32,0};
         check(AudioUnitSetProperty(output,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&format,sizeof format),"format notification");
         expect(SGPlayerSourceEpoch()!=epoch,"format notification invalidates prepared source");
-    });
-    later(5.2,^{
+    }),
+    step(0.2,^{
         SGPCMReplacementCancel(); SGPlayerSetStage(NULL); SGPlayerSetSourceSelector(NULL);
         NSString *error = nil;
         uint64_t identity = SGPlayerMusicOutputIdentity(), epoch = SGPlayerSourceEpoch();
+        rateIdentity = identity;
         expect(!SGPlayerTryMusicSampleRate(NAN, identity, &error) && error.length > 0,
             "invalid source rate rejected");
         expect(SGPlayerSourceEpoch() == epoch,"invalid rate leaves live source contract alone");
@@ -261,27 +281,54 @@ static void realTests(void) {
         check(AudioUnitGetProperty(mixer,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Output,0,&mixed,&size),"read mixer output after negotiation");
         expect(input.mSampleRate == 44100 && mixed.mSampleRate == 48000,"native decoder rate retained while mixer output follows source");
         expect(SGPlayerSourceEpoch() != epoch,"successful negotiation invalidates old anchors");
-        uint64_t before = atomic_load(&decoded);
-        later(0.3,^{
-            expect(atomic_load(&decoded) > before,"native decoder advances after rate negotiation");
-            NSString *reason;
-            expect(SGPlayerTryMusicSampleRate(44100, identity, &reason),"restore app rate after wired mode");
-            AudioStreamBasicDescription restored = {0};
-            expect(SGPlayerMusicClientFormat(&restored) && restored.mSampleRate == 44100,"restored client format is measured");
-        });
-    });
-    later(6.1,^{
+        rateDecoded = atomic_load(&decoded);
+    }),
+    step(0.3,^{
+        expect(atomic_load(&decoded) > rateDecoded,"native decoder advances after rate negotiation");
+        NSString *reason;
+        expect(SGPlayerTryMusicSampleRate(44100, rateIdentity, &reason),"restore app rate after wired mode");
+        AudioStreamBasicDescription restored = {0};
+        expect(SGPlayerMusicClientFormat(&restored) && restored.mSampleRate == 44100,"restored client format is measured");
+    }),
+    step(0.6,^{
         uint64_t epoch=SGPlayerSourceEpoch();
         check(AudioComponentInstanceDispose(mixer),"dispose mixer during running output"); mixer=NULL;
         expect(SGPlayerSourceEpoch()!=epoch,"mixer disposal invalidates source");
-    });
-    later(6.6,^{
+    }),
+    step(0.5,^{
+        check(AudioOutputUnitStop(output),"stop mixer output before converter test");
+        check(AudioComponentInstanceDispose(output),"dispose previous output before converter test");
+        output = make(kAudioUnitType_Output,kAudioUnitSubType_RemoteIO);
+        AudioStreamBasicDescription format={44100,kAudioFormatLinearPCM,kAudioFormatFlagsNativeFloatPacked|kAudioFormatFlagIsNonInterleaved,4,1,4,2,32,0};
+        check(AudioUnitSetProperty(output,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&format,sizeof format),"converter test client format");
+        AudioUnitConnection connection={converter,0,0};
+        check(AudioUnitSetProperty(output,kAudioUnitProperty_MakeConnection,kAudioUnitScope_Input,0,&connection,sizeof connection),"connect converter directly to RemoteIO");
+        check(AudioUnitInitialize(output),"initialize converter test output");
+        check(AudioOutputUnitStart(output),"start converter test output");
+    }),
+    step(0.2,^{
+        NSString *reason;
+        rateIdentity = SGPlayerMusicOutputIdentity();
+        expect(SGPlayerTryMusicSampleRate(48000,rateIdentity,&reason),"converter source rate negotiation");
+        if (reason) printf("converter rate diagnostic: %s\n",reason.UTF8String);
+        AudioStreamBasicDescription input={0},client={0}; UInt32 size=sizeof input;
+        check(AudioUnitGetProperty(converter,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&input,&size),"read converter input rate");
+        expect(input.mSampleRate==44100 && SGPlayerMusicClientFormat(&client) && client.mSampleRate==48000,"converter keeps native input rate and changes output rate");
+        rateDecoded=atomic_load(&decoded);
+    }),
+    step(0.3,^{
+        expect(atomic_load(&decoded)>rateDecoded,"native decoder advances through converter after negotiation");
+        NSString *reason;
+        expect(SGPlayerTryMusicSampleRate(44100,rateIdentity,&reason),"restore converter source rate");
+    }),
+    step(0.5,^{
         SGPCMReplacementCancel(); SGPlayerSetStage(NULL); SGPlayerSetSourceSelector(NULL);
         AudioOutputUnitStop(output); AudioComponentInstanceDispose(output); AudioComponentInstanceDispose(converter);
         printf("RESULT failures=%d nativeFrames=%llu replacementFrames=%llu stageFrames=%llu\n",failures,
             (unsigned long long)atomic_load(&decoded),(unsigned long long)atomic_load(&selected),
             (unsigned long long)atomic_load(&stageFrames)); fflush(stdout); exit(failures?1:0);
-    });
+    })];
+    runSteps(steps, 0);
 }
 @interface LosslessHandoff : UIResponder <UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;

@@ -96,9 +96,10 @@ AudioUnit SGPlayerMusicOutput(void);
 // The format Spotify hands the music's output (its input scope, element 0), the one the stage's buffers are
 // in. NO when there is no such output. Not on the render thread.
 BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format);
-// Worker only. Negotiate an Apple multichannel mixer's output and RemoteIO's input together.
+// Worker only. Negotiate an Apple multichannel mixer/AUConverter output and RemoteIO input together.
 // Spotify's input buses retain their own formats. Stops briefly, invalidates the source contract,
 // and restores both formats on failure. No change for an unknown or shared source unit.
+// An error prefixed "Output rebuilding:" permits a bounded retry on a worker.
 uint64_t SGPlayerMusicOutputIdentity(void);
 BOOL SGPlayerTryMusicSampleRate(double sampleRate, uint64_t expectedIdentity, NSString **error);
 // `watcher` is called with the music's output each time it changes (NULL when there is none any more), Spotify

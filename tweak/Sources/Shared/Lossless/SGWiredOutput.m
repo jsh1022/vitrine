@@ -3,6 +3,7 @@
 #import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import <AVFoundation/AVFoundation.h>
+#import <unistd.h>
 
 static NSObject *control(void) {
     static NSObject *lock; static dispatch_once_t once;
@@ -110,13 +111,21 @@ void SGWiredOutputPrepare(NSString *path) {
         }
         // A hardware rate change can make Spotify replace its RemoteIO chain. Pin the new
         // chain, and remember its own pre-change client rate, rather than a disposed unit's.
-        uint64_t identity = SGPlayerMusicOutputIdentity();
-        if (!SGPlayerMusicClientFormat(&client)) {
-            if (!undoPreference(previous, source.mSampleRate)) return;
-            status(@"Waiting", @"Spotify is rebuilding its local output. Retry the current track."); return;
+        uint64_t identity = 0;
+        NSString *reason = nil;
+        BOOL configured = NO;
+        // setPreferredSampleRate can stop and rebuild Spotify's chain asynchronously.
+        // Retry only our explicit transient diagnostics, off main and with a fixed limit.
+        for (int attempt = 0; attempt < 40; ++attempt) {
+            if (!SGFlag(SGKeyWiredSourceOutput, NO) || ![route isEqualToString:wiredRoute()]) {
+                reason = @"Wired output request cancelled because the setting or route changed"; break;
+            }
+            identity = SGPlayerMusicOutputIdentity();
+            if (!SGPlayerMusicClientFormat(&client)) reason = @"Output rebuilding: no readable client format";
+            else configured = SGPlayerTryMusicSampleRate(source.mSampleRate, identity, &reason);
+            if (configured || ![reason hasPrefix:@"Output rebuilding:"]) break;
+            if (attempt < 39) usleep(50000);
         }
-        NSString *reason;
-        BOOL configured = SGPlayerTryMusicSampleRate(source.mSampleRate, identity, &reason);
         if (!configured) {
             if (!undoPreference(previous, source.mSampleRate)) return;
             status(@"App limit", reason ?: @"Spotify retained its existing output format"); return;
