@@ -40,13 +40,23 @@ static UIColor *sg_spotifyColor;
 static char kStaticCoverKey;
 
 @interface SGRFullScreenCover : UIView
-@property(nonatomic, strong) UIImageView *picture;
+@property(nonatomic, strong) UIImageView *picture, *softPicture;
+@property(nonatomic, strong) UIVisualEffectView *softBlur;
+@property(nonatomic, strong) CAGradientLayer *stillFade;
 @property(nonatomic, strong) CAGradientLayer *shade;
 @end
 @implementation SGRFullScreenCover
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.userInteractionEnabled = NO; self.clipsToBounds = YES;
+    self.softPicture = [[UIImageView alloc] initWithFrame:self.bounds];
+    self.softPicture.contentMode = UIViewContentModeScaleAspectFill; self.softPicture.clipsToBounds = YES;
+    [self addSubview:self.softPicture];
+    self.softBlur = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
+    self.softBlur.userInteractionEnabled = NO; [self addSubview:self.softBlur];
+    self.stillFade = [CAGradientLayer layer];
+    self.stillFade.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
+    self.stillFade.locations = @[@0, @0.65, @1];
     self.picture = [[UIImageView alloc] initWithFrame:self.bounds];
     self.picture.contentMode = UIViewContentModeScaleAspectFill; self.picture.clipsToBounds = YES;
     [self addSubview:self.picture]; self.shade = [CAGradientLayer layer];
@@ -56,8 +66,12 @@ static char kStaticCoverKey;
     self.shade.locations = @[@0, @0.5, @1]; [self.layer addSublayer:self.shade]; return self;
 }
 - (void)layoutSubviews {
-    [super layoutSubviews]; self.picture.frame = self.bounds;
-    [CATransaction begin]; [CATransaction setDisableActions:YES]; self.shade.frame = self.bounds; [CATransaction commit];
+    [super layoutSubviews];
+    self.softPicture.image = self.picture.image; self.softPicture.frame = self.bounds; self.softBlur.frame = self.bounds;
+    self.picture.frame = CGRectMake(0, 0, self.bounds.size.width, MIN(self.bounds.size.height, self.bounds.size.width * 4.0 / 3.0));
+    [CATransaction begin]; [CATransaction setDisableActions:YES];
+    self.stillFade.frame = self.picture.bounds; self.picture.layer.mask = self.stillFade;
+    self.shade.frame = self.bounds; [CATransaction commit];
 }
 @end
 
@@ -77,7 +91,7 @@ void SGRPlayerStaticCoverUpdate(void) {
         objc_setAssociatedObject(field, &kStaticCoverKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [field addSubview:view];
     }
-    view.hidden = !show; view.picture.image = image;
+    view.hidden = !show; view.picture.image = image; [view setNeedsLayout];
     CGFloat height = field.window.bounds.size.height ?: field.bounds.size.height;
     view.frame = CGRectMake(0, 0, field.bounds.size.width, height);
     if (show) [field bringSubviewToFront:view];

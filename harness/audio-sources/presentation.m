@@ -146,8 +146,12 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         waitFor(^BOOL { return cover.window && !cover.hidden; }, ^{
             UIImageView *picture = nil;
             for (UIView *child in cover.subviews) if ([child isKindOfClass:UIImageView.class]) picture = (UIImageView *)child;
-            if (!picture.image || picture.frame.size.height < self.window.bounds.size.height || picture.contentMode != UIViewContentModeScaleAspectFill || cover.userInteractionEnabled) {
-                fail(@"static artwork must cover the screen without intercepting controls"); return;
+            UIView *blurImage = identified(cover, @"vitrine.static-cover.blur-image");
+            CGFloat expectedHeight = MIN(MAX(cover.bounds.size.height, self.window.bounds.size.height), cover.bounds.size.width * 4.0 / 3.0);
+            if (!picture.image || fabs(picture.frame.size.height - expectedHeight) > 1 ||
+                blurImage.frame.size.height < self.window.bounds.size.height || !picture.layer.mask ||
+                picture.contentMode != UIViewContentModeScaleAspectFill || cover.userInteractionEnabled) {
+                fail(@"static artwork must keep portrait framing with a full-screen blurred continuation"); return;
             }
             SGPresentationStaticCover = NO;
             [NSNotificationCenter.defaultCenter postNotificationName:NSUserDefaultsDidChangeNotification object:nil];

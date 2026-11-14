@@ -27,7 +27,9 @@ static void updateFrontArtwork(BOOL showing) {
 - (void)refresh;
 @end
 @implementation SGNativeFullArtwork {
-    UIImageView *_picture;
+    UIImageView *_picture, *_softPicture;
+    UIVisualEffectView *_softBlur;
+    CAGradientLayer *_stillFade;
     CAGradientLayer *_shade;
     AVPlayerLayer *_video;
     AVQueuePlayer *_player;
@@ -43,6 +45,15 @@ static void updateFrontArtwork(BOOL showing) {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.userInteractionEnabled = NO;
     self.accessibilityIdentifier = @"vitrine.full-artwork.native";
+    _softPicture = [[UIImageView alloc] initWithFrame:self.bounds];
+    _softPicture.contentMode = UIViewContentModeScaleAspectFill; _softPicture.clipsToBounds = YES;
+    _softPicture.accessibilityIdentifier = @"vitrine.static-cover.blur-image";
+    [self addSubview:_softPicture];
+    _softBlur = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
+    _softBlur.userInteractionEnabled = NO; [self addSubview:_softBlur];
+    _stillFade = [CAGradientLayer layer];
+    _stillFade.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
+    _stillFade.locations = @[@0, @0.65, @1];
     _picture = [[UIImageView alloc] initWithFrame:self.bounds];
     _picture.contentMode = UIViewContentModeScaleAspectFill; _picture.clipsToBounds = YES;
     [self addSubview:_picture]; _video = [AVPlayerLayer layer];
@@ -153,9 +164,15 @@ static void updateFrontArtwork(BOOL showing) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat height = MAX(self.bounds.size.height, self.window.bounds.size.height);
-    _picture.frame = CGRectMake(0, 0, self.bounds.size.width, height);
+    CGRect full = CGRectMake(0, 0, self.bounds.size.width, height);
+    BOOL moving = _fillOn && _video.readyForDisplay;
+    _softPicture.image = _picture.image; _softPicture.frame = full; _softBlur.frame = full;
+    _softPicture.hidden = moving; _softBlur.hidden = moving;
+    // Static artwork occupies a 3:4 portrait area, then fades into its blurred continuation.
+    _picture.frame = CGRectMake(0, 0, full.size.width, moving ? height : MIN(height, full.size.width * 4.0 / 3.0));
     [CATransaction begin]; [CATransaction setDisableActions:YES];
-    _video.frame = _picture.bounds; _shade.frame = _picture.frame; [CATransaction commit];
+    _stillFade.frame = _picture.bounds; _picture.layer.mask = moving ? nil : _stillFade;
+    _video.frame = _picture.bounds; _shade.frame = full; [CATransaction commit];
 }
 @end
 
