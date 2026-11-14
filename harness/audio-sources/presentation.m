@@ -60,6 +60,30 @@ static void fail(NSString *reason) {
     fprintf(stderr, "FAIL audio source presentations: %s\n", reason.UTF8String);
     fflush(stderr); exit(1);
 }
+// simctl can close its console relay before a successful process's last output arrives.
+// Keep an atomic, per-launch receipt; only milestones actually reached are recorded.
+static NSMutableArray<NSString *> *sg_passed;
+static void passed(NSString *line) {
+    NSCAssert(NSThread.isMainThread, @"Test milestones must run on main");
+    if (!sg_passed) sg_passed = [NSMutableArray array];
+    [sg_passed addObject:line];
+    printf("%s\n", line.UTF8String); fflush(stdout);
+}
+static void finish(void) {
+    NSString *run = NSProcessInfo.processInfo.environment[@"SG_PRESENTATION_RUN_ID"];
+    if (!run.length) { fail(@"missing per-launch result identity"); return; }
+    NSURL *directory = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    NSError *error = nil;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error]) {
+        fail([NSString stringWithFormat:@"cannot create result directory: %@", error]); return;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"run": run, @"passed": @YES, @"markers": sg_passed ?: @[]} options:0 error:&error];
+    if (!data || ![data writeToURL:[directory URLByAppendingPathComponent:@"presentation-result.json"] options:NSDataWritingAtomic error:&error]) {
+        fail([NSString stringWithFormat:@"cannot persist test result: %@", error]); return;
+    }
+    fflush(stdout); fflush(stderr);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ exit(0); });
+}
 static void progress(NSString *stage) {
     fprintf(stderr, "CHECK audio source presentations: %s\n", stage.UTF8String);
     fflush(stderr);
@@ -102,9 +126,11 @@ static void checkBlockedTransport(void) {
             fail(@"missing tunnel was not blocked before a network connection"); return;
         }
         [session finishTasksAndInvalidate];
-        printf("PASS audio source presentations: add source, import picker, result alert, playback details, main-thread dispatch\n");
-        printf("PASS unavailable WireGuard: session factories, shared session, preserved config, HTTP/3 disabled, HTTP request blocked\n");
-        fflush(stdout); exit(0);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            passed(@"PASS audio source presentations: add source, import picker, result alert, playback details, main-thread dispatch");
+            passed(@"PASS unavailable WireGuard: session factories, shared session, preserved config, HTTP/3 disabled, HTTP request blocked");
+            finish();
+        });
     }] resume];
 }
 static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger tries) {
@@ -157,7 +183,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             [NSNotificationCenter.defaultCenter postNotificationName:NSUserDefaultsDidChangeNotification object:nil];
             waitFor(^BOOL { return cover.hidden; }, ^{
                 [cover removeFromSuperview]; SGPresentationArtwork = nil;
-                printf("PASS full-screen static artwork and live option removal\n"); fflush(stdout);
+                passed(@"PASS full-screen static artwork and live option removal");
                 [self step:8];
             }, 200);
         }, 200);
@@ -261,7 +287,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         if (index == 5) {
             SGPresentationExternal = NO; SGPresentationSourceInfo = nil; SGPresentationPreparedInfo = nil;
             SGPresentationPreparation = SGAddonPreparationIdle;
-            printf("PASS playback quality badge and popover\n"); fflush(stdout);
+            passed(@"PASS playback quality badge and popover");
         }
         // Queue the next production action while this controller is dismissing.
         // Its presentation must wait for the real UIKit transition to complete.

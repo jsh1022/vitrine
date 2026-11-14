@@ -1,6 +1,8 @@
 """Run the simulator check and retain evidence even for a pre-main crash or timeout."""
 from pathlib import Path
 import os
+import json
+import uuid
 import shutil
 import subprocess
 import sys
@@ -43,6 +45,9 @@ def main():
     handoff = sys.argv[3:] == ["--handoff"]
     redesigned = sys.argv[3:] == ["--redesigned"]
     environment = os.environ.copy()
+    run_id = uuid.uuid4().hex
+    if not handoff:
+        environment["SIMCTL_CHILD_SG_PRESENTATION_RUN_ID"] = run_id
     if redesigned:
         environment["SIMCTL_CHILD_SG_QUALITY_REDESIGNED"] = "1"
     else:
@@ -66,6 +71,25 @@ def main():
     print(text, flush=True)
     print(f"simctl exit status: {code}", flush=True)
     passed = code == 0 and all(marker in text for marker in markers)
+    if not handoff:
+        # Read the app's atomic receipt rather than depending on simctl's final stdout relay.
+        # A fresh identity rejects files left by an older launch, including the other UI mode.
+        receipt_ok = False
+        try:
+            container = subprocess.run(
+                ["xcrun", "simctl", "get_app_container", device, bundle, "data"],
+                capture_output=True, text=True, timeout=15, check=True)
+            receipt = json.loads((Path(container.stdout.strip()) / "Documents/presentation-result.json").read_text())
+            lines = receipt.get("markers", [])
+            receipt_ok = (receipt.get("run") == run_id and receipt.get("passed") is True
+                          and isinstance(lines, list) and all(isinstance(line, str) for line in lines)
+                          and all(any(line.startswith(marker) for line in lines) for marker in markers))
+            (output / ("result-redesigned.json" if redesigned else "result.json")).write_text(json.dumps(receipt, indent=2))
+        except (OSError, ValueError, AttributeError, subprocess.SubprocessError) as error:
+            print(f"Test result receipt unavailable: {error}", flush=True)
+        passed = code == 0 and receipt_ok
+        if passed:
+            print("PASS persisted completion receipt: all four checks verified for this launch", flush=True)
     if not passed:
         print("FAIL: expected test completion markers are missing; collecting diagnostics.", flush=True)
         collect(device, output, process, bundle)
