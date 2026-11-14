@@ -62,7 +62,7 @@ masked in the log and the result stays in your fork.
 Theos in `~/theos` and Xcode with an iPhoneOS 26+ SDK (`xcode-select` it). An SDK in `~/theos/sdks`
 alone builds too, but without the Live Activity. Then:
 
-    brew install make ldid dpkg zsign libimobiledevice
+    brew install make ldid dpkg zsign libimobiledevice go
     uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw"
 
 Put the decrypted `.ipa` in `ipa/`, then:
@@ -88,6 +88,25 @@ to use. In Feather, copy the App ID into **Identifier** and leave **PPQ protecti
 SideStore and Sideloadly get this right on their own.
 
 The app keeps Spotify's bundle id, so it installs over the real Spotify.
+
+### Experimental lossless addons, WireGuard and playback details
+
+This working copy adds **Player → Lossless sources & WireGuard** and **Playback details**,
+also reachable from the player's ⋯. It can prepare a matching stereo FLAC/ALAC from a
+user-configured HTTPS JSON addon and pass it to Vitrine's existing sound-alignment engine.
+Enable Lossless files and restart once first. No provider URL or credential is bundled.
+
+An optional app-local WireGuard engine tunnels the addon's JSON and media requests on
+iOS 17+, with no direct fallback when enabled. Spotify's own traffic is unchanged.
+Go matching `vendor/wireguard/go.mod` is needed for the default build; `WIREGUARD=0`
+omits the engine. Source format measurements are shown separately from local output
+format; unknown Spotify codec/bitrate remain unknown.
+
+The engine tests, iOS archive build and source compile checks passed in Linux. Full
+IPA linking, iPhone playback, URLSession tunneling and UI behavior still need device
+validation. See the [Korean integration and build guide](docs/audio-sources-integration.ko.md)
+for supported contracts, limits and validation status. This is an experimental source
+integration, not a tested IPA release.
 
 ## Credits
 

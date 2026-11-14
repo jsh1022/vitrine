@@ -19,6 +19,7 @@
 #import "Shared/LyricsSources/LyricsSources.h"
 #import "Settings/SGPageStyle.h"
 #import "Player.h"
+#import "Shared/AudioSources/SGAddons.h"
 
 static __weak UIView *sg_moreButton;   // the ⋯ the panels come from
 
@@ -204,6 +205,8 @@ static UIAction *lyricsSourceItem(void) {
 
 static NSArray<UIMenuElement *> *playerItems(void) {
     NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:soundMenu()];
+    [items addObject:[UIAction actionWithTitle:@"Playback details" image:symbol(@"waveform.path.ecg") identifier:nil
+        handler:^(UIAction *action) { SGShowPlaybackDetails(); }]];
     if (SGPlayerMenuOffersAnimatedArtwork()) {
         // Buttons named for what they do, not checkmarks: the HIG's changeable label for a toggled item.
         NSArray<NSArray *> *backgrounds = @[

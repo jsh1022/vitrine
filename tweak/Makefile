@@ -30,7 +30,7 @@ spotifyglass_CFLAGS := -fobjc-arc -ISources -DSG_VERSION=\"$(SG_VERSION)\"
 # SG_DRIVER=1 for those, and every other build (make release, the release workflow's .deb) leaves it out.
 SG_DRIVER ?= 0
 spotifyglass_CFLAGS += -DSG_DRIVER=$(SG_DRIVER)
-spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog
+spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog Network Security
 # zlib unpacks KuGou's KRC lyrics (Shared/LyricsSources/KuGou.m).
 spotifyglass_LIBRARIES := z
 # Runtime swizzling instead of Substrate so the dylib has no extra dependency inside the IPA.
@@ -45,10 +45,27 @@ spotifyglass_OBJ_FILES := $(SG_AUDIO)/build/ios/libsgaudio.a
 Sources/Shared/AudioEffects/SGDSPCrossfeed.m_CFLAGS := -isystem $(SG_AUDIO)/libbs2b
 Sources/Shared/AudioEffects/SGDSPLiveprog.m_CFLAGS := -isystem $(SG_AUDIO)/wdl/eel2
 
+# App-local WireGuard, adapted from the user-supplied BitChord source (GPL-3.0).
+# WIREGUARD=0 retains the addon client; enabling a missing tunnel blocks addon requests.
+WIREGUARD ?= 1
+spotifyglass_CFLAGS += -DSG_WIREGUARD=$(WIREGUARD)
+ifeq ($(WIREGUARD),1)
+SG_WG := ../vendor/wireguard
+spotifyglass_CFLAGS += -I$(SG_WG)/build
+spotifyglass_OBJ_FILES += $(SG_WG)/build/libytmuwg.a
+spotifyglass_LIBRARIES += resolv
+endif
+
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 # The library is brought up to date before the tweak's instance builds, so the link finds it current.
 spotifyglass.all.tweak.variables: sg-audio
+ifeq ($(WIREGUARD),1)
+spotifyglass.all.tweak.variables: sg-wireguard
+.PHONY: sg-wireguard
+sg-wireguard:
+	@MIN_IOS=16.0 bash $(SG_WG)/build-ios.sh
+endif
 .PHONY: sg-audio
 sg-audio:
 	@$(MAKE) --no-print-directory -C $(SG_AUDIO) PLATFORM=ios

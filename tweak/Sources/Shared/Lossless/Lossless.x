@@ -8,6 +8,7 @@
 #import "SGLossless.h"
 #import "SGLosslessStore.h"
 #import "LosslessQuality.h"
+#import "Shared/AudioSources/SGAddons.h"
 
 static const int kTries = 3;            // failed anchors in a row before waiting for the next change of source
 static const double kRetrySeconds = 2;
@@ -26,6 +27,12 @@ static dispatch_queue_t sg_storeQueue;
     int _failures;
     uint64_t _gaveUpEpoch;
     double _retryAt;
+    BOOL _addonAsked;
+    uint64_t _occurrence;
+}
+- (void)retryAddons:(NSNotification *)note {
+    _addonAsked = NO;
+    [self tick];
 }
 
 // Position reports are not change callbacks, and a seek or resume shows only in the source's epoch: while
@@ -45,7 +52,12 @@ static dispatch_queue_t sg_storeQueue;
     SPTPlayerState *state = SGPlayerState();
     NSString *track = SGURIString(state.track.URI);
     if (![track isEqualToString:_track]) {
+        SGAddonCancel();
+        ++_occurrence;
+        _addonAsked = NO;
         if (_path) SGLosslessStop(YES);
+        if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"])
+            [NSFileManager.defaultManager removeItemAtPath:_path error:NULL];
         _track = track;
         _path = nil;
         _looked = NO;
@@ -57,11 +69,12 @@ static dispatch_queue_t sg_storeQueue;
         _looking = YES;
         NSString *title = state.track.trackTitle ?: @"";
         double duration = state.duration;
+        uint64_t occurrence = _occurrence;
         dispatch_async(sg_storeQueue, ^{
             NSString *path = SGLosslessStoreFile(track, title, duration);
             dispatch_async(dispatch_get_main_queue(), ^{
                 self->_looking = NO;
-                if ([track isEqualToString:self->_track]) {
+                if (occurrence == self->_occurrence && [track isEqualToString:self->_track]) {
                     self->_path = path;
                     self->_looked = path || (title.length && duration > 0);
                     // Not looked yet: the next tick looks again, not this one.
@@ -99,6 +112,20 @@ static dispatch_queue_t sg_storeQueue;
     }
     if (!_nextLooking) SGLosslessLowerQuality(_nextHas);
 
+    // An addon prepares a bounded complete file while Spotify continues. The existing sound
+    // correlation, source epoch and normal-speed/Karaoke checks still own the actual handoff.
+    if (SGFlag(SGKeyAddons, NO) && !_path && _looked && !_addonAsked && track && state.isPlaying && !state.isPaused &&
+        state.duration > 0 && state.track.trackTitle.length && state.track.artistName.length) {
+        _addonAsked = YES;
+        uint64_t occurrence = _occurrence;
+        SGAddonPrepare(track, state.track.trackTitle, state.track.artistName, state.duration, ^(NSString *path) {
+            if (occurrence != self->_occurrence) {
+                if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
+                return;
+            }
+            if (path) { self->_path = path; [self tick]; }
+        });
+    }
     if (!_path || _busy || SGLosslessPlaying()) return;
     if (!state.isPlaying || state.isPaused || fabs(state.playbackSpeed - 1) > 0.001 || SGSingOn()) return;
     uint64_t epoch = SGPlayerSourceEpoch();
@@ -108,16 +135,19 @@ static dispatch_queue_t sg_storeQueue;
 
     _busy = YES;
     NSString *path = _path;
+    uint64_t occurrence = _occurrence;
     double hint = state.position;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSString *error;
         NSDictionary *anchored = SGLosslessAnchor(path, hint, &error);
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_busy = NO;
-            if (![track isEqualToString:self->_track]) return;
+            if (occurrence != self->_occurrence || ![track isEqualToString:self->_track]) return;
             if (anchored) {
                 self->_failures = 0;
-                SGLosslessStoreRemember(track, path);
+                // Addon files are transient, not entries in Documents/Lossless's local index.
+                if ([path.stringByDeletingLastPathComponent isEqualToString:SGLosslessStoreDirectory()])
+                    SGLosslessStoreRemember(track, path);
                 SGLog(@"lossless: playing %@ from %.2f s", path.lastPathComponent, [anchored[@"file_seconds"] doubleValue]);
                 return;
             }
@@ -140,6 +170,7 @@ static dispatch_queue_t sg_storeQueue;
     dispatch_async(dispatch_get_main_queue(), ^{
         static SGLosslessCoordinator *coordinator;
         coordinator = [SGLosslessCoordinator new];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(retryAddons:) name:SGAddonRetryNotification object:nil];
         SGAddPlayerStateObserver(coordinator);
     });
 }

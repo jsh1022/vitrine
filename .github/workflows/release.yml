@@ -43,6 +43,11 @@ jobs:
       - name: Install tools
         run: brew install make dpkg ldid
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vendor/wireguard/go.mod
+          cache-dependency-path: vendor/wireguard/go.sum
+
       # The flag table is read out of Spotify's binary (make flags), so it comes from a secret
       # instead of an IPA: gzip -9c tweak/Sources/Shared/Flags/SGFlagList.m | base64 | gh secret set SG_FLAG_LIST
       - name: Flag table

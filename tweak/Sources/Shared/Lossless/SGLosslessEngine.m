@@ -10,6 +10,7 @@
 #import <Accelerate/Accelerate.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <stdatomic.h>
+#import <mach/mach_time.h>
 
 enum { kIdle, kArmed, kFull };
 enum { kCoarse = 16 };                      // decimation for the coarse search
@@ -71,6 +72,8 @@ static AudioUnit sg_playUnit;
 static double sg_playRate;
 static _Atomic uint32_t sg_gainBits;
 static _Atomic uint64_t sg_replaced;
+static _Atomic uint64_t sg_renderedAt;
+static NSDictionary *sg_sourceInfo;
 
 static void selector(AudioUnit output, uint64_t epoch, double sourceFrame, double rate, UInt32 frames, AudioBufferList *data) {
     if (data->mNumberBuffers != 2 || !data->mBuffers[0].mData || !data->mBuffers[1].mData
@@ -88,6 +91,7 @@ static void selector(AudioUnit output, uint64_t epoch, double sourceFrame, doubl
             vDSP_vsmul(l, 1, &gain, l, 1, frames);
             vDSP_vsmul(r, 1, &gain, r, 1, frames);
             atomic_fetch_add_explicit(&sg_replaced, frames, memory_order_relaxed);
+            atomic_store_explicit(&sg_renderedAt, mach_absolute_time(), memory_order_relaxed);
         }
     }
     atomic_fetch_sub(&sg_readers, 1);
@@ -179,6 +183,7 @@ static void drop(void) {
     sg_coarse = NULL;
     sg_coarseCount = 0;
     sg_path = nil;
+    @synchronized (NSProcessInfo.processInfo) { sg_sourceInfo = nil; }
 }
 
 static BOOL load(NSString *path, double rate, NSString **error) {
@@ -186,6 +191,17 @@ static BOOL load(NSString *path, double rate, NSString **error) {
     drop();
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
     if (!openReader(&sg_reader, path, rate, error)) return NO;
+    AudioStreamBasicDescription source = {0};
+    UInt32 size = sizeof source;
+    ExtAudioFileGetProperty(sg_reader.file, kExtAudioFileProperty_FileDataFormat, &size, &source);
+    UInt32 bits = source.mBitsPerChannel;
+    if (!bits && source.mFormatID == kAudioFormatAppleLossless && source.mFormatFlags >= 1 && source.mFormatFlags <= 4) {
+        const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[source.mFormatFlags];
+    }
+    NSDictionary *info = @{@"codec": source.mFormatID == kAudioFormatFLAC ? @"FLAC" : @"ALAC",
+        @"rate": @(source.mSampleRate), @"bits": @(bits), @"channels": @(source.mChannelsPerFrame), @"clientRate": @(rate),
+        @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / (sg_reader.frames / rate) / 1000)};
+    @synchronized (NSProcessInfo.processInfo) { sg_sourceInfo = info; }
     sg_coarseCount = sg_reader.frames / kCoarse;
     sg_coarse = calloc(sg_coarseCount + 1, sizeof(float));
     float *l = malloc(kChunk * sizeof(float)), *r = malloc(kChunk * sizeof(float));
@@ -432,6 +448,7 @@ NSDictionary *SGLosslessCheck(NSString **error) {
 }
 
 void SGLosslessStop(BOOL release) {
+    atomic_store(&sg_renderedAt, 0);
     atomic_fetch_add(&sg_generation, 1);
     atomic_store(&sg_live, false);
     atomic_store(&sg_anchorEpoch, 0);
@@ -441,4 +458,16 @@ void SGLosslessStop(BOOL release) {
 BOOL SGLosslessPlaying(void) {
     uint64_t epoch = atomic_load(&sg_anchorEpoch);
     return epoch && epoch == SGPlayerSourceEpoch();
+}
+
+NSDictionary *SGLosslessSourceInfo(void) {
+    if (!SGLosslessPlaying()) return @{};
+    @synchronized (NSProcessInfo.processInfo) { return sg_sourceInfo ?: @{}; }
+}
+BOOL SGLosslessRendering(void) {
+    uint64_t at = atomic_load(&sg_renderedAt);
+    if (!at || !SGLosslessPlaying()) return NO;
+    mach_timebase_info_data_t base;
+    mach_timebase_info(&base);
+    return (mach_absolute_time() - at) * (double)base.numer / base.denom < 5e8;
 }

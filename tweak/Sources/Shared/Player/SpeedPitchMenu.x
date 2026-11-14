@@ -36,6 +36,7 @@
 #import "Shared/AudioEffects/AudioEffects.h"
 #import "Shared/Haptics/Haptics.h"
 #import "SpeedPitch.h"
+#import "Shared/AudioSources/SGAddons.h"
 
 // A menu this soon after the more button's tap is the player's.
 static const NSTimeInterval kMenuAfterTap = 3;
@@ -114,6 +115,7 @@ static char kBlockKey, kDecidedKey, kWatchedKey, kShownAtKey, kRowsInKey;
     UIImageView *_animatedIcon;
     UILabel *_animatedName;
     UISwitch *_animated;
+    UIButton *_details;
     float _shownSpeed, _shownPitch, _shownReverb;
     NSTimeInterval _speedSentAt;
     BOOL _speedPending;
@@ -261,13 +263,19 @@ static void placeTick(UISlider *slider) {
         [self addSubview:_animatedRow];
     }
 
+    _details = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_details setTitle:@"Playback details" forState:UIControlStateNormal];
+    _details.tintColor = primary();
+    _details.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    [_details addTarget:self action:@selector(openPlaybackDetails) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_details];
     [self refresh];
     return self;
 }
 
 + (CGFloat)heightOpen:(BOOL)open {
     return kRowHeight + (open ? 3 * kSliderBlockHeight + kSwitchRowHeight + kPanelBottom : 0)
-         + (SGPlayerMenuOffersAnimatedArtwork() ? kRowHeight : 0);
+         + (SGPlayerMenuOffersAnimatedArtwork() ? kRowHeight : 0) + kRowHeight;
 }
 
 // Set after init, which drew the values for the sheet's closed block: drawn again open.
@@ -291,6 +299,7 @@ static void placeTick(UISlider *slider) {
 
     _row.hidden = self.panelOnly;
     _animatedRow.hidden = self.panelOnly;
+    _details.hidden = self.panelOnly;
     _panel.frame = CGRectMake(0, self.panelOnly ? kGrid : kRowHeight, width, 3 * kSliderBlockHeight + kSwitchRowHeight + kPanelBottom);
     CGFloat y = 0;
     for (NSArray<UIView *> *line in @[@[_speedName, _speedValue, _speed], @[_pitchName, _pitchValue, _pitch],
@@ -312,7 +321,11 @@ static void placeTick(UISlider *slider) {
     toggle = [_animated sizeThatFits:CGSizeZero];
     _animated.frame = CGRectMake(width - side - toggle.width, (kRowHeight - toggle.height) / 2, toggle.width, toggle.height);
     _animatedName.frame = CGRectMake(titleX, 0, MAX(0, CGRectGetMinX(_animated.frame) - kGrid - titleX), kRowHeight);
+    CGFloat detailsY = (sg_open ? CGRectGetMaxY(_panel.frame) : kRowHeight) + (_animatedRow ? kRowHeight : 0);
+    _details.frame = CGRectMake(side, detailsY, width - 2 * side, kRowHeight);
 }
+
+- (void)openPlaybackDetails { SGShowPlaybackDetails(); }
 
 #pragma mark state
 
@@ -706,7 +719,7 @@ static void install(UIViewController *menu) {
         BOOL headerFree = !table.tableHeaderView || table.tableHeaderView.bounds.size.height < 1;
         BOOL footerFree = !table.tableFooterView || table.tableFooterView.bounds.size.height < 1;
         if (!headerFree && !footerFree) {
-            SGLog(@"speed and pitch: the table's header and footer are both Spotify's, speed and pitch left out");
+            SGLog(@"%@", @"speed and pitch: the table's header and footer are both Spotify's, speed and pitch left out");
             objc_setAssociatedObject(menu, &kDecidedKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             return;
         }

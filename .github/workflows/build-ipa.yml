@@ -39,6 +39,11 @@ jobs:
           brew install make dpkg ldid
           python3 -m pip install --break-system-packages git+https://github.com/asdfzxcvbn/pyzule-rw.git
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vendor/wireguard/go.mod
+          cache-dependency-path: vendor/wireguard/go.sum
+
       - name: Download IPA
         run: |
           mkdir -p ipa

@@ -1,0 +1,34 @@
+name: Audio sources checks
+on:
+  workflow_dispatch:
+  push:
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/Lossless/**', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+  pull_request:
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/Lossless/**', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+jobs:
+  tunnel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vendor/wireguard/go.mod
+          cache-dependency-path: vendor/wireguard/go.sum
+      - run: go test -race ./...
+        working-directory: vendor/wireguard
+  ios-sources:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: theos/logos
+          path: .check-tools/logos
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vendor/wireguard/go.mod
+          cache-dependency-path: vendor/wireguard/go.sum
+      - run: MIN_IOS=16.0 bash vendor/wireguard/build-ios.sh
+      - run: bash harness/audio-sources/check.sh
+        env:
+          LOGOS: ${{ github.workspace }}/.check-tools/logos

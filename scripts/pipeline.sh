@@ -220,8 +220,10 @@ ADDON_DEB="$(ls -t "$ROOT"/addons/haptics/packages/*.deb | head -1)"
 PATCH="$(mktemp -d)"
 mkdir -p "$PATCH/$APP_DIR"
 cp "$ADDON_DEB" "$PATCH/${APP_DIR}VitrineAddon.deb"
+cp "$ROOT/vendor/wireguard/THIRD_PARTY_LICENSES.txt" "$PATCH/${APP_DIR}WireGuard-Licenses.txt"
+cp "$ROOT/vendor/wireguard/COPYING" "$PATCH/${APP_DIR}WireGuard-Copying.txt"
 OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
-(cd "$PATCH" && zip -q "$OUT_ABS" "${APP_DIR}VitrineAddon.deb")
+(cd "$PATCH" && zip -q "$OUT_ABS" "${APP_DIR}VitrineAddon.deb" "${APP_DIR}WireGuard-Licenses.txt" "${APP_DIR}WireGuard-Copying.txt")
 rm -rf "$PATCH"
 echo "    $ADDON_DEB"
 

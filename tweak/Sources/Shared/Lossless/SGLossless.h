@@ -19,4 +19,8 @@ NSDictionary *_Nullable SGLosslessCheck(NSString *_Nullable *_Nonnull error);
 void SGLosslessStop(BOOL release);
 // Whether the file plays now: anchored, and nothing has changed the source since.
 BOOL SGLosslessPlaying(void);
+// Immutable decoder measurements (not provider hints); safe on main, no audio capture or I/O.
+NSDictionary *SGLosslessSourceInfo(void);
+// Whether this output actually received external frames within the last half second.
+BOOL SGLosslessRendering(void);
 NS_ASSUME_NONNULL_END

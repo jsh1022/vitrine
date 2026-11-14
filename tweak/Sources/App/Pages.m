@@ -18,6 +18,7 @@
 #import "Native/Player/NowPlaying.h"
 #import "Shared/LiveActivity/LiveActivity.h"
 #import "Shared/Lossless/SGLossless.h"
+#import "Shared/AudioSources/SGAddons.h"
 #import "Redesigned/Lyrics/LyricsText.h"
 #import "Redesigned/Lyrics/LyricsLook.h"
 #import "Redesigned/Navbar/Navbar.h"
@@ -168,6 +169,8 @@ UIViewController *SGPlayerSettingsPage(void) {
 
     [sections addObject:SGNotedSection(@"Lossless", @[
         SGOptionRow(@"Lossless files", @"Your own FLACs in place of Spotify's stream", SGKeyLossless),
+        SGPageRow(@"Lossless sources & WireGuard", ^UIViewController *{ return SGAudioSourcesPage(); }),
+        SGPageRow(@"Playback details", ^UIViewController *{ return SGPlaybackDetailsPage(); }),
     ], @"Put FLAC or ALAC files in Files › Spotify › Lossless. A file plays when its title and length match the song "
        @"and its sound matches what Spotify plays, from about 4 s after the song starts or you seek. Spotify still "
        @"streams its own copy, at its lowest quality while the next song has a file. Karaoke and speeds other than "

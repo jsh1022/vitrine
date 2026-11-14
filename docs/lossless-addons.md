@@ -1,5 +1,10 @@
 # HTTP addon compatibility research
 
+Implementation follow-up: this working copy now has an experimental HTTPS addon client,
+app-local WireGuard transport and playback diagnostics under `Shared/AudioSources/`.
+See [integration status and limits](audio-sources-integration.ko.md). The historical
+provider observations below still do not establish live compatibility or device playback.
+
 Follow-up to [Lossless sources and automatic upgrades](lossless-sources.md), checked 2026-10-08 against
 the links and September announcements supplied by the user. **No provider is validated in Vitrine.**
 These are provider candidates for the same background-upgrade coordinator, not separate player designs.

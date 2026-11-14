@@ -1,0 +1,98 @@
+#import "SGAddonProtocol.h"
+#import <math.h>
+
+static NSString *string(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
+NSURL *SGAddonBaseURL(NSString *input) {
+    NSURLComponents *c = [NSURLComponents componentsWithString:[input stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]];
+    // HTTPS also for private servers: no global ATS exceptions or credential-bearing HTTP links.
+    if (![c.scheme.lowercaseString isEqualToString:@"https"] || !c.host.length || c.user || c.password || c.fragment) return nil;
+    NSString *path = c.percentEncodedPath;
+    while ([path hasSuffix:@"/"]) path = [path substringToIndex:path.length - 1];
+    if ([path.lowercaseString hasSuffix:@".json"]) path = [path substringToIndex:[path rangeOfString:@"/" options:NSBackwardsSearch].location];
+    if ([path.lowercaseString hasSuffix:@".html"] || [path.lowercaseString hasSuffix:@".htm"]) return nil;
+    c.percentEncodedPath = path;
+    return c.URL;
+}
+NSURL *SGAddonEndpoint(NSURL *base, NSArray<NSString *> *segments, NSDictionary<NSString *, NSString *> *query) {
+    NSURLComponents *c = [NSURLComponents componentsWithURL:base resolvingAgainstBaseURL:NO];
+    NSString *path = c.percentEncodedPath ?: @"";
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"];
+    for (NSString *part in segments) path = [path stringByAppendingFormat:@"/%@", [part stringByAddingPercentEncodingWithAllowedCharacters:allowed]];
+    c.percentEncodedPath = path;
+    NSMutableArray *items = [c.queryItems mutableCopy] ?: [NSMutableArray array];
+    for (NSString *key in query) {
+        // Explicit client policy replaces a conflicting base query parameter.
+        NSIndexSet *old = [items indexesOfObjectsPassingTest:^BOOL(NSURLQueryItem *item, NSUInteger i, BOOL *stop) { return [item.name isEqualToString:key]; }];
+        [items removeObjectsAtIndexes:old];
+        [items addObject:[NSURLQueryItem queryItemWithName:key value:query[key]]];
+    }
+    NSMutableArray *encoded = [NSMutableArray array];
+    for (NSURLQueryItem *item in items) [encoded addObject:[NSString stringWithFormat:@"%@=%@",
+        [item.name stringByAddingPercentEncodingWithAllowedCharacters:allowed],
+        [(item.value ?: @"") stringByAddingPercentEncodingWithAllowedCharacters:allowed]]];
+    c.percentEncodedQuery = encoded.count ? [encoded componentsJoinedByString:@"&"] : nil;
+    return c.URL;
+}
+BOOL SGAddonManifestSupported(NSDictionary *m) {
+    id resources = m[@"resources"];
+    id proof = m[@"bitchordAuth"];
+    if (!string(m[@"id"]).length || (proof && ![proof isEqual:@NO])) return NO;
+    if (!resources) return YES;
+    return [resources isKindOfClass:NSArray.class] && (![resources count] || [resources containsObject:@"search"]);
+}
+NSDictionary *SGAddonParameters(NSDictionary *m) {
+    NSMutableDictionary *result = [@{@"quality": @"LOSSLESS", @"atmos": @"false"} mutableCopy];
+    id settings = m[@"settings"];
+    if (![settings isKindOfClass:NSArray.class]) return result;
+    for (id raw in settings) {
+        if (![raw isKindOfClass:NSDictionary.class]) continue;
+        NSString *key = string(raw[@"key"]);
+        id value = raw[@"default"];
+        if (key.length && ![@[@"quality", @"atmos", @"q"] containsObject:key] &&
+            ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])) result[key] = [value description];
+        if ([key isEqualToString:@"quality"] && [raw[@"options"] isKindOfClass:NSArray.class]) {
+            for (id option in raw[@"options"]) {
+                NSString *v = [option isKindOfClass:NSDictionary.class] ? string(option[@"value"]) : string(option);
+                if ([@[@"lossless", @"flac", @"hifi", @"hi-res", @"hires", @"max", @"best"] containsObject:v.lowercaseString]) {
+                    result[@"quality"] = v; break;
+                }
+            }
+        }
+    }
+    return result;
+}
+static NSString *fold(NSString *s) {
+    return [[s stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        stringByFoldingWithOptions:NSCaseInsensitiveSearch | NSWidthInsensitiveSearch locale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
+}
+BOOL SGAddonTrackMatches(NSDictionary *c, NSString *title, NSString *artist, double seconds) {
+    // Keep edition qualifiers and punctuation: a conservative miss leaves Spotify playing.
+    id length = c[@"duration"];
+    if (![length isKindOfClass:NSNumber.class]) return NO;
+    double duration = [length doubleValue];
+    return title.length && artist.length && isfinite(seconds) && seconds > 0 && isfinite(duration) && duration > 0 &&
+        fabs(duration - seconds) <= 2 && [fold(string(c[@"title"])) isEqualToString:fold(title)] &&
+        [fold(string(c[@"artist"])) isEqualToString:fold(artist)];
+}
+BOOL SGAddonDirectStream(NSDictionary *s) {
+    NSURL *url = [NSURL URLWithString:string(s[@"url"])];
+    if (![url.scheme.lowercaseString isEqualToString:@"https"] || !url.host.length || url.user || url.password) return NO;
+    id encrypted = s[@"encrypted"];
+    if (encrypted && ![encrypted isEqual:@NO] && ![encrypted isEqual:@"false"] && ![encrypted isEqual:@"none"]) return NO;
+    for (NSString *key in @[@"manifest", @"mediaType"]) {
+        NSString *v = string(s[key]).lowercaseString;
+        if (v.length && ![v isEqualToString:@"none"]) return NO;
+    }
+    if ([s[@"atmos"] isEqual:@YES]) return NO;
+    id modes = s[@"audioModes"];
+    if ([modes isKindOfClass:NSArray.class]) for (id mode in modes) {
+        NSString *v = string(mode).lowercaseString;
+        if ([v containsString:@"atmos"] || [v containsString:@"dolby"]) return NO;
+    }
+    for (NSString *key in @[@"format", @"mimeType", @"audioMode", @"quality", @"audioQuality", @"codec"]) {
+        NSString *v = string(s[key]).lowercaseString;
+        if ([v containsString:@"dash"] || [v containsString:@"hls"] || [v containsString:@"mpegurl"] || [v containsString:@"atmos"] || [v containsString:@"dolby"]) return NO;
+    }
+    // Decoder, not these hints, decides whether the completed file is lossless.
+    return YES;
+}

@@ -64,7 +64,9 @@ Rules:
   the same recording plays in place of Spotify's sound. The anchor comes from cross-correlating 4 s of Spotify's
   output with the file, never from Spotify's position reports, and every seek, skip, pause or route change drops it
   (`SGSourceEvents.x`). Spotify still streams its own copy, so the switch lowers its quality only while the next song
-  has a file. Sources (providers, downloads) are a design only: `docs/lossless-sources.md`. Do not take Sing's
+  has a file. `Shared/AudioSources/` now contains an experimental HTTPS addon client, app-local WireGuard
+  transport and playback details; `docs/audio-sources-integration.ko.md` records its limits and unrun device checks.
+  The older provider designs remain in `docs/lossless-sources.md`. Do not take Sing's
   `SGPlayerSetStage` slot. After audio edits, run the handoff harness (`harness/lossless/handoff-build.sh`).
 
 - Build: `make install` (signs and pushes to the phone), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
