@@ -5,6 +5,7 @@
 // and is made exact on a short window read at full rate. Playback reads from a ring that a worker fills ahead of
 // where Spotify plays; a block the ring does not hold yet keeps Spotify's sound.
 #import "SGLossless.h"
+#import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/SpeedPitch.h"
 #import <Accelerate/Accelerate.h>
@@ -198,6 +199,7 @@ static BOOL load(NSString *path, double rate, NSString **error) {
     if (!bits && source.mFormatID == kAudioFormatAppleLossless && source.mFormatFlags >= 1 && source.mFormatFlags <= 4) {
         const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[source.mFormatFlags];
     }
+    if (!bits) bits = [SGMeasureLosslessFile(path, 0)[@"bits"] unsignedIntValue];
     NSDictionary *info = @{@"codec": source.mFormatID == kAudioFormatFLAC ? @"FLAC" : @"ALAC",
         @"rate": @(source.mSampleRate), @"bits": @(bits), @"channels": @(source.mChannelsPerFrame), @"clientRate": @(rate),
         @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / (sg_reader.frames / rate) / 1000)};
@@ -379,6 +381,9 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     uint32_t bits;
     memcpy(&bits, &gain, sizeof bits);
     atomic_store(&sg_gainBits, bits);
+    @synchronized (NSProcessInfo.processInfo) {
+        NSMutableDictionary *info = [sg_sourceInfo mutableCopy]; info[@"gain"] = @(gain); sg_sourceInfo = info;
+    }
     sg_playEpoch = sg_capEpoch;
     sg_playSource = sg_capStart;
     sg_playAsset = lag;

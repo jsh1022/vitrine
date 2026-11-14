@@ -144,6 +144,7 @@ static dispatch_queue_t sg_storeQueue;
             self->_busy = NO;
             if (occurrence != self->_occurrence || ![track isEqualToString:self->_track]) return;
             if (anchored) {
+                SGAddonSetPlaybackStatus(@"Audio aligned; inspect recent external frames in Playback details");
                 self->_failures = 0;
                 // Addon files are transient, not entries in Documents/Lossless's local index.
                 if ([path.stringByDeletingLastPathComponent isEqualToString:SGLosslessStoreDirectory()])
@@ -151,6 +152,7 @@ static dispatch_queue_t sg_storeQueue;
                 SGLog(@"lossless: playing %@ from %.2f s", path.lastPathComponent, [anchored[@"file_seconds"] doubleValue]);
                 return;
             }
+            SGAddonSetPlaybackStatus([NSString stringWithFormat:@"Audio alignment failed: %@", error ?: @"unknown mismatch"]);
             self->_retryAt = CFAbsoluteTimeGetCurrent() + kRetrySeconds;
             if (++self->_failures >= kTries) {
                 self->_failures = 0;
@@ -165,7 +167,7 @@ static dispatch_queue_t sg_storeQueue;
 @end
 
 %ctor {
-    if (!SGHidden(SGKeyLossless)) return;
+    if (!SGHidden(SGKeyLossless) && !SGFlag(SGKeyAddons, NO)) return;
     sg_storeQueue = dispatch_queue_create("spotifyglass.lossless.store", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
     dispatch_async(dispatch_get_main_queue(), ^{
         static SGLosslessCoordinator *coordinator;

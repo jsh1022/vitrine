@@ -53,9 +53,10 @@ BOOL SGWireGuardImport(NSString *text, NSString **reason) {
     if (![result[@"ok"] boolValue]) { *reason = @"Invalid or unsupported WireGuard profile."; return NO; }
     if (![lock() tryLock]) { *reason = @"WireGuard is starting. Wait before replacing the profile."; return NO; }
     BOOL running = sg_port > 0;
-    BOOL ok = !running && SGSaveSourceSecret(@"wireguard-profile", text);
+    BOOL ok = SGSaveSourceSecret(@"wireguard-profile", text);
+    if (ok && running) sg_reason = @"Profile updated; restart to apply the new configuration";
     [lock() unlock];
-    if (!ok) *reason = running ? @"Restart Spotify with WireGuard off before replacing the profile." : @"Keychain could not save the profile.";
+    if (!ok) *reason = @"Keychain could not save the profile.";
     return ok;
 #else
     *reason = @"This build does not include WireGuard. Build with WIREGUARD=1.";
@@ -219,5 +220,34 @@ void SGWireGuardTestDNS(void (^completion)(NSString *)) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(ok ? @"Tunnel DNS succeeded. This verifies the peer/DNS path; request counters show URLSession routing." : @"Tunnel DNS failed. Check the profile, endpoint, DNS and network, then restart Spotify. No direct fallback was used.");
         });
+    });
+}
+
+void SGWireGuardTestHTTPS(void (^completion)(NSString *)) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+        config.URLCache = nil; config.HTTPCookieStorage = nil;
+        config.timeoutIntervalForRequest = 20; config.timeoutIntervalForResource = 30;
+        if (!SGWireGuardApplyToConfiguration(config)) {
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(@"Tunnel unavailable. HTTPS diagnostic blocked; no direct fallback."); });
+            return;
+        }
+        NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
+        // Explicit user action: the selected tunnel contacts Cloudflare's trace endpoint.
+        [[session dataTaskWithURL:[NSURL URLWithString:@"https://www.cloudflare.com/cdn-cgi/trace"] completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSString *result = @"Tunnel HTTPS failed. No direct fallback was used.";
+            if (!error && [(NSHTTPURLResponse *)response statusCode] == 200 && data.length < 65536) {
+                NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                NSString *ip = nil, *country = nil;
+                for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
+                    if ([line hasPrefix:@"ip="]) ip = [line substringFromIndex:3];
+                    if ([line hasPrefix:@"loc="]) country = [line substringFromIndex:4];
+                }
+                if (ip.length && ip.length < 64 && country.length == 2)
+                    result = [NSString stringWithFormat:@"Tunnel HTTPS succeeded. Exit IP: %@ · Country: %@. This verifies URLSession over the tunnel, not actual Spotify music-loader coverage.", ip, country];
+            }
+            [session finishTasksAndInvalidate];
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
+        }] resume];
     });
 }

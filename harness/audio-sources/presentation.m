@@ -24,6 +24,12 @@ static void uncaught(NSException *exception) {
 @end
 static void checkBlockedTransport(void) {
     progress(@"checking URLSession hooks and unavailable-engine blocking");
+    NSDictionary *pipeline = SGAudioPipelineSnapshot();
+    NSArray *stages = pipeline[@"stages"];
+    if (stages.count != 5 || ![stages[0][@"title"] isEqual:@"Track Info"] || ![stages[4][@"title"] isEqual:@"Output Device"] ||
+        ![pipeline[@"statsLine"] isEqual:@"No decoder measurement for the selected source"]) {
+        fail(@"pipeline must contain five stages without inventing unknown source measurements"); return;
+    }
     if (!SGWireGuardAppProxyActive()) { fail(@"proxy hooks not installed"); return; }
     NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
     config.HTTPAdditionalHeaders = @{@"X-Fixture": @"preserved"};

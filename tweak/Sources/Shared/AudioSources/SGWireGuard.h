@@ -14,3 +14,4 @@ BOOL SGWireGuardAppProxyActive(void);
 void SGWireGuardSetAppProxyActive(BOOL active);
 NSDictionary *SGWireGuardProxyCounters(void);
 void SGWireGuardTestDNS(void (^completion)(NSString *result));
+void SGWireGuardTestHTTPS(void (^completion)(NSString *result));

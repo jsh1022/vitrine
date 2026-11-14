@@ -66,6 +66,7 @@ BOOL SGWireGuardAppProxyActive(void) { return sg_appProxy; }
 void SGWireGuardSetAppProxyActive(BOOL active) { sg_appProxy = active; }
 BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) { return NO; }
 void SGWireGuardTestDNS(void (^completion)(NSString *)) { completion(@"Test result"); }
+void SGWireGuardTestHTTPS(void (^completion)(NSString *)) { completion(@"Test result"); }
 BOOL SGFlag(NSString *key, BOOL fallback) { return [key isEqualToString:SGKeyAppWireGuard]; }
 void SGSetEnabled(NSString *key, BOOL on) {}
 SPTPlayerState *SGPlayerState(void) { return nil; }
@@ -76,4 +77,5 @@ NSDictionary *SGLosslessSourceInfo(void) { return @{}; }
 BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) { return NO; }
 double SGPlayerSpeed(void) { return 1; }
 float SGPlayerPitch(void) { return 0; }
+float SGPlayerReverb(void) { return 0; }
 BOOL SGSingOn(void) { return NO; }

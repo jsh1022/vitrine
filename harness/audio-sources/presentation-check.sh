@@ -8,14 +8,22 @@ mkdir -p "$APP"
 SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 perl "${LOGOS:?Set LOGOS to a theos/logos checkout}/bin/logos.pl" -c generator=internal \
   "$SRC/Shared/NetworkProxy/WireGuardProxy.x" > "$OUT/WireGuardProxy.m"
-xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
-  -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \
-  -I"$SRC" "$ROOT/harness/audio-sources/presentation.m" \
-  "$ROOT/harness/audio-sources/presentation-stubs.m" "$ROOT/harness/scene.m" \
-  "$SRC/Shared/AudioSources/AudioSourcesSettings.m" "$SRC/Shared/AudioSources/PlaybackDetails.m" \
-  "$SRC/Shared/AudioSources/SGAudioPresentation.m" "$SRC/Core/SGGlass.m" "$OUT/WireGuardProxy.m" \
-  -framework Foundation -framework UIKit -framework QuartzCore -framework UniformTypeIdentifiers -framework AVFoundation \
-  -framework AudioToolbox -o "$APP/AudioPresentation"
+OBJ="$OUT/presentation-objects"
+mkdir -p "$OBJ"
+SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sources/presentation-stubs.m"
+  "$ROOT/harness/scene.m" "$SRC/Shared/AudioSources/AudioSourcesSettings.m"
+  "$SRC/Shared/AudioSources/PlaybackDetails.m" "$SRC/Shared/AudioSources/SGAudioPresentation.m"
+  "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Core/SGGlass.m" "$OUT/WireGuardProxy.m")
+for index in "${!SOURCES[@]}"; do
+  xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
+    -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \
+    -I"$SRC" -c "${SOURCES[$index]}" -o "$OBJ/$index.o"
+done
+xcrun swiftc -swift-version 5 -parse-as-library -target "$(uname -m)-apple-ios17.0-simulator" \
+  -sdk "$SDK" "$SRC/Shared/AudioSources/AudioPipelineSheet.swift" "$OBJ"/*.o \
+  -framework Foundation -framework UIKit -framework SwiftUI -framework QuartzCore \
+  -framework UniformTypeIdentifiers -framework AVFoundation -framework AudioToolbox \
+  -o "$APP/AudioPresentation"
 python3 - "$APP" <<'PY'
 from pathlib import Path
 import plistlib,sys

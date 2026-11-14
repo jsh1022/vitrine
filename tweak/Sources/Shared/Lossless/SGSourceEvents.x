@@ -1,5 +1,6 @@
 // Application discontinuities invalidate the source selector's epoch, so a lossless anchor stops at once. Runs
 // with lossless on, and in driver (FLEX) builds, whose anchor log records these events.
+#import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import "SGLossless.h"
 #import <AVFoundation/AVFoundation.h>
@@ -78,7 +79,7 @@ static void event(NSString *kind, NSString *evidence) {
 
 %ctor {
     #if !SG_DRIVER
-    if (!SGHidden(SGKeyLossless)) return;
+    if (!SGHidden(SGKeyLossless) && !SGFlag(SGKeyAddons, NO)) return;
     #endif
     %init;
     dispatch_async(dispatch_get_main_queue(), ^{

@@ -12,7 +12,7 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 LOGOS="${LOGOS:?Set LOGOS to a theos/logos checkout}"
-for name in Lossless SpeedPitchMenu WireGuardProxy; do
+for name in Lossless SGSourceEvents SpeedPitchMenu WireGuardProxy; do
   part=Lossless
   if [ "$name" = SpeedPitchMenu ]; then part=Player; fi
   if [ "$name" = WireGuardProxy ]; then part=NetworkProxy; fi
@@ -31,3 +31,6 @@ for enabled in 0 1; do
   done
 done
 bash "$ROOT/scripts/check-layers.sh" "$SRC"
+
+xcrun swiftc -typecheck -swift-version 5 -target arm64-apple-ios16.0 -sdk "$SDK" \
+  "$SRC/Shared/AudioSources/AudioPipelineSheet.swift"

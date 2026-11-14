@@ -10,6 +10,7 @@
 static _Atomic uint64_t sg_generation;
 static NSString *sg_status = @"Idle";
 static NSDictionary *sg_media;
+static NSString *sg_failure; // worker-owned, fixed diagnostics only
 static dispatch_queue_t worker(void) {
     static dispatch_queue_t q;
     static dispatch_once_t once;
@@ -45,6 +46,7 @@ BOOL SGAddonRemoveSource(NSString *identifier) {
     return ok;
 }
 NSString *SGAddonStatus(void) { return sg_status; }
+void SGAddonSetPlaybackStatus(NSString *status) { sg_status = status; }
 NSDictionary *SGAddonMediaInfo(void) { return sg_media ?: @{}; }
 void SGAddonCancel(void) {
     atomic_fetch_add(&sg_generation, 1);
@@ -136,10 +138,12 @@ static BOOL networkAllowed(void) {
     return allowed;
 }
 static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation) {
-    if (generation != atomic_load(&sg_generation) || !networkAllowed() || !budget(identifier)) return nil;
+    if (generation != atomic_load(&sg_generation)) return nil;
+    if (!networkAllowed()) { sg_failure = @"Network policy: use unmetered Wi-Fi or allow cellular downloads"; return nil; }
+    if (!budget(identifier)) { sg_failure = @"Source request budget/cooldown reached; retry later"; return nil; }
     NSString *reason;
     NSURLSessionConfiguration *config = SGSourceSessionConfiguration(&reason);
-    if (!config) return nil; // enabled WireGuard never falls back to a direct session
+    if (!config) { sg_failure = @"WireGuard unavailable; addon request blocked"; return nil; } // enabled WireGuard never falls back to a direct session
     config.allowsCellularAccess = SGFlag(SGKeyAddonCellular, NO);
     config.allowsExpensiveNetworkAccess = SGFlag(SGKeyAddonCellular, NO);
     config.allowsConstrainedNetworkAccess = NO;
@@ -180,6 +184,12 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
         }
         sg_quiet[identifier] = @(NSDate.date.timeIntervalSince1970 + MAX(60, delay));
     }
+    if (transfer.failed || !transfer.received) {
+        if (transfer.status == 401 || transfer.status == 403) sg_failure = @"Source authentication refused (401/403). Renew the personal manifest URL on its setup page";
+        else if (transfer.status == 429) sg_failure = @"Source rate limited (429); waiting for Retry-After";
+        else if (transfer.status) sg_failure = [NSString stringWithFormat:@"Source HTTP %ld or incomplete/oversized response", (long)transfer.status];
+        else sg_failure = @"Source connection failed or timed out";
+    }
     return !transfer.failed && transfer.received && generation == atomic_load(&sg_generation) ? transfer : nil;
 }
 static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation) {
@@ -203,9 +213,19 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
     dispatch_async(worker(), ^{
         initialize();
         [sg_manifests removeObjectForKey:identifier];
+        sg_failure = nil;
         BOOL ok = NO;
-        for (NSDictionary *source in sources) if ([source[@"id"] isEqual:identifier]) { ok = manifest(source, generation) != nil; break; }
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"Manifest supported. Playback matching and media decoding still need to succeed." : @"Source unavailable, unsupported, rate limited, or blocked by network policy. Spotify continues playing."); });
+        for (NSDictionary *source in sources) if ([source[@"id"] isEqual:identifier]) {
+            NSDictionary *m = manifest(source, generation);
+            if (m) {
+                NSMutableDictionary *params = [SGAddonParameters(m) mutableCopy]; params[@"q"] = @"music";
+                NSDictionary *response = json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"search"], params), identifier, generation);
+                ok = [response[@"tracks"] isKindOfClass:NSArray.class];
+            }
+            break;
+        }
+        NSString *failure = sg_failure ?: @"Unsupported manifest or search response";
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"Manifest and authenticated search work. Playback matching, media decoding and alignment still need to succeed." : failure); });
     });
 }
 NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {
@@ -220,10 +240,19 @@ NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {
     ExtAudioFileDispose(file);
     BOOL flac = format.mFormatID == kAudioFormatFLAC, alac = format.mFormatID == kAudioFormatAppleLossless;
     double seconds = format.mSampleRate > 0 ? frames / format.mSampleRate : 0;
-    if (status || (!flac && !alac) || format.mChannelsPerFrame != 2 || seconds <= 0 || (expected > 0 && fabs(seconds - expected) > 2)) return nil;
+    if (status || (!flac && !alac) || format.mChannelsPerFrame != 2 || seconds <= 0 || (expected > 0 && fabs(seconds - expected) > 30)) return nil;
     UInt32 bits = format.mBitsPerChannel;
     if (!bits && alac && format.mFormatFlags >= 1 && format.mFormatFlags <= 4) {
         const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[format.mFormatFlags];
+    }
+    if (flac && !bits) {
+        NSFileHandle *handle = [NSFileHandle fileHandleForReadingAtPath:path];
+        NSData *header = [handle readDataOfLength:42]; [handle closeFile];
+        const uint8_t *b = header.bytes;
+        if (header.length >= 42 && !memcmp(b, "fLaC", 4) && (b[4] & 0x7f) == 0) {
+            uint64_t fields = 0; for (int i = 18; i < 26; i++) fields = (fields << 8) | b[i];
+            bits = (UInt32)((fields >> 36) & 31) + 1;
+        }
     }
     return @{@"codec": flac ? @"FLAC" : @"ALAC", @"rate": @(format.mSampleRate), @"bits": @(bits),
              @"channels": @(format.mChannelsPerFrame), @"duration": @(seconds),
@@ -244,6 +273,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
         });
         // One transient file per attempt, never an offline library or playlist prefetch.
         NSString *path = [directory stringByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingString:@".audio"]];
+        sg_failure = nil;
         NSDictionary *measured = nil;
         for (NSDictionary *source in sources) {
             if (generation != atomic_load(&sg_generation)) break;
@@ -257,26 +287,44 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
             if (![rows isKindOfClass:NSArray.class]) continue;
             NSDictionary *candidate = nil;
             for (id row in rows) if ([row isKindOfClass:NSDictionary.class] && SGAddonTrackMatches(row, title, artist, duration)) { candidate = row; break; }
-            if (!candidate) continue;
+            if (!candidate) { sg_failure = @"Search answered but no recording matched title, artist and duration"; continue; }
             NSDictionary *stream = nil;
-            if ([candidate[@"streamURL"] isKindOfClass:NSString.class]) stream = @{@"url": candidate[@"streamURL"]};
-            else if ([candidate[@"id"] isKindOfClass:NSString.class] && [candidate[@"id"] length])
+            // BitChord resolves /stream first; a row URL is only a fallback.
+            if ([candidate[@"id"] isKindOfClass:NSString.class] && [candidate[@"id"] length])
                 stream = json(SGAddonEndpoint(base, @[@"stream", candidate[@"id"]], SGAddonParameters(m)), source[@"id"], generation);
-            if (!stream || !SGAddonDirectStream(stream)) continue;
-            NSMutableDictionary *candidateRendition = [candidate mutableCopy];
-            candidateRendition[@"url"] = stream[@"url"];
-            if (!SGAddonDirectStream(candidateRendition)) continue;
+            if (![stream[@"url"] isKindOfClass:NSString.class] && [candidate[@"streamURL"] isKindOfClass:NSString.class]) {
+                NSMutableDictionary *fallback = [candidate mutableCopy];
+                fallback[@"url"] = candidate[@"streamURL"]; stream = fallback;
+            }
+            if (!stream || !SGAddonDirectStream(stream)) { if (stream) sg_failure = @"Unsupported stream: need direct stereo FLAC/ALAC (DASH/HLS/Atmos/DRM are not connected to this engine)"; continue; }
+            // As in BitChord, resolved rendition metadata wins over catalogue hints.
             id expiry = stream[@"expiresAt"];
-            if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970 + 120) continue;
+            if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970) {
+                sg_failure = @"Resolved media URL expired; renew the source and retry"; continue;
+            }
             if (fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation)) measured = SGMeasureLosslessFile(path, duration);
-            if (measured) break;
+            if (measured) {
+                NSMutableDictionary *info = [measured mutableCopy];
+                info[@"trackURI"] = uri; info[@"sourceName"] = [m[@"name"] isKindOfClass:NSString.class] ? m[@"name"] : @"Addon";
+                NSMutableDictionary *declared = [NSMutableDictionary dictionary];
+                for (NSString *key in @[@"codec", @"sampleRate", @"bitDepth", @"bitrate"]) {
+                    id value = stream[key];
+                    if ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class]) {
+                        if ([key isEqualToString:@"sampleRate"] && [value doubleValue]>0 && [value doubleValue]<1000) value = @([value doubleValue]*1000);
+                        declared[key] = value;
+                    }
+                }
+                info[@"declared"] = declared; measured = info; break;
+            }
+            sg_failure = sg_failure ?: @"Downloaded media is not a matching stereo FLAC/ALAC file";
             [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
         }
         if (!measured || generation != atomic_load(&sg_generation)) { [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; path = nil; }
+        NSString *failure = sg_failure ?: @"No verified file; Spotify continues";
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation == atomic_load(&sg_generation)) {
                 sg_media = measured;
-                sg_status = path ? @"Lossless header checked; waiting for decode and alignment" : @"No verified file; Spotify continues";
+                sg_status = path ? @"Lossless header checked; waiting for decode and alignment" : failure;
                 completion(path);
             } else { if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; completion(nil); }
         });

@@ -13,9 +13,11 @@ void SGAddonRetryCurrentTrack(void);
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration,
                     void (^completion)(NSString *path));
 NSString *SGAddonStatus(void);
+void SGAddonSetPlaybackStatus(NSString *status);
 NSDictionary *SGAddonMediaInfo(void);
 NSDictionary *SGMeasureLosslessFile(NSString *path, double duration);
 UIViewController *SGAudioSourcesPage(void);
 UIViewController *SGWireGuardSettingsPage(void);
 UIViewController *SGPlaybackDetailsPage(void);
 void SGShowPlaybackDetails(void);
+NSDictionary *SGAudioPipelineSnapshot(void);

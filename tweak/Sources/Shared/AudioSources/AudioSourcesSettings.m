@@ -1,6 +1,7 @@
 #import "SGAddons.h"
 #import "SGWireGuard.h"
 #import "SGAudioPresentation.h"
+#import "Shared/Lossless/SGLossless.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -16,16 +17,36 @@ static SGWGImporter *sg_importer;
 @implementation SGWGImporter
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
-    BOOL access = [url startAccessingSecurityScopedResource];
-    NSNumber *size;
-    [url getResourceValue:&size forKey:NSURLFileSizeKey error:NULL];
-    NSString *text = size && size.unsignedLongLongValue <= 65536 ? [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:NULL] : nil;
-    if (access) [url stopAccessingSecurityScopedResource];
-    NSString *reason;
-    BOOL ok = text.length && SGWireGuardImport(text, &reason);
-    if (ok) SGAddonRetryCurrentTrack();
-    dispatch_async(dispatch_get_main_queue(), ^{ message(@"WireGuard", ok ? @"Profile validated and saved in this device's Keychain. Enable Spotify app proxy and restart, or select optional addon-only routing." : reason ?: @"Choose a UTF-8 WireGuard .conf file smaller than 64 KiB."); });
-    sg_importer = nil;
+    if (!url) { sg_importer = nil; return; }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        BOOL access = [url startAccessingSecurityScopedResource];
+        __block NSData *data;
+        NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+        [coordinator coordinateReadingItemAtURL:url options:0 error:NULL byAccessor:^(NSURL *readURL) {
+            NSInputStream *stream = [NSInputStream inputStreamWithURL:readURL];
+            [stream open];
+            NSMutableData *bytes = [NSMutableData data];
+            uint8_t buffer[4096]; NSInteger count;
+            while (bytes.length <= 65536 && (count = [stream read:buffer maxLength:MIN(sizeof buffer, 65537 - bytes.length)]) > 0)
+                [bytes appendBytes:buffer length:(NSUInteger)count];
+            if (!stream.streamError && bytes.length && bytes.length <= 65536) data = bytes;
+            [stream close];
+        }];
+        if (access) [url stopAccessingSecurityScopedResource];
+        // Import mode owns a copy. Never remove a file outside our app's import folders.
+        NSString *path = url.path.stringByStandardizingPath;
+        NSString *inbox = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Inbox/"];
+        if ([path hasPrefix:NSTemporaryDirectory()] || [path hasPrefix:inbox])
+            [NSFileManager.defaultManager removeItemAtURL:url error:NULL];
+        NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *reason;
+            BOOL ok = text.length && SGWireGuardImport(text, &reason);
+            if (ok) SGAddonRetryCurrentTrack();
+            message(@"WireGuard", ok ? @"Profile saved in Keychain. Enable Spotify app proxy and restart." : reason ?: @"Choose a downloaded UTF-8 .conf file no larger than 64 KiB.");
+            sg_importer = nil;
+        });
+    });
 }
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller { sg_importer = nil; }
 @end
@@ -36,7 +57,13 @@ static NSDictionary *sourceAt(NSUInteger index) {
 UIViewController *SGAudioSourcesPage(void) {
     __block __weak SGModPage *weakPage;
     SGModRow *enabled = SGOptionRow(@"HTTP lossless addons", @"Prepare a matching file while Spotify plays", SGKeyAddons);
-    enabled.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
+    enabled.changed = ^(BOOL on) {
+        if (on && !SGFlag(SGKeyLossless, NO)) {
+            SGSetEnabled(SGKeyLossless, YES);
+            message(@"Restart Spotify", @"Lossless playback hooks have been enabled. Fully close and reopen Spotify once before playing an addon source.");
+        }
+        SGAddonRetryCurrentTrack();
+    };
     SGModRow *cellular = SGOptionRow(@"Allow cellular downloads", @"Off: only unmetered networks; files can be up to 128 MiB", SGKeyAddonCellular);
     cellular.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
     SGModRow *tunnel = SGOptionRow(@"WireGuard for addons", @"Addon JSON and audio only · iOS 17+", SGKeySourceWireGuard);
@@ -61,7 +88,7 @@ UIViewController *SGAudioSourcesPage(void) {
             NSDictionary *source = sourceAt(i);
             if (!source) return;
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Lossless source" message:@"Source URLs are credentials and are kept in Keychain. A manifest test uses the same network and WireGuard settings as playback." preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Test manifest" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [alert addAction:[UIAlertAction actionWithTitle:@"Test source" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
                 SGAddonTestSource(source[@"id"], ^(NSString *status) { message(@"Source test", status); });
             }]];
             [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
@@ -131,11 +158,24 @@ UIViewController *SGWireGuardSettingsPage(void) {
                     testing = YES; testState = @"Testing…";
                     SGWireGuardTestDNS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard test", result); });
                 }),
+                SGActionRow(@"Check tunnel HTTPS / exit country", @"Contacts Cloudflare through the selected tunnel", ^{
+                    if (testing) return;
+                    testing = YES; testState = @"Testing HTTPS…";
+                    SGWireGuardTestHTTPS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard HTTPS", result); });
+                }),
                 SGActionRow(@"Import .conf file", @"Single-peer profile · numeric DNS · default routes", ^{
                     sg_importer = [SGWGImporter new];
-                    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeData] asCopy:NO];
+                    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.data", @"public.text", @"public.item"] inMode:UIDocumentPickerModeImport];
                     picker.delegate = sg_importer;
+                    picker.allowsMultipleSelection = NO;
                     SGShowAudioController(picker);
+                }),
+                SGActionRow(@"Import from clipboard", @"Paste a copied WireGuard configuration", ^{
+                    NSString *text = UIPasteboard.generalPasteboard.string;
+                    NSString *reason;
+                    BOOL ok = text.length && SGWireGuardImport(text, &reason);
+                    if (ok) { UIPasteboard.generalPasteboard.string = @""; SGAddonRetryCurrentTrack(); }
+                    message(@"WireGuard", ok ? @"Profile saved. Configuration text removed from the clipboard." : reason ?: @"Copy the complete UTF-8 .conf text first.");
                 }),
                 SGActionRow(@"Delete saved profile", @"Disable WireGuard and restart to stop the running engine", ^{
                     SGSetEnabled(SGKeyAppWireGuard, NO); SGSetEnabled(SGKeySourceWireGuard, NO); SGAddonRetryCurrentTrack();

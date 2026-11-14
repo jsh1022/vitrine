@@ -8,10 +8,12 @@
 #import "Shared/Lossless/SGLossless.h"
 #import "Shared/Sing/Sing.h"
 #import <AVFoundation/AVFoundation.h>
+#import <objc/message.h>
+NSDictionary *SGAudioPipelineSnapshot(void);
 
 static NSString *hz(double rate) { return rate > 0 ? [NSString stringWithFormat:@"%.1f kHz", rate / 1000] : @"Unknown"; }
 static NSDictionary *sourceInfo(void) { return SGLosslessSourceInfo(); }
-UIViewController *SGPlaybackDetailsPage(void) {
+static UIViewController *legacyDetailsPage(void) {
     return [[SGModPage alloc] initWithTitle:@"Playback details" intro:@"Values refresh while this page is open. Source metadata and the local audio output describe different stages."
         sections:@[
             SGSection(@"Track", @[
@@ -42,10 +44,50 @@ UIViewController *SGPlaybackDetailsPage(void) {
             ], @"A high resolution source may be resampled to the client rate. Float32 PCM does not establish source bit depth or bit-perfect playback. Bluetooth may encode again. These local values do not describe a remote Spotify Connect renderer."),
         ] footer:nil];
 }
+@interface SGPipelineContainer : SGPage
+@property(nonatomic, strong) UIViewController *host;
+@end
+@implementation SGPipelineContainer
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return 0; }
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.tableView.scrollEnabled = NO;
+    [self addChildViewController:self.host];
+    self.tableView.tableHeaderView = self.host.view;
+    [self.host didMoveToParentViewController:self];
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGRect bounds = self.tableView.bounds;
+    bounds.origin = CGPointZero;
+    bounds.size.height = MAX(1, bounds.size.height - self.tableView.adjustedContentInset.top - self.tableView.adjustedContentInset.bottom);
+    if (!CGRectEqualToRect(self.host.view.frame, bounds)) {
+        self.host.view.frame = bounds;
+        self.tableView.tableHeaderView = self.host.view;
+    }
+}
+@end
+UIViewController *SGPlaybackDetailsPage(void) {
+    Class hostClass = NSClassFromString(@"SGAudioPipelineHost");
+    SEL factory = NSSelectorFromString(@"controllerWithProvider:close:");
+    if (![hostClass respondsToSelector:factory]) return legacyDetailsPage();
+    SGPipelineContainer *page = [SGPipelineContainer new];
+    page.title = @"Playback details";
+    __weak SGPipelineContainer *weakPage = page;
+    NSDictionary *(^provider)(void) = ^{ return SGAudioPipelineSnapshot(); };
+    void (^close)(void) = ^{
+        SGPipelineContainer *owner = weakPage;
+        if (owner.navigationController.viewControllers.count > 1) [owner.navigationController popViewControllerAnimated:YES];
+        else [owner dismissViewControllerAnimated:YES completion:nil];
+    };
+    page.host = ((UIViewController *(*)(id, SEL, id, id))objc_msgSend)(hostClass, factory, provider, close);
+    return page;
+}
 void SGShowPlaybackDetails(void) {
     UIViewController *page = SGPlaybackDetailsPage();
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:page];
     page.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:page action:@selector(sg_closePlaybackDetails)];
+    nav.navigationBarHidden = [page isKindOfClass:SGPipelineContainer.class];
     SGShowAudioController(nav);
 }
 // SGPage already conforms to Spotify's page protocol; a local category just closes the modal.

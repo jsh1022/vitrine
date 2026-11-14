@@ -35,22 +35,29 @@ NSURL *SGAddonEndpoint(NSURL *base, NSArray<NSString *> *segments, NSDictionary<
 }
 BOOL SGAddonManifestSupported(NSDictionary *m) {
     id resources = m[@"resources"];
-    id proof = m[@"bitchordAuth"];
+    id proof = m[@"bitchordAuth"]; if (proof == NSNull.null) proof = nil;
     if (!string(m[@"id"]).length || (proof && ![proof isEqual:@NO])) return NO;
     if (!resources) return YES;
     return [resources isKindOfClass:NSArray.class] && (![resources count] || [resources containsObject:@"search"]);
 }
 NSDictionary *SGAddonParameters(NSDictionary *m) {
-    NSMutableDictionary *result = [@{@"quality": @"LOSSLESS", @"atmos": @"false"} mutableCopy];
+    NSMutableDictionary *result = [@{@"quality": @"LOSSLESS"} mutableCopy];
     id settings = m[@"settings"];
     if (![settings isKindOfClass:NSArray.class]) return result;
     for (id raw in settings) {
         if (![raw isKindOfClass:NSDictionary.class]) continue;
         NSString *key = string(raw[@"key"]);
+        if ([key isEqualToString:@"atmos"]) result[key] = @"false";
         id value = raw[@"default"];
         if (key.length && ![@[@"quality", @"atmos", @"q"] containsObject:key] &&
             ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])) result[key] = [value description];
         if ([key isEqualToString:@"quality"] && [raw[@"options"] isKindOfClass:NSArray.class]) {
+            NSString *exact = nil;
+            for (id option in raw[@"options"]) {
+                NSString *v = [option isKindOfClass:NSDictionary.class] ? string(option[@"value"]) : string(option);
+                if ([v.lowercaseString isEqualToString:@"lossless"]) { exact = v; break; }
+            }
+            if (exact) { result[@"quality"] = exact; continue; }
             for (id option in raw[@"options"]) {
                 NSString *v = [option isKindOfClass:NSDictionary.class] ? string(option[@"value"]) : string(option);
                 if ([@[@"lossless", @"flac", @"hifi", @"hi-res", @"hires", @"max", @"best"] containsObject:v.lowercaseString]) {
@@ -62,23 +69,34 @@ NSDictionary *SGAddonParameters(NSDictionary *m) {
     return result;
 }
 static NSString *fold(NSString *s) {
-    return [[s stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
-        stringByFoldingWithOptions:NSCaseInsensitiveSearch | NSWidthInsensitiveSearch locale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
+    NSString *value = [s stringByFoldingWithOptions:NSCaseInsensitiveSearch | NSWidthInsensitiveSearch | NSDiacriticInsensitiveSearch locale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
+    return [[value componentsSeparatedByCharactersInSet:NSCharacterSet.alphanumericCharacterSet.invertedSet] componentsJoinedByString:@""];
+}
+static NSSet *artists(NSString *text) {
+    NSString *value = [text.lowercaseString stringByReplacingOccurrencesOfString:@" feat. " withString:@","];
+    NSMutableSet *names = [NSMutableSet set];
+    for (NSString *part in [value componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@",;&"]]) {
+        NSString *name = fold(part); if (name.length) [names addObject:name];
+    }
+    return names;
 }
 BOOL SGAddonTrackMatches(NSDictionary *c, NSString *title, NSString *artist, double seconds) {
-    // Keep edition qualifiers and punctuation: a conservative miss leaves Spotify playing.
     id length = c[@"duration"];
-    if (![length isKindOfClass:NSNumber.class]) return NO;
-    double duration = [length doubleValue];
-    return title.length && artist.length && isfinite(seconds) && seconds > 0 && isfinite(duration) && duration > 0 &&
-        fabs(duration - seconds) <= 2 && [fold(string(c[@"title"])) isEqualToString:fold(title)] &&
-        [fold(string(c[@"artist"])) isEqualToString:fold(artist)];
+    BOOL hasDuration = [length isKindOfClass:NSNumber.class] || [length isKindOfClass:NSString.class];
+    double duration = hasDuration ? [length doubleValue] : 0;
+    // BitChord TrackMatcher.durationLimitSec is 30. Missing metadata is checked
+    // against the actual completed file, then against Spotify's audio waveform.
+    BOOL lengthMatches = !hasDuration || (isfinite(duration) && duration > 0 && fabs(duration - seconds) <= 30);
+    return title.length && artist.length && isfinite(seconds) && seconds > 0 && lengthMatches && [fold(string(c[@"title"])) isEqualToString:fold(title)] &&
+        [artists(string(c[@"artist"])) intersectsSet:artists(artist)];
 }
 BOOL SGAddonDirectStream(NSDictionary *s) {
     NSURL *url = [NSURL URLWithString:string(s[@"url"])];
     if (![url.scheme.lowercaseString isEqualToString:@"https"] || !url.host.length || url.user || url.password) return NO;
     id encrypted = s[@"encrypted"];
-    if (encrypted && ![encrypted isEqual:@NO] && ![encrypted isEqual:@"false"] && ![encrypted isEqual:@"none"]) return NO;
+    if (encrypted == NSNull.null) encrypted = nil;
+    if ([encrypted isKindOfClass:NSString.class]) encrypted = [encrypted stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
+    if (encrypted && ![encrypted isEqual:@NO] && ![encrypted isEqual:@"false"] && ![encrypted isEqual:@"none"] && ![encrypted isEqual:@""]) return NO;
     for (NSString *key in @[@"manifest", @"mediaType"]) {
         NSString *v = string(s[key]).lowercaseString;
         if (v.length && ![v isEqualToString:@"none"]) return NO;

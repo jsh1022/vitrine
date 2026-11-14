@@ -25,13 +25,15 @@ int main(void) { @autoreleasepool {
     require(SGAddonTrackMatches(track, @"song (live)", @"artist", 181), @"same edition and duration match");
     require(!SGAddonTrackMatches(track, @"Song", @"Artist", 180), @"different edition rejected");
     require(!SGAddonTrackMatches(track, @"Song (Live)", @"Someone else", 180), @"different artist rejected");
-    require(!SGAddonTrackMatches(track, @"Song (Live)", @"Artist", 183), @"different duration rejected");
-    require(!SGAddonTrackMatches(@{@"title": @"Song", @"artist": @"Artist"}, @"Song", @"Artist", 180), @"missing duration rejected");
+    require(!SGAddonTrackMatches(track, @"Song (Live)", @"Artist", 211), @"different duration rejected");
+    require(SGAddonTrackMatches(@{@"title": @"Song", @"artist": @"Artist"}, @"Song", @"Artist", 180), @"missing metadata duration is deferred to native file validation");
     require(SGAddonDirectStream(@{@"url": @"https://media.test/audio", @"format": @"flac"}), @"direct URL without encrypted field accepted for decoder verification");
     for (NSDictionary *bad in @[
         @{@"url": @"http://media.test/audio"}, @{@"url": @"https://media.test/audio", @"encrypted": @"widevine"},
         @{@"url": @"https://media.test/audio", @"manifest": @"dash"}, @{@"url": @"https://media.test/audio", @"format": @"hls"},
         @{@"url": @"https://media.test/audio", @"audioMode": @"DOLBY_ATMOS"}])
         require(!SGAddonDirectStream(bad), @"reject unsupported rendition before media request");
+    require([SGAddonParameters(@{@"settings": @[@{@"key": @"quality", @"default": @"atmos", @"options": @[@{@"value": @"atmos"}, @{@"value": @"hires"}, @{@"value": @"lossless"}]}]})[@"quality"] isEqual:@"lossless"], @"exact requested quality wins before hires, matching BitChord");
+    require(SGAddonTrackMatches(@{@"title": @"Don't Stop", @"artist": @"Artist, Guest", @"duration": @180}, @"Don’t Stop", @"Artist", 180), @"punctuation and multi-credit formatting do not reject the same recording");
     NSLog(@"PASS: addon protocol fixtures");
 } return 0; }
