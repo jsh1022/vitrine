@@ -2,9 +2,9 @@ name: Audio sources checks
 on:
   workflow_dispatch:
   push:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
   pull_request:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
 jobs:
   tunnel:
     runs-on: ubuntu-latest
@@ -38,10 +38,23 @@ jobs:
       - run: bash harness/audio-sources/presentation-check.sh
         env:
           LOGOS: ${{ github.workspace }}/.check-tools/logos
+      - name: Lossless handoff and wired rate negotiation
+        run: |
+          if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
+          bash harness/lossless/handoff-check.sh
+        env:
+          THEOS: ${{ github.workspace }}/.check-tools/logos
       - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: audio-presentation-diagnostics
           path: harness/audio-sources/build/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: lossless-handoff-diagnostics
+          path: harness/lossless/build/handoff/diagnostics/
           if-no-files-found: ignore
           retention-days: 7

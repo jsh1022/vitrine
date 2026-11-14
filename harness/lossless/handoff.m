@@ -244,12 +244,38 @@ static void realTests(void) {
         check(AudioUnitSetProperty(output,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&format,sizeof format),"format notification");
         expect(SGPlayerSourceEpoch()!=epoch,"format notification invalidates prepared source");
     });
-    later(5.5,^{
+    later(5.2,^{
+        SGPCMReplacementCancel(); SGPlayerSetStage(NULL); SGPlayerSetSourceSelector(NULL);
+        NSString *error = nil;
+        uint64_t identity = SGPlayerMusicOutputIdentity(), epoch = SGPlayerSourceEpoch();
+        expect(!SGPlayerTryMusicSampleRate(NAN, identity, &error) && error.length > 0,
+            "invalid source rate rejected");
+        expect(SGPlayerSourceEpoch() == epoch,"invalid rate leaves live source contract alone");
+        expect(!SGPlayerTryMusicSampleRate(48000, identity + 1, &error),"stale output identity rejected");
+        expect(SGPlayerTryMusicSampleRate(48000, identity, &error),"wired rate negotiation 44.1 to 48 kHz");
+        if (error) printf("rate diagnostic: %s\n", error.UTF8String);
+        AudioStreamBasicDescription client = {0}, input = {0}, mixed = {0}; UInt32 size = sizeof input;
+        expect(SGPlayerMusicClientFormat(&client) && client.mSampleRate == 48000,"RemoteIO accepts source rate");
+        check(AudioUnitGetProperty(mixer,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&input,&size),"read mixer input after negotiation");
+        size = sizeof mixed;
+        check(AudioUnitGetProperty(mixer,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Output,0,&mixed,&size),"read mixer output after negotiation");
+        expect(input.mSampleRate == 44100 && mixed.mSampleRate == 48000,"native decoder rate retained while mixer output follows source");
+        expect(SGPlayerSourceEpoch() != epoch,"successful negotiation invalidates old anchors");
+        uint64_t before = atomic_load(&decoded);
+        later(0.3,^{
+            expect(atomic_load(&decoded) > before,"native decoder advances after rate negotiation");
+            NSString *reason;
+            expect(SGPlayerTryMusicSampleRate(44100, identity, &reason),"restore app rate after wired mode");
+            AudioStreamBasicDescription restored = {0};
+            expect(SGPlayerMusicClientFormat(&restored) && restored.mSampleRate == 44100,"restored client format is measured");
+        });
+    });
+    later(6.1,^{
         uint64_t epoch=SGPlayerSourceEpoch();
         check(AudioComponentInstanceDispose(mixer),"dispose mixer during running output"); mixer=NULL;
         expect(SGPlayerSourceEpoch()!=epoch,"mixer disposal invalidates source");
     });
-    later(6.0,^{
+    later(6.6,^{
         SGPCMReplacementCancel(); SGPlayerSetStage(NULL); SGPlayerSetSourceSelector(NULL);
         AudioOutputUnitStop(output); AudioComponentInstanceDispose(output); AudioComponentInstanceDispose(converter);
         printf("RESULT failures=%d nativeFrames=%llu replacementFrames=%llu stageFrames=%llu\n",failures,

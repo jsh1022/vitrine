@@ -29,6 +29,7 @@
 #import "Shared/ListeningStats/ListeningStats.h"
 #import "Shared/HeadGestures/HeadGestures.h"
 #import "Shared/Player/PlayerSettings.h"
+#import "Shared/AudioSources/SGAddons.h"
 #import "Shared/Sing/Sing.h"
 #import "Shared/Haptics/Haptics.h"
 #import "App/About/About.h"
@@ -105,6 +106,7 @@ static UIViewController *modSettingsPage(void) {
     SGModRow *autoMix = pageRow(@"AutoMix", @"arrow.triangle.merge", SGColorRGB(0xF05D6C), ^UIViewController *{ return SGAutoMixSettingsPage(); });
     autoMix.value = ^NSString *{ return SGAutoMixSummary(); };
     NSMutableArray<SGModRow *> *features = [NSMutableArray arrayWithObjects:sing, spatial, audioEffects, autoMix, nil];
+    [features addObject:pageRow(@"WireGuard", @"network", UIColor.systemBlueColor, ^UIViewController *{ return SGWireGuardSettingsPage(); })];
     // The Live Activity works under both looks, where ActivityKit's card does.
     if (@available(iOS 17.0, *)) {
         SGModRow *liveActivity = pageRow(@"Live Activity", @"iphone", UIColor.systemOrangeColor, ^UIViewController *{ return SGLiveActivitySettingsPage(); });

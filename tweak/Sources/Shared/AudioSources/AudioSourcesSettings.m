@@ -2,6 +2,7 @@
 #import "SGWireGuard.h"
 #import "SGAudioPresentation.h"
 #import "Shared/Lossless/SGLossless.h"
+#import "Shared/Lossless/SGWiredOutput.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -55,6 +56,8 @@ static NSDictionary *sourceAt(NSUInteger index) {
     return index < sources.count ? sources[index] : nil;
 }
 UIViewController *SGAudioSourcesPage(void) {
+    SGModRow *wired = SGOptionRow(@"Wired source output", @"Experimental · match source rate and preserve source level", SGKeyWiredSourceOutput);
+    wired.changed = ^(BOOL on) { SGWiredOutputSettingsChanged(); };
     __block __weak SGModPage *weakPage;
     SGModRow *enabled = SGOptionRow(@"HTTP lossless addons", @"Prepare a matching file while Spotify plays", SGKeyAddons);
     enabled.changed = ^(BOOL on) {
@@ -103,8 +106,13 @@ UIViewController *SGAudioSourcesPage(void) {
     }
     SGModPage *page = [[SGModPage alloc] initWithTitle:@"Lossless sources" intro:@"Enable Lossless files on the Player page and restart Spotify once to install the playback hooks. Source and network settings below apply to new requests."
         sections:@[
-            SGNotedSection(@"Playback", @[enabled, cellular, SGActionRow(@"Retry current track", @"Respects each source's request budget", ^{ SGAddonRetryCurrentTrack(); }), SGStatRow(@"Preparation", ^NSString *{ return SGAddonStatus(); })], @"Direct stereo FLAC/ALAC files only. Each file is checked by the native decoder and aligned against Spotify's sound. HLS, DASH, DRM and official-app-only sources are unsupported. Karaoke and speeds other than 1× retain Spotify audio."),
+            SGNotedSection(@"Playback", @[enabled, cellular, SGActionRow(@"Retry current track", @"Respects each source's request budget", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"Preparation", @"Tap for details", ^NSString *{ return SGAddonStatusSummary(); }, ^{ message(@"Preparation", SGAddonStatus()); })], @"Direct stereo FLAC/ALAC files only. Each file is checked by the native decoder and aligned against Spotify's sound. HLS, DASH, DRM and official-app-only sources are unsupported. Karaoke and speeds other than 1× retain Spotify audio."),
             SGSection(@"Sources (in priority order)", rows),
+            SGNotedSection(@"Wired output", @[wired,
+                SGStatActionRow(@"Output status", @"Tap for details", ^NSString *{ return SGWiredOutputStatus()[@"state"]; }, ^{
+                    message(@"Wired output", SGWiredOutputStatus()[@"detail"]);
+                }),
+            ], @"USB DAC, wired headphones and line output only. Applies to local and addon lossless files. Negotiation may briefly pause playback. Unsupported devices or Spotify mixers keep their existing rate. Source level can be louder. Disable EQ, Sing, reverb and speed/pitch effects for an unprocessed path. Matching rates alone do not prove bit-perfect output."),
             SGNotedSection(@"Optional routing", @[tunnel,
                 SGPageRow(@"WireGuard proxy", ^UIViewController *{ return SGWireGuardSettingsPage(); }),
             ], @"Addons work without WireGuard. App proxy mode applies to their URLSession traffic too, regardless of this per-addon switch."),

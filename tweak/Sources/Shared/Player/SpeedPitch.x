@@ -94,6 +94,7 @@ typedef struct {
 // render thread may hold one.
 typedef struct {
     _Atomic(AudioUnit) unit;
+    atomic_uint_fast64_t identity;
     // What Spotify connected to it, NULL when nothing is; `taken` while this file's callback stands in for that
     // connection, pulling it in chunks no larger than its own largest slice.
     _Atomic(AudioUnit) source;
@@ -116,6 +117,7 @@ typedef struct {
 } Output;
 
 static Output sg_outputs[kMaxOutputs];
+static uint64_t sg_outputIdentity;           // sg_outputsLock; never reuse a unit/source identity
 static _Atomic(Output *) sg_music;           // the output carrying the processors
 static pthread_mutex_t sg_outputsLock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 static dispatch_queue_t sg_outputsQueue;
@@ -567,6 +569,7 @@ static Output *outputFor(AudioUnit unit) {
         output->sourceTime = 0;
         output->order = output->eventAt = 0;
         output->listened = NO;
+        atomic_store(&output->identity, ++sg_outputIdentity);
         atomic_store(&output->unit, unit);
     }
     if (!output) {
@@ -808,6 +811,7 @@ static OSStatus setProperty(AudioUnit unit, AudioUnitPropertyID property, AudioU
     output->sourceBus = connection->sourceOutputNumber;
     output->sourceTime = 0;
     atomic_store(&output->source, connection->sourceAudioUnit);
+    atomic_store(&output->identity, ++sg_outputIdentity);
     markEvent(output);
     AudioStreamBasicDescription client, hardware;
     // Spotify's connection is made too only when the callback cannot stand in for it.
@@ -991,7 +995,7 @@ static void apply(void) {
     SGTimePitch *unit = unitForFormat();
     if (!unit) {
         static int logged;
-        if (!normal && logged++ < 3) SGLog(@"redesign speed: Spotify's output has not started, or is in a format the unit does not take; nothing to change yet");
+        if (!normal && logged++ < 3) SGLog(@"%@", @"redesign speed: Spotify's output has not started, or is in a format the unit does not take; nothing to change yet");
         return;
     }
     SGTimePitchSetRate(unit, tapped() ? sg_speed : 1);
@@ -1147,7 +1151,7 @@ BOOL SGPlayerPitchAvailable(void) {
 void SGPlayerSetGain(float gain) {
     if (!sg_reachable) {
         static int logged;
-        if (logged++ < 1) SGLog(@"audio: Spotify's output was not reached, the gain cannot apply");
+        if (logged++ < 1) SGLog(@"%@", @"audio: Spotify's output was not reached, the gain cannot apply");
     }
     storeFloat(&sg_gainBits, fmaxf(0, fminf(gain, 1)));
 }
@@ -1164,6 +1168,113 @@ BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) {
     BOOL read = unit && AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, format, &size) == noErr;
     pthread_mutex_unlock(&sg_outputsLock);
     return read;
+}
+
+uint64_t SGPlayerMusicOutputIdentity(void) {
+    pthread_mutex_lock(&sg_outputsLock);
+    Output *output = music();
+    uint64_t identity = output ? atomic_load(&output->identity) : 0;
+    pthread_mutex_unlock(&sg_outputsLock);
+    return identity;
+}
+
+BOOL SGPlayerTryMusicSampleRate(double sampleRate, uint64_t expectedIdentity, NSString **error) {
+    if (error) *error = nil;
+    if (!isfinite(sampleRate) || sampleRate < 44100 || sampleRate > 192000) {
+        if (error) *error = @"Source rate outside 44.1–192 kHz";
+        return NO;
+    }
+    pthread_mutex_lock(&sg_outputsLock);
+    Output *output = music();
+    AudioUnit unit = output ? atomic_load(&output->unit) : NULL;
+    AudioUnit source = output ? atomic_load(&output->source) : NULL;
+    AudioStreamBasicDescription client = {0}, mixer = {0};
+    UInt32 size = sizeof client;
+    BOOL ready = unit && source && expectedIdentity && atomic_load(&output->identity) == expectedIdentity
+        && atomic_load(&output->taken) && atomic_load(&output->running)
+        && AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &client, &size) == noErr
+        && client.mChannelsPerFrame == 2;
+    if (ready && fabs(client.mSampleRate - sampleRate) < 0.5 && !refusal(output, &client)) {
+        pthread_mutex_unlock(&sg_outputsLock);
+        return YES;
+    }
+    AudioComponentDescription description = {0};
+    if (ready) ready = AudioComponentGetDescription(AudioComponentInstanceGetComponent(source), &description) == noErr
+        && description.componentType == kAudioUnitType_Mixer
+        && description.componentSubType == kAudioUnitSubType_MultiChannelMixer
+        && description.componentManufacturer == kAudioUnitManufacturer_Apple;
+    // A mixer's other consumers must not inherit this output's rate request.
+    for (int i = 0; ready && i < kMaxOutputs; ++i)
+        if (&sg_outputs[i] != output && atomic_load(&sg_outputs[i].unit) && atomic_load(&sg_outputs[i].source) == source) ready = NO;
+    size = sizeof mixer;
+    if (ready) ready = AudioUnitGetProperty(source, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output,
+        output->sourceBus, &mixer, &size) == noErr && !refusal(output, &client);
+    if (!ready) {
+        if (error) *error = @"Spotify's active output does not support safe source-rate negotiation";
+        pthread_mutex_unlock(&sg_outputsLock);
+        return NO;
+    }
+    // Only Apple's mixer is reconfigured: its input converters keep Spotify's decoder at its
+    // original format. The lossless selector replaces the mixer's output after that conversion.
+    SGPlayerInvalidateSource();
+    OSStatus status = sg_stopOutput(unit);
+    if (status != noErr) {
+        if (error) *error = [NSString stringWithFormat:@"Could not pause output (%d)", (int)status];
+        pthread_mutex_unlock(&sg_outputsLock);
+        return NO;
+    }
+    waitFor(output);
+    disengage();
+    Float64 oldTime = output->sourceTime;
+    AudioStreamBasicDescription nextClient = client, nextMixer = mixer;
+    nextClient.mSampleRate = nextMixer.mSampleRate = sampleRate;
+    BOOL outputUninitialized = NO, mixerUninitialized = NO;
+    status = AudioUnitUninitialize(unit);
+    if (status == noErr) { outputUninitialized = YES; status = AudioUnitUninitialize(source); }
+    if (status == noErr) {
+        mixerUninitialized = YES;
+        status = sg_setProperty(source, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output,
+            output->sourceBus, &nextMixer, sizeof nextMixer);
+    }
+    if (status == noErr) status = sg_setProperty(unit, kAudioUnitProperty_StreamFormat,
+        kAudioUnitScope_Input, 0, &nextClient, sizeof nextClient);
+    if (status == noErr) status = AudioUnitInitialize(source);
+    if (status == noErr) status = AudioUnitInitialize(unit);
+    AudioStreamBasicDescription checkedClient = {0}, checkedHardware = {0};
+    if (status == noErr) {
+        NSString *why = settle(output, &checkedClient, &checkedHardware);
+        if (why || fabs(checkedClient.mSampleRate - sampleRate) >= 0.5) status = kAudioUnitErr_FormatNotSupported;
+    }
+    if (status == noErr) {
+        output->sourceTime = oldTime * sampleRate / client.mSampleRate;
+        status = sg_startOutput(unit);
+    }
+    if (status != noErr) {
+        // Even initialization or restart can fail after the properties were accepted. Restore
+        // both sides before resuming; never let mismatched rates change the song's pitch.
+        if (outputUninitialized) AudioUnitUninitialize(unit);
+        if (mixerUninitialized) AudioUnitUninitialize(source);
+        OSStatus restored = noErr;
+        if (mixerUninitialized) restored = sg_setProperty(source, kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Output, output->sourceBus, &mixer, sizeof mixer);
+        OSStatus step = outputUninitialized ? sg_setProperty(unit, kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Input, 0, &client, sizeof client) : noErr;
+        if (!restored) restored = step;
+        step = mixerUninitialized ? AudioUnitInitialize(source) : noErr;
+        if (!restored) restored = step;
+        step = outputUninitialized ? AudioUnitInitialize(unit) : noErr;
+        if (!restored) restored = step;
+        output->sourceTime = oldTime;
+        settle(output, &checkedClient, &checkedHardware);
+        step = restored ? restored : sg_startOutput(unit);
+        if (!restored) restored = step;
+        if (restored) atomic_store(&output->running, false);
+        if (error) *error = [NSString stringWithFormat:restored ? @"Rate rejected (%d); output restart failed (%d). Restart Spotify."
+            : @"Rate rejected (%d); previous format restored (%d)", (int)status, (int)restored];
+    }
+    reselect(YES, @"wired source-rate request");
+    pthread_mutex_unlock(&sg_outputsLock);
+    return status == noErr;
 }
 
 // The jailbreak's way in (SGHookFunctionInline), where Spotify's import page cannot be written: the functions
@@ -1213,15 +1324,15 @@ static void rebind(void) {
         if (!sg_reachable) {
             sg_startOutput = NULL;
             sg_reachable = hookInline();
-            if (!sg_reachable) SGLog(@"audio: Spotify's AudioOutputUnitStart could be neither rebound nor hooked, its output cannot be reached");
+            if (!sg_reachable) SGLog(@"%@", @"audio: Spotify's AudioOutputUnitStart could be neither rebound nor hooked, its output cannot be reached");
         } else {
             if (!SGRebindImport("AudioOutputUnitStop", stopOutput, (void **)&sg_stopOutput) || !sg_stopOutput) sg_stopOutput = AudioOutputUnitStop;
             if (!SGRebindImport("AudioComponentInstanceDispose", disposeUnit, (void **)&sg_dispose) || !sg_dispose) {
                 sg_dispose = AudioComponentInstanceDispose;
-                SGLog(@"audio: Spotify does not import AudioComponentInstanceDispose, a disposed output is not seen");
+                SGLog(@"%@", @"audio: Spotify does not import AudioComponentInstanceDispose, a disposed output is not seen");
             }
         }
-        if (!sg_setProperty) SGLog(@"redesign speed: Spotify's AudioUnitSetProperty could be neither rebound nor hooked, the menu offers pitch only");
+        if (!sg_setProperty) SGLog(@"%@", @"redesign speed: Spotify's AudioUnitSetProperty could be neither rebound nor hooked, the menu offers pitch only");
     });
 }
 

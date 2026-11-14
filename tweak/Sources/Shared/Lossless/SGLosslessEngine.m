@@ -5,6 +5,7 @@
 // and is made exact on a short window read at full rate. Playback reads from a ring that a worker fills ahead of
 // where Spotify plays; a block the ring does not hold yet keeps Spotify's sound.
 #import "SGLossless.h"
+#import "SGWiredOutput.h"
 #import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -89,8 +90,10 @@ static void selector(AudioUnit output, uint64_t epoch, double sourceFrame, doubl
             uint32_t bits = atomic_load(&sg_gainBits);
             float gain;
             memcpy(&gain, &bits, sizeof gain);
-            vDSP_vsmul(l, 1, &gain, l, 1, frames);
-            vDSP_vsmul(r, 1, &gain, r, 1, frames);
+            if (gain != 1) {
+                vDSP_vsmul(l, 1, &gain, l, 1, frames);
+                vDSP_vsmul(r, 1, &gain, r, 1, frames);
+            }
             atomic_fetch_add_explicit(&sg_replaced, frames, memory_order_relaxed);
             atomic_store_explicit(&sg_renderedAt, mach_absolute_time(), memory_order_relaxed);
         }
@@ -378,11 +381,14 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     if (score < kMinMatch) { *error = [NSString stringWithFormat:@"no match (%.3f)", score]; return nil; }
     if (sg_capEpoch != SGPlayerSourceEpoch()) { *error = @"the source changed while matching"; return nil; }
 
+    float alignmentGain = gain;
+    if (SGWiredOutputPreserveLevel()) gain = 1;
     uint32_t bits;
     memcpy(&bits, &gain, sizeof bits);
     atomic_store(&sg_gainBits, bits);
     @synchronized (NSProcessInfo.processInfo) {
-        NSMutableDictionary *info = [sg_sourceInfo mutableCopy]; info[@"gain"] = @(gain); sg_sourceInfo = info;
+        NSMutableDictionary *info = [sg_sourceInfo mutableCopy];
+        info[@"gain"] = @(gain); info[@"alignmentGain"] = @(alignmentGain); sg_sourceInfo = info;
     }
     sg_playEpoch = sg_capEpoch;
     sg_playSource = sg_capStart;

@@ -9,11 +9,11 @@ def as_text(value):
     return value.decode(errors="replace") if isinstance(value, bytes) else (value or "")
 
 
-def collect(device, output):
+def collect(device, output, process="AudioPresentation", bundle="dev.vitrine.audio-presentation"):
     commands = {
         "system.log": ["xcrun", "simctl", "spawn", device, "log", "show", "--last", "5m",
                        "--style", "compact", "--predicate",
-                       'process == "AudioPresentation" OR eventMessage CONTAINS "dev.vitrine.audio-presentation"'],
+                       f'process == "{process}" OR eventMessage CONTAINS "{bundle}"'],
         "simulator.json": ["xcrun", "simctl", "list", "devices", "available", "-j"],
     }
     for name, command in commands.items():
@@ -31,36 +31,40 @@ def collect(device, output):
                Path.home() / "Library/Developer/CoreSimulator/Devices" / device / "data/Library/Logs/CrashReporter"]
     for index, folder in enumerate(folders):
         if folder.exists():
-            reports = sorted(folder.rglob("AudioPresentation*"), key=lambda p: p.stat().st_mtime, reverse=True)
+            reports = sorted(folder.rglob(f"{process}*"), key=lambda p: p.stat().st_mtime, reverse=True)
             for report in reports[:5]:
                 if report.is_file():
                     shutil.copy2(report, output / f"crash-{index}-{report.name}")
 
 
 def main():
-    device, base = sys.argv[1:]
+    device, base = sys.argv[1:3]
+    handoff = sys.argv[3:] == ["--handoff"]
+    bundle = "dev.vitrine.lossless-handoff" if handoff else "dev.vitrine.audio-presentation"
+    process = "LosslessHandoff" if handoff else "AudioPresentation"
+    markers = ("RESULT failures=0", "PASS wired rate negotiation 44.1 to 48 kHz", "PASS restore app rate after wired mode") if handoff else (
+        "PASS audio source presentations:", "PASS unavailable WireGuard:")
     output = Path(base) / "diagnostics"
     output.mkdir(parents=True, exist_ok=True)
     code = 1
     try:
         result = subprocess.run(
-            ["xcrun", "simctl", "launch", "--console", device, "dev.vitrine.audio-presentation"],
+            ["xcrun", "simctl", "launch", "--console", device, bundle],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
         text = as_text(result.stdout)
         code = result.returncode
     except subprocess.TimeoutExpired as error:
         text = as_text(error.stdout) + "\nFAIL: simulator test timed out after 90 seconds.\n"
-    (output / "presentation.log").write_text(text)
+    (output / ("handoff.log" if handoff else "presentation.log")).write_text(text)
     print(text, flush=True)
     print(f"simctl exit status: {code}", flush=True)
-    passed = code == 0 and all(marker in text for marker in (
-        "PASS audio source presentations:", "PASS unavailable WireGuard:"))
+    passed = code == 0 and all(marker in text for marker in markers)
     if not passed:
         print("FAIL: expected test completion markers are missing; collecting diagnostics.", flush=True)
-        collect(device, output)
-        print("See the audio-presentation-diagnostics artifact for app logs, screenshot and crash reports.", flush=True)
+        collect(device, output, process, bundle)
+        print("See the audio diagnostics artifacts for app logs, screenshot and crash reports.", flush=True)
     try:
-        subprocess.run(["xcrun", "simctl", "terminate", device, "dev.vitrine.audio-presentation"],
+        subprocess.run(["xcrun", "simctl", "terminate", device, bundle],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False)
     except (OSError, subprocess.TimeoutExpired):
         pass

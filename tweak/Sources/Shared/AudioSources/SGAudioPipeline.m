@@ -4,6 +4,7 @@
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/Lossless/SGLossless.h"
+#import "Shared/Lossless/SGWiredOutput.h"
 #import "Shared/Sing/Sing.h"
 #import <AVFoundation/AVFoundation.h>
 
@@ -60,6 +61,6 @@ NSDictionary *SGAudioPipelineSnapshot(void) {
           row(@"Speed",[NSString stringWithFormat:@"%.2f× / %+.1f st",SGPlayerSpeed(),SGPlayerPitch()]),row(@"Buffers",nil),row(@"Output API",local ? @"AudioUnit RemoteIO" : nil),row(@"Bit-exact",verdict)]),
         stage(@"Output Device",@"speaker.wave.2",@[
           row(@"Device Name",routes.count ? [routes componentsJoinedByString:@", "] : nil),row(@"Route",session.currentRoute.outputs.firstObject.portType),
-          row(@"Sample Rate",hardware>0 ? number(@(hardware),@"Hz") : nil),row(@"Channels",number(@(session.outputNumberOfChannels),@"ch")),row(@"System",system),row(@"Latency",[NSString stringWithFormat:@"%.0f ms",session.outputLatency*1000])])
+          row(@"Sample Rate",hardware>0 ? number(@(hardware),@"Hz") : nil),row(@"Channels",number(@(session.outputNumberOfChannels),@"ch")),row(@"System",system),row(@"Wired source output",SGWiredOutputStatus()[@"state"]),row(@"Latency",[NSString stringWithFormat:@"%.0f ms",session.outputLatency*1000])])
       ]};
 }

@@ -6,6 +6,7 @@
 #import "Shared/Sing/Sing.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "SGLossless.h"
+#import "SGWiredOutput.h"
 #import "SGLosslessStore.h"
 #import "LosslessQuality.h"
 #import "Shared/AudioSources/SGAddons.h"
@@ -50,12 +51,19 @@ static dispatch_queue_t sg_storeQueue;
 
 - (void)tick {
     SPTPlayerState *state = SGPlayerState();
+    if (state.isPlaying && !state.isPaused && [SGWiredOutputStatus()[@"state"] isEqualToString:@"Restore pending"])
+        dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     NSString *track = SGURIString(state.track.URI);
     if (![track isEqualToString:_track]) {
         SGAddonCancel();
         ++_occurrence;
         _addonAsked = NO;
-        if (_path) SGLosslessStop(YES);
+        if (_path) {
+            SGLosslessStop(YES);
+            // Restore before the next local lookup completes, including a next song with no
+            // replacement file. The main thread never waits for Core Audio reconfiguration.
+            dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
+        }
         if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"])
             [NSFileManager.defaultManager removeItemAtPath:_path error:NULL];
         _track = track;
@@ -139,12 +147,17 @@ static dispatch_queue_t sg_storeQueue;
     double hint = state.position;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSString *error;
-        NSDictionary *anchored = SGLosslessAnchor(path, hint, &error);
+        NSDictionary *anchored = nil;
+        if (epoch != SGPlayerSourceEpoch()) error = @"the source changed before preparation";
+        else {
+            SGWiredOutputPrepare(path);
+            anchored = SGLosslessAnchor(path, hint, &error);
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_busy = NO;
             if (occurrence != self->_occurrence || ![track isEqualToString:self->_track]) return;
             if (anchored) {
-                SGAddonSetPlaybackStatus(@"Audio aligned; inspect recent external frames in Playback details");
+                SGAddonSetPlaybackStatus(@"Audio aligned; inspect recent external frames in Playback details", YES);
                 self->_failures = 0;
                 // Addon files are transient, not entries in Documents/Lossless's local index.
                 if ([path.stringByDeletingLastPathComponent isEqualToString:SGLosslessStoreDirectory()])
@@ -152,7 +165,7 @@ static dispatch_queue_t sg_storeQueue;
                 SGLog(@"lossless: playing %@ from %.2f s", path.lastPathComponent, [anchored[@"file_seconds"] doubleValue]);
                 return;
             }
-            SGAddonSetPlaybackStatus([NSString stringWithFormat:@"Audio alignment failed: %@", error ?: @"unknown mismatch"]);
+            SGAddonSetPlaybackStatus([NSString stringWithFormat:@"Audio alignment failed: %@", error ?: @"unknown mismatch"], NO);
             self->_retryAt = CFAbsoluteTimeGetCurrent() + kRetrySeconds;
             if (++self->_failures >= kTries) {
                 self->_failures = 0;

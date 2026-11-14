@@ -37,6 +37,9 @@ SGModRow *SGActionRow(NSString *title, NSString *subtitle, void (^action)(void))
 SGModRow *SGStatRow(NSString *title, NSString *(^value)(void)) {
     SGModRow *row = [SGModRow new]; row.title = title; row.value = value; return row;
 }
+SGModRow *SGStatActionRow(NSString *title, NSString *subtitle, NSString *(^value)(void), void (^action)(void)) {
+    SGModRow *row = SGActionRow(title, subtitle, action); row.value = value; return row;
+}
 SGModRow *SGPageRow(NSString *title, UIViewController *(^page)(void)) {
     SGModRow *row = [SGModRow new]; row.title = title; row.page = page; return row;
 }
@@ -56,6 +59,7 @@ BOOL SGAddonRemoveSource(NSString *identifier) { return YES; }
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) { completion(@"Test result"); }
 void SGAddonRetryCurrentTrack(void) {}
 NSString *SGAddonStatus(void) { return @"Idle"; }
+NSString *SGAddonStatusSummary(void) { return @"Idle"; }
 NSDictionary *SGAddonMediaInfo(void) { return @{}; }
 BOOL SGWireGuardImport(NSString *text, NSString **reason) { return YES; }
 BOOL SGWireGuardDelete(void) { return YES; }
@@ -78,4 +82,6 @@ BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) { return NO;
 double SGPlayerSpeed(void) { return 1; }
 float SGPlayerPitch(void) { return 0; }
 float SGPlayerReverb(void) { return 0; }
+NSDictionary *SGWiredOutputStatus(void) { return @{@"state": @"Off", @"detail": @"Wired source output is off"}; }
+void SGWiredOutputSettingsChanged(void) {}
 BOOL SGSingOn(void) { return NO; }

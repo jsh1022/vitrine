@@ -3,12 +3,14 @@
 #import "SGSourceSecrets.h"
 #import "SGWireGuard.h"
 #import "Core/SGCore.h"
+#import "Shared/Lossless/SGLossless.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <Network/Network.h>
 #import <stdatomic.h>
 
 static _Atomic uint64_t sg_generation;
 static NSString *sg_status = @"Idle";
+static NSString *sg_summary = @"Idle";
 static NSDictionary *sg_media;
 static NSString *sg_failure; // worker-owned, fixed diagnostics only
 static dispatch_queue_t worker(void) {
@@ -46,12 +48,19 @@ BOOL SGAddonRemoveSource(NSString *identifier) {
     return ok;
 }
 NSString *SGAddonStatus(void) { return sg_status; }
-void SGAddonSetPlaybackStatus(NSString *status) { sg_status = status; }
+NSString *SGAddonStatusSummary(void) {
+    return SGLosslessRendering() ? @"Playing" : sg_summary;
+}
+void SGAddonSetPlaybackStatus(NSString *status, BOOL aligned) {
+    sg_status = status;
+    sg_summary = aligned ? @"Aligned" : @"Not aligned";
+}
 NSDictionary *SGAddonMediaInfo(void) { return sg_media ?: @{}; }
 void SGAddonCancel(void) {
     atomic_fetch_add(&sg_generation, 1);
     sg_media = nil;
     sg_status = @"Idle";
+    sg_summary = @"Idle";
 }
 void SGAddonRetryCurrentTrack(void) {
     SGAddonCancel();
@@ -263,6 +272,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
     uint64_t generation = atomic_load(&sg_generation);
     NSArray *sources = SGAddonSources();
     sg_status = @"Looking for a matching recording";
+    sg_summary = @"Preparing";
     dispatch_async(worker(), ^{
         NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-addons"];
         [NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
@@ -325,6 +335,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
             if (generation == atomic_load(&sg_generation)) {
                 sg_media = measured;
                 sg_status = path ? @"Lossless header checked; waiting for decode and alignment" : failure;
+                sg_summary = path ? @"Aligning" : @"Unavailable";
                 completion(path);
             } else { if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; completion(nil); }
         });
