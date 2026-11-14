@@ -9,6 +9,22 @@
 extern NSArray<SGModRow *> *SGPresentationRows;
 extern BOOL SGPresentationExternal;
 extern NSDictionary *SGPresentationSourceInfo, *SGPresentationPreparedInfo;
+extern SGAddonPreparationState SGPresentationPreparation;
+extern BOOL SGPresentationStaticCover;
+extern UIImage *SGPresentationArtwork;
+
+@interface _TtC21NowPlaying_ScrollImpl27NPVBackgroundViewController : UIViewController
+@end
+@implementation _TtC21NowPlaying_ScrollImpl27NPVBackgroundViewController
+@end
+@interface _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView : UIView
+@end
+@implementation _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
+@end
+@interface _TtC17Canvas_PlayerImpl16CanvasPlayerView : UIView
+@end
+@implementation _TtC17Canvas_PlayerImpl16CanvasPlayerView
+@end
 
 // Same runtime class name and accessibility identifiers as the verified duration unit.
 // The production hooks, UIButton hit target and popover run against real UIKit views.
@@ -113,8 +129,35 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
 }
 - (void)step:(NSUInteger)index {
     progress([NSString stringWithFormat:@"step %lu", (unsigned long)index]);
-    if (index == 7) {
+    if (index == 8) {
         checkBlockedTransport(); return;
+    }
+    if (index == 7) {
+        SGPresentationArtwork = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(8, 8)] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            [UIColor.redColor setFill]; UIRectFill(CGRectMake(0, 0, 8, 8));
+        }];
+        SGPresentationStaticCover = YES;
+        UIViewController *screen = [UIViewController new];
+        Class renderer = NSClassFromString(@"SGNativeFullArtwork");
+        if (!renderer) { fail(@"full-screen artwork renderer missing"); return; }
+        UIView *cover = [[renderer alloc] initWithFrame:CGRectMake(0, 0, self.window.bounds.size.width, self.window.bounds.size.height / 2)];
+        [screen.view addSubview:cover]; [self.nav pushViewController:screen animated:NO];
+        [cover setNeedsLayout]; [cover layoutIfNeeded];
+        waitFor(^BOOL { return cover.window && !cover.hidden; }, ^{
+            UIImageView *picture = nil;
+            for (UIView *child in cover.subviews) if ([child isKindOfClass:UIImageView.class]) picture = (UIImageView *)child;
+            if (!picture.image || picture.frame.size.height < self.window.bounds.size.height || picture.contentMode != UIViewContentModeScaleAspectFill || cover.userInteractionEnabled) {
+                fail(@"static artwork must cover the screen without intercepting controls"); return;
+            }
+            SGPresentationStaticCover = NO;
+            [NSNotificationCenter.defaultCenter postNotificationName:NSUserDefaultsDidChangeNotification object:nil];
+            waitFor(^BOOL { return cover.hidden; }, ^{
+                [cover removeFromSuperview]; SGPresentationArtwork = nil;
+                printf("PASS full-screen static artwork and live option removal\n"); fflush(stdout);
+                [self step:8];
+            }, 200);
+        }, 200);
+        return;
     }
     if (index == 6) {
         // Also prove the helper accepts a request arriving from a worker thread.
@@ -127,27 +170,56 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         [details sendActionsForControlEvents:UIControlEventTouchUpInside];
     } else if (index == 4) {
         SGPresentationPreparedInfo = @{@"sourceName": @"Fixture", @"declared": @{@"sampleRate": @96000, @"bitDepth": @24}};
-        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"Spotify"] ||
+        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"기본"] ||
             ![SGPlaybackQualityInfo()[@"sourceRate"] isEqualToString:@"확인 불가"]) {
             fail(@"prepared provider metadata must not create a lossless badge"); return;
         }
+        SGPresentationPreparation = SGAddonPreparationSearching;
+        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"음원 찾는 중"]) { fail(@"searching label missing"); return; }
+        SGPresentationPreparation = SGAddonPreparationUnavailable;
+        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"기본"]) { fail(@"unavailable source must show the default label"); return; }
         SGPresentationExternal = YES;
+        SGPresentationSourceInfo = @{@"rate": @44100, @"bits": @16, @"codec": @"FLAC", @"channels": @2};
+        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"무손실"]) { fail(@"CD lossless must not use the provider's hi-res claim"); return; }
         SGPresentationSourceInfo = @{@"rate": @48000, @"bits": @24, @"codec": @"FLAC", @"channels": @2};
         if (![SGPlaybackQualityInfo()[@"sourceRate"] isEqualToString:@"48 kHz"] ||
-            ![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"무손실"]) {
+            ![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"고해상도 무손실"]) {
             fail(@"quality badge must use decoder measurement instead of the 96 kHz provider claim"); return;
         }
         UIViewController *unit = [_TtC20NowPlaying_ModesImpl19DurationElementUnit new];
-        [self.nav pushViewController:unit animated:NO];
+        UIViewController *screen = [UIViewController new];
+        screen.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        screen.view.backgroundColor = UIColor.blackColor;
+        UIScrollView *list = [[UIScrollView alloc] initWithFrame:screen.view.bounds];
+        list.accessibilityIdentifier = @"scrolling_npv_collection_view_accessibility_identifier";
+        list.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        list.contentSize = list.bounds.size; [screen.view addSubview:list];
+        [screen addChildViewController:unit]; [list addSubview:unit.view]; [unit didMoveToParentViewController:screen];
+        unit.view.frame = CGRectMake(20, 180, screen.view.bounds.size.width - 40, 48);
+        unit.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [self.nav pushViewController:screen animated:NO];
         [unit.view setNeedsLayout]; [unit.view layoutIfNeeded];
-        waitFor(^BOOL { return identified(unit.view, @"vitrine.playback-quality").window != nil; }, ^{
-            UIButton *badge = (UIButton *)identified(unit.view, @"vitrine.playback-quality");
+        waitFor(^BOOL {
+            return !self.nav.presentedViewController && !self.nav.transitionCoordinator
+                && identified(screen.view, @"vitrine.playback-quality").window != nil;
+        }, ^{
+            UIButton *badge = (UIButton *)identified(screen.view, @"vitrine.playback-quality");
             UIView *elapsed = identified(unit.view, @"now-playing-time-take-label-internal");
             UIView *remaining = identified(unit.view, @"now-playing-time-remaning-label-internal");
-            if (badge.hidden || ![badge.currentTitle isEqualToString:@"무손실"] ||
-                CGRectIntersectsRect(badge.frame, elapsed.frame) || CGRectIntersectsRect(badge.frame, remaining.frame)) {
+            CGRect left = [elapsed convertRect:elapsed.bounds toView:list], right = [remaining convertRect:remaining.bounds toView:list];
+            if (badge.hidden || ![badge.currentTitle isEqualToString:@"고해상도 무손실"] ||
+                CGRectIntersectsRect(badge.frame, left) || CGRectIntersectsRect(badge.frame, right)) {
                 fail(@"quality badge hidden, incorrect, or overlapping timestamps"); return;
             }
+            if (badge.superview != list || badge.bounds.size.height < 36 || CGColorGetAlpha(badge.backgroundColor.CGColor) != 0 || badge.layer.borderWidth != 0) {
+                fail(@"text-only quality control must have an unclipped large hit target"); return;
+            }
+            CGPoint inside = CGPointMake(CGRectGetMidX(badge.bounds), CGRectGetMaxY(badge.bounds) - 2);
+            UIView *hit = [self.window hitTest:[badge convertPoint:inside toView:self.window] withEvent:nil];
+            BOOL singleTap = NO;
+            for (UIGestureRecognizer *gesture in badge.gestureRecognizers)
+                if ([gesture isKindOfClass:UITapGestureRecognizer.class] && ((UITapGestureRecognizer *)gesture).numberOfTapsRequired == 1) singleTap = YES;
+            if (![hit isDescendantOfView:badge] || !singleTap) { fail(@"quality control must accept an ordinary tap outside the scrub unit bounds"); return; }
             [badge sendActionsForControlEvents:UIControlEventTouchUpInside];
         }, 200);
     } else if (index == 3) {
@@ -184,6 +256,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         if (index == 4) { [self step:5]; return; }
         if (index == 5) {
             SGPresentationExternal = NO; SGPresentationSourceInfo = nil; SGPresentationPreparedInfo = nil;
+            SGPresentationPreparation = SGAddonPreparationIdle;
             printf("PASS playback quality badge and popover\n"); fflush(stdout);
         }
         // Queue the next production action while this controller is dismissing.

@@ -255,6 +255,8 @@ static UIBlurEffect *blurEffect(void) {
     CGFloat screen = _screenHeight > 0 ? _screenHeight : total;
     CGFloat height = round(width * _aspect);
     if (_aspect > kCanvasAspect) height = MAX(height, screen);
+    BOOL fill = SGFlag(SGRKeyPlayerFillArtwork, NO);
+    if (fill) height = MAX(height, screen);
     CGFloat seam = round(height * kFootFrom), blurFrom = MIN(seam, round(screen * kBlurByControls));
     _picture.frame = bounds;
     _seamBlur.frame = bounds;
@@ -264,6 +266,9 @@ static UIBlurEffect *blurEffect(void) {
     _still.frame = CGRectMake(0, 0, width, height);
     _clip.frame = _still.bounds;
     _clipMask.frame = _still.bounds;
+    _still.mask = fill ? nil : _clipMask;
+    _foot.hidden = fill;
+    _seamBlur.hidden = fill;
     _foot.frame = CGRectMake(0, seam, width, MAX(0, total - seam));
     _dim.frame = bounds;
     NSNumber *(^at)(CGFloat) = ^NSNumber *(CGFloat y) { return @(MIN(1, y / total)); };
@@ -466,6 +471,9 @@ static void layOut(void) {
     CGRect frame = CGRectMake(0, 0, size.width, MAX(size.height, screen) + field.bleed.bottom);
     if (!CGRectEqualToRect(sg_motion.frame, frame)) sg_motion.frame = frame;
     sg_motion.screenHeight = screen;
+    static BOOL lastFill;
+    BOOL fill = SGFlag(SGRKeyPlayerFillArtwork, NO);
+    if (lastFill != fill) { lastFill = fill; [sg_motion setNeedsLayout]; }
     // A field Spotify built again, or the first one after a clip that came in before it, is covered too.
     field.covered = sg_covering;
 }
@@ -477,6 +485,7 @@ static void cover(BOOL covering) {
 
 // The Fluid field under a clip holds still, as it does for a paused song (PlayerField.x): the clip covers it.
 static void holdField(void) {
+    SGRPlayerStaticCoverUpdate();
     SGRPlayerHoldField();
 }
 
@@ -512,6 +521,7 @@ static void fadeCoverMask(CALayer *covers, CALayer *mask, float opacity, BOOL an
 // the list by its alpha as they come and go, cannot bring the cover back. Asked again for where it is going,
 // it does nothing, so the field's layout passes do not cut a fade short.
 static void setCoverShown(BOOL shown, BOOL animated) {
+    if (shown && SGRPlayerStaticCoverShowing()) shown = NO;
     CALayer *covers = shown ? sg_maskedCovers : SGRPlayerCoverList().layer;
     if (!covers) return;
     CALayer *mask = covers.mask;

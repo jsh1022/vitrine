@@ -11,6 +11,7 @@ perl "${LOGOS:?Set LOGOS to a theos/logos checkout}/bin/logos.pl" -c generator=i
 for mode in Native Redesigned; do
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$mode/Player/PlaybackQuality.x" > "$OUT/${mode}PlaybackQuality.m"
 done
+perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Native/Player/FullArtwork.x" > "$OUT/NativeFullArtwork.m"
 OBJ="$OUT/presentation-objects"
 mkdir -p "$OBJ"
 SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sources/presentation-stubs.m"
@@ -18,11 +19,11 @@ SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sourc
   "$SRC/Shared/AudioSources/PlaybackDetails.m" "$SRC/Shared/AudioSources/SGAudioPresentation.m"
   "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Shared/AudioSources/SGPlaybackQuality.m"
   "$SRC/Core/SGGlass.m" "$SRC/Core/SGViewTree.m" "$OUT/WireGuardProxy.m"
-  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m")
+  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m" "$OUT/NativeFullArtwork.m")
 for index in "${!SOURCES[@]}"; do
   xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
     -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \
-    -I"$SRC" -c "${SOURCES[$index]}" -o "$OBJ/$index.o"
+    -I"$SRC" -I"$SRC/Native/Player" -c "${SOURCES[$index]}" -o "$OBJ/$index.o"
 done
 xcrun swiftc -swift-version 5 -parse-as-library -target "$(uname -m)-apple-ios17.0-simulator" \
   -sdk "$SDK" "$SRC/Shared/AudioSources/AudioPipelineSheet.swift" "$OBJ"/*.o \

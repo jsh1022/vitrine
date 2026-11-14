@@ -6,6 +6,8 @@
 #import "Shared/AudioSources/SGWireGuard.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/SpeedPitch.h"
+#import "Shared/Player/SGLastTrack.h"
+#import "Shared/AnimatedArtwork/AnimatedArtwork.h"
 
 NSArray<SGModRow *> *SGPresentationRows;
 @implementation SGModRow
@@ -60,6 +62,8 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) { c
 void SGAddonRetryCurrentTrack(void) {}
 NSString *SGAddonStatus(void) { return @"Idle"; }
 NSString *SGAddonStatusSummary(void) { return @"Idle"; }
+SGAddonPreparationState SGPresentationPreparation;
+SGAddonPreparationState SGAddonPreparation(void) { return SGPresentationPreparation; }
 NSDictionary *SGPresentationPreparedInfo;
 NSDictionary *SGAddonMediaInfo(void) { return SGPresentationPreparedInfo ?: @{}; }
 BOOL SGWireGuardImport(NSString *text, NSString **reason) { return YES; }
@@ -72,9 +76,14 @@ void SGWireGuardSetAppProxyActive(BOOL active) { sg_appProxy = active; }
 BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) { return NO; }
 void SGWireGuardTestDNS(void (^completion)(NSString *)) { completion(@"Test result"); }
 void SGWireGuardTestHTTPS(void (^completion)(NSString *)) { completion(@"Test result"); }
-BOOL SGFlag(NSString *key, BOOL fallback) { return [key isEqualToString:SGKeyAppWireGuard]; }
+BOOL SGPresentationStaticCover;
+UIImage *SGPresentationArtwork;
+BOOL SGFlag(NSString *key, BOOL fallback) {
+    return [key isEqualToString:SGKeyAppWireGuard] || ([key hasSuffix:@".staticCoverFallback"] && SGPresentationStaticCover);
+}
 void SGSetEnabled(NSString *key, BOOL on) {}
 SPTPlayerState *SGPlayerState(void) { return nil; }
+void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {}
 NSString *SGURIString(id uri) { return nil; }
 BOOL SGLosslessPlaying(void) { return NO; }
 BOOL SGPresentationExternal;
@@ -97,3 +106,18 @@ BOOL SGNativeUI(void) { return !SGRedesignedUI(); }
 void SGRequireClasses(NSArray<NSString *> *names) {
     for (NSString *name in names) NSCAssert(NSClassFromString(name), @"Fixture class missing: %@", name);
 }
+@implementation SGShownTrack
+- (NSString *)uri { return @"spotify:track:background-fixture"; }
+- (NSString *)title { return @"Fixture"; }
+- (NSString *)artist { return @"Fixture"; }
+- (NSString *)album { return @"Fixture"; }
+- (NSURL *)artworkURL { return [NSURL URLWithString:@"https://example.invalid/artwork-fixture.jpg"]; }
+- (NSURL *)canvasURL { return nil; }
+- (BOOL)current { return SGPresentationArtwork != nil; }
+@end
+SGShownTrack *SGShownTrackNow(void) { return SGPresentationArtwork ? [SGShownTrack new] : nil; }
+void SGShownTrackArtwork(SGShownTrack *track, void (^done)(UIImage *)) { done(SGPresentationArtwork); }
+@implementation SGMotionFollower
+- (instancetype)initWithBegin:(BOOL (^)(NSString *, SPTPlayerState *))begin found:(void (^)(NSString *, NSURL *))found { return [super init]; }
+- (void)restart {}
+@end

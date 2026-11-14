@@ -142,6 +142,7 @@ static dispatch_queue_t sg_storeQueue;
     if (now < _retryAt) return;
 
     _busy = YES;
+    SGAddonSetPlaybackStatus(@"Decoding and aligning the lossless recording", NO);
     NSString *path = _path;
     uint64_t occurrence = _occurrence;
     double hint = state.position;
@@ -170,6 +171,7 @@ static dispatch_queue_t sg_storeQueue;
             if (++self->_failures >= kTries) {
                 self->_failures = 0;
                 self->_gaveUpEpoch = SGPlayerSourceEpoch();
+                SGAddonSetPlaybackUnavailable();
                 SGLog(@"lossless: gave up on %@ until the source changes: %@", path.lastPathComponent, error);
             } else {
                 SGLog(@"lossless: no anchor (%@)", error);

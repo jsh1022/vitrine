@@ -7,7 +7,7 @@
 NSArray<SGModSection *> *SGNativePlayerScreenSections(void) {
     return @[
         SGSection(@"Player screen", @[
-            SGOptionRow(@"Artwork background", nil, SGKeyPlayerBackdrop),
+            SGPageRow(@"Artwork background", ^UIViewController *{ return SGNativeArtworkSettingsPage(); }),
             SGOptionRow(@"Glass header buttons", nil, SGKeyPlayer),
             SGKillRow(@"Disable Canvas", @"ios-feature-canvas.canvas_enabled"),
             SGFlagRow(@"Sheet style player", @"ios-feature-nowplaying.sheet_style_npv"),

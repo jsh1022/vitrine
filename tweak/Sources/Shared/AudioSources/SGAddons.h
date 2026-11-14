@@ -14,6 +14,12 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
                     void (^completion)(NSString *path));
 NSString *SGAddonStatus(void);
 NSString *SGAddonStatusSummary(void);
+typedef NS_ENUM(NSInteger, SGAddonPreparationState) {
+    SGAddonPreparationIdle, SGAddonPreparationSearching, SGAddonPreparationAligning,
+    SGAddonPreparationAligned, SGAddonPreparationUnavailable,
+};
+SGAddonPreparationState SGAddonPreparation(void);
+void SGAddonSetPlaybackUnavailable(void);
 void SGAddonSetPlaybackStatus(NSString *status, BOOL aligned);
 NSDictionary *SGAddonMediaInfo(void);
 NSDictionary *SGMeasureLosslessFile(NSString *path, double duration);

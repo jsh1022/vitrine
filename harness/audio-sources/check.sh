@@ -21,9 +21,18 @@ for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy; do
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
     -include Foundation/Foundation.h -I"$SRC" -I"$SRC/Shared/$part" "$OUT/$name.m"
 done
+for relative in Native/Player/PlaybackQuality.x Native/Player/FullArtwork.x Native/Player/Player.x \
+                Redesigned/Player/PlaybackQuality.x Redesigned/Player/PlayerField.x Redesigned/Player/PlayerMotion.x; do
+  generated="$OUT/${relative//\//_}.m"
+  perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$relative" > "$generated"
+  xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+    -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
+    -include Foundation/Foundation.h -I"$SRC" -I"$SRC/$(dirname "$relative")" "$generated"
+done
 for enabled in 0 1; do
   for source in "$SRC"/Shared/AudioSources/*.m "$SRC/Shared/Lossless/SGLosslessEngine.m" \
                 "$SRC/Shared/Lossless/SGWiredOutput.m" \
+                "$SRC/Native/Player/PlayerSettings.m" "$SRC/Redesigned/Player/PlayerSettings.m" \
                 "$SRC/App/Pages.m" "$SRC/Redesigned/Player/PlayerMenu.m"; do
     # Match the release's strict deprecation policy for the newly added code.
     deprecations=-Wno-deprecated-declarations

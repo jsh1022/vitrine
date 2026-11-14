@@ -358,6 +358,10 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
 
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:
         SGSection(nil, @[sources, lowData]),
+        SGNotedSection(@"Artwork layout", @[
+            SGOptionRow(@"Static cover fallback", @"Use a full-screen album cover when motion artwork is unavailable", SGRKeyPlayerStaticCover),
+            SGOptionRow(@"Fill artwork to bottom", @"Crop motion artwork to cover the full screen behind the controls", SGRKeyPlayerFillArtwork),
+        ], @"Album covers keep their proportions and may be cropped at the sides. A dark gradient keeps the controls readable."),
         SGNotedSection(nil, fluid, @"Brightness above 100% can make white text harder to read. A paused song holds the "
                                    @"background still. Animated and Visualizer use these where they show Fluid."),
         SGNotedSection(@"Controls", @[SGSwitchRow(@"Volume", nil, SGRKeyPlayerVolume),

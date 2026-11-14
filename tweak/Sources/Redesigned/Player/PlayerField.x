@@ -37,6 +37,54 @@ static __weak UIImage *sg_lastCover;
 static NSString *sg_lastCoverURI;
 // Spotify's color for the player, which can arrive before the plane has laid out once.
 static UIColor *sg_spotifyColor;
+static char kStaticCoverKey;
+
+@interface SGRFullScreenCover : UIView
+@property(nonatomic, strong) UIImageView *picture;
+@property(nonatomic, strong) CAGradientLayer *shade;
+@end
+@implementation SGRFullScreenCover
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (!(self = [super initWithFrame:frame])) return nil;
+    self.userInteractionEnabled = NO; self.clipsToBounds = YES;
+    self.picture = [[UIImageView alloc] initWithFrame:self.bounds];
+    self.picture.contentMode = UIViewContentModeScaleAspectFill; self.picture.clipsToBounds = YES;
+    [self addSubview:self.picture]; self.shade = [CAGradientLayer layer];
+    self.shade.colors = @[(id)[UIColor colorWithWhite:0 alpha:0.12].CGColor,
+                         (id)[UIColor colorWithWhite:0 alpha:0.20].CGColor,
+                         (id)[UIColor colorWithWhite:0 alpha:0.68].CGColor];
+    self.shade.locations = @[@0, @0.5, @1]; [self.layer addSublayer:self.shade]; return self;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews]; self.picture.frame = self.bounds;
+    [CATransaction begin]; [CATransaction setDisableActions:YES]; self.shade.frame = self.bounds; [CATransaction commit];
+}
+@end
+
+BOOL SGRPlayerStaticCoverShowing(void) {
+    SGRFullScreenCover *view = objc_getAssociatedObject(sg_field, &kStaticCoverKey);
+    return view && !view.hidden && view.picture.image;
+}
+void SGRPlayerStaticCoverUpdate(void) {
+    SGRArtworkField *field = sg_field;
+    if (!field) return;
+    SGRFullScreenCover *view = objc_getAssociatedObject(field, &kStaticCoverKey);
+    UIImage *image = SGRNowPlayingArtwork(NULL, NULL);
+    BOOL show = SGFlag(SGRKeyPlayerStaticCover, NO) && image && !SGRPlayerMotionShowing();
+    if (!view && show) {
+        view = [[SGRFullScreenCover alloc] initWithFrame:field.bounds];
+        view.accessibilityIdentifier = @"vitrine.full-artwork.redesigned";
+        objc_setAssociatedObject(field, &kStaticCoverKey, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [field addSubview:view];
+    }
+    view.hidden = !show; view.picture.image = image;
+    CGFloat height = field.window.bounds.size.height ?: field.bounds.size.height;
+    view.frame = CGRectMake(0, 0, field.bounds.size.width, height);
+    if (show) [field bringSubviewToFront:view];
+    if (!SGRPlayerMotionShowing()) field.covered = show;
+    SGRPlayerMotionCoverLaidOut();
+    SGRPlayerHoldField();
+}
 
 SGRArtworkField *SGRPlayerField(void) {
     return sg_field;
@@ -55,7 +103,7 @@ NSArray<NSString *> *SGRPlayerBackgroundNames(void) {
 // the field: an animated artwork's clip, which covers it (PlayerMotion.x), or the Visualizer's hills, which are
 // the one thing moving.
 static BOOL fieldHeld(void) {
-    return SGPlayerState().isPaused || SGRPlayerMotionShowing() || SGRPlayerVisualiserShowing();
+    return SGPlayerState().isPaused || SGRPlayerMotionShowing() || SGRPlayerVisualiserShowing() || SGRPlayerStaticCoverShowing();
 }
 
 void SGRPlayerHoldField(void) {
@@ -89,6 +137,7 @@ static void showArtwork(SGRArtworkField *field, BOOL animated) {
     UIImage *image = SGRNowPlayingArtwork(NULL, &identity);
     if (field && image) [field setArtwork:image identity:identity animated:animated];
     followCover(image, identity);
+    SGRPlayerStaticCoverUpdate();
 }
 
 static SGRArtworkField *fieldIn(UIView *plane) {
@@ -122,6 +171,7 @@ static SGRArtworkField *fieldIn(UIView *plane) {
     else if (plane.subviews.lastObject != field) [plane bringSubviewToFront:field];
     if (!CGRectEqualToRect(field.frame, plane.bounds)) field.frame = plane.bounds;
     SGRPlayerMotionFieldLaidOut();
+    SGRPlayerStaticCoverUpdate();
     SGRPlayerVisualiserUpdate();
 }
 
@@ -256,6 +306,11 @@ static SGRPlayerCoverWatcher *sg_coverWatcher;
     SGAddPlayerStateObserver(sg_coverWatcher);
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         showArtwork(sg_field, YES);
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SGRPlayerStaticCoverUpdate(); SGRPlayerMotionFieldLaidOut(); SGRPlayerHoldField();
+        });
     }];
     SGRequireClasses(@[
         @"_TtC21NowPlaying_ScrollImpl27NPVBackgroundViewController",

@@ -40,6 +40,8 @@
 // What is behind the player, chosen on the Player page (PlayerSettings.m).
 // SGRKeyPlayerMotion is the switch the choice replaced: until a choice is stored, it picks Still or Colors.
 #define SGRKeyPlayerBackground @"spotifyglass.redesign.player.background"
+#define SGRKeyPlayerStaticCover @"spotifyglass.redesign.player.staticCoverFallback"
+#define SGRKeyPlayerFillArtwork @"spotifyglass.redesign.player.fillArtworkToBottom"
 #define SGRKeyPlayerMotion @"spotifyglass.redesign.player.movingBackground"
 typedef NS_ENUM(NSInteger, SGRPlayerBackgroundKind) {
     SGRPlayerBackgroundStill,      // the artwork blurred and held still
@@ -55,6 +57,8 @@ NSArray<NSString *> *SGRPlayerBackgroundNames(void);
 
 // The field behind the player, nil until the player has laid out once (PlayerField.x).
 SGRArtworkField *SGRPlayerField(void);
+void SGRPlayerStaticCoverUpdate(void);
+BOOL SGRPlayerStaticCoverShowing(void);
 // Holds the field still, or lets it move, for what is over it now: a paused song, an Animated artwork clip, the
 // Visualizer (PlayerField.x).
 void SGRPlayerHoldField(void);

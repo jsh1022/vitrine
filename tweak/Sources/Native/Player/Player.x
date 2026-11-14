@@ -126,7 +126,7 @@ static UIView *backdropIn(UIView *plane) {
     sg_npvBackdropRoot = plane;
     UIView *backdrop = backdropIn(plane);
     for (UIView *sub in plane.subviews) {
-        if (sub != backdrop) SGStripBackgrounds(sub);
+        if (sub != backdrop && ![sub.accessibilityIdentifier isEqualToString:@"vitrine.full-artwork.native"]) SGStripBackgrounds(sub);
     }
     plane.layer.backgroundColor = NULL;
     if (backdrop.superview != plane) [plane insertSubview:backdrop atIndex:0];

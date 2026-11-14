@@ -6,6 +6,9 @@
 
 #define SGKeyPlayer @"spotifyglass.player"
 #define SGKeyPlayerBackdrop @"spotifyglass.playerBackdrop"
+#define SGKeyPlayerStaticCover @"spotifyglass.player.staticCoverFallback"
+#define SGKeyPlayerFillArtwork @"spotifyglass.player.fillArtworkToBottom"
+UIViewController *SGNativeArtworkSettingsPage(void);
 #define SGKeyLyricsCard @"spotifyglass.lyricsCard"
 
 // Parts of the player to hide, one switch each (PlayerDeclutter.x). An unset switch is off.

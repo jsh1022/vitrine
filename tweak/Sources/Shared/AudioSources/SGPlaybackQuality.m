@@ -16,13 +16,19 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
     AudioStreamBasicDescription client = {0};
     BOOL knownClient = external && info.count && SGPlayerMusicClientFormat(&client) && client.mSampleRate > 0;
     double output = AVAudioSession.sharedInstance.sampleRate;
-    NSString *quality = external && info.count ? (rate > 48000 && bits > 16 ? @"고해상도 무손실" : @"무손실") : @"확인 불가";
+    // BitChord NerdStats.isHiRes: measured depth > 16 OR measured rate > 48 kHz.
+    NSString *quality = external && info.count ? (rate > 48000 || bits > 16 ? @"고해상도 무손실" : @"무손실") : @"확인 불가";
     NSString *depth = bits > 0 ? [NSString stringWithFormat:@" · %ld비트", (long)bits] : @"";
     BOOL known = external && rate > 0 && knownClient && output > 0;
     BOOL converted = known && (fabs(rate - client.mSampleRate) > 0.5 || fabs(client.mSampleRate - output) > 0.5);
     NSString *source = external ? (SGAddonMediaInfo()[@"sourceName"] ?: @"로컬 파일") : @"Spotify";
-    return @{@"label": external && info.count ? quality : @"Spotify",
-             @"quality": [quality stringByAppendingString:depth],
+    SGAddonPreparationState preparation = SGAddonPreparation();
+    BOOL searching = preparation == SGAddonPreparationSearching || preparation == SGAddonPreparationAligning;
+    NSString *label = external && info.count ? quality : searching ? @"음원 찾는 중" : @"기본";
+    return @{@"label": label,
+             @"shines": external && info.count ? @"1" : @"0",
+             @"symbol": external && info.count ? @"headphones" : searching ? @"magnifyingglass" : @"waveform",
+             @"quality": external && info.count ? [quality stringByAppendingString:depth] : label,
              @"sourceRate": rateText(rate), @"outputRate": rateText(output),
              @"resampling": known ? (converted ? @"예" : @"아니요") : @"확인 불가", @"source": source};
 }
