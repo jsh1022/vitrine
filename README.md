@@ -96,8 +96,12 @@ also reachable from the player's ⋯. It can prepare a matching stereo FLAC/ALAC
 user-configured HTTPS JSON addon and pass it to Vitrine's existing sound-alignment engine.
 Enable Lossless files and restart once first. No provider URL or credential is bundled.
 
-An optional app-local WireGuard engine tunnels the addon's JSON and media requests on
-iOS 17+, with no direct fallback when enabled. Spotify's own traffic is unchanged.
+An optional app-local WireGuard engine supports independent **Player → WireGuard proxy →
+Spotify app proxy** on iOS 17+: new Spotify/Vitrine URLSession HTTP(S) sessions are
+tunneled even when addons are off. A separate addon-only option remains available.
+Enabling the app proxy requires a restart. Raw sockets, Connect discovery and other
+processes are outside the verified scope; this is not a system VPN. See the
+[proxy scope, setup and dialog fix](docs/wireguard-proxy.ko.md).
 Go matching `vendor/wireguard/go.mod` is needed for the default build; `WIREGUARD=0`
 omits the engine. Source format measurements are shown separately from local output
 format; unknown Spotify codec/bitrate remain unknown.

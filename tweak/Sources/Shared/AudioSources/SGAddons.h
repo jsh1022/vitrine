@@ -16,5 +16,6 @@ NSString *SGAddonStatus(void);
 NSDictionary *SGAddonMediaInfo(void);
 NSDictionary *SGMeasureLosslessFile(NSString *path, double duration);
 UIViewController *SGAudioSourcesPage(void);
+UIViewController *SGWireGuardSettingsPage(void);
 UIViewController *SGPlaybackDetailsPage(void);
 void SGShowPlaybackDetails(void);

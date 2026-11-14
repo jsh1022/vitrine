@@ -1,5 +1,6 @@
 #import "SGAddons.h"
 #import "SGWireGuard.h"
+#import "SGAudioPresentation.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import "Shared/Player/PlayerState.h"
@@ -45,7 +46,7 @@ void SGShowPlaybackDetails(void) {
     UIViewController *page = SGPlaybackDetailsPage();
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:page];
     page.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:page action:@selector(sg_closePlaybackDetails)];
-    SGPresentDark(nav);
+    SGShowAudioController(nav);
 }
 // SGPage already conforms to Spotify's page protocol; a local category just closes the modal.
 @implementation SGPage (SGPlaybackDetailsClosing)

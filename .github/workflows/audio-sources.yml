@@ -2,9 +2,9 @@ name: Audio sources checks
 on:
   workflow_dispatch:
   push:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/Lossless/**', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
   pull_request:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/Lossless/**', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'vendor/wireguard/**', 'harness/audio-sources/**', '.github/workflows/audio-sources.yml']
 jobs:
   tunnel:
     runs-on: ubuntu-latest
@@ -20,6 +20,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - uses: actions/checkout@v5
         with:
           repository: theos/logos
@@ -30,5 +33,8 @@ jobs:
           cache-dependency-path: vendor/wireguard/go.sum
       - run: MIN_IOS=16.0 bash vendor/wireguard/build-ios.sh
       - run: bash harness/audio-sources/check.sh
+        env:
+          LOGOS: ${{ github.workspace }}/.check-tools/logos
+      - run: bash harness/audio-sources/presentation-check.sh
         env:
           LOGOS: ${{ github.workspace }}/.check-tools/logos

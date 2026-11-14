@@ -12,9 +12,10 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 LOGOS="${LOGOS:?Set LOGOS to a theos/logos checkout}"
-for name in Lossless SpeedPitchMenu; do
+for name in Lossless SpeedPitchMenu WireGuardProxy; do
   part=Lossless
   if [ "$name" = SpeedPitchMenu ]; then part=Player; fi
+  if [ "$name" = WireGuardProxy ]; then part=NetworkProxy; fi
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/$part/$name.x" > "$OUT/$name.m"
   xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \

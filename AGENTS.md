@@ -69,6 +69,12 @@ Rules:
   The older provider designs remain in `docs/lossless-sources.md`. Do not take Sing's
   `SGPlayerSetStage` slot. After audio edits, run the handoff harness (`harness/lossless/handoff-build.sh`).
 
+- Independent WireGuard (`Shared/NetworkProxy/`): an opt-in launch setting configures new app URLSession
+  traffic without enabling lossless or addons. It is not a system VPN. Engine initialization is async;
+  never call Go or wait for peer DNS in a constructor or on main. Preserve other URLProtocols and session
+  policies. `harness/audio-sources/presentation-check.sh` covers UIKit presentation and the unavailable-engine
+  URLSession block path on a Mac simulator; `docs/wireguard-proxy.ko.md` records the unverified device scope.
+
 - Build: `make install` (signs and pushes to the phone), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
   `env -u MAKELEVEL gmake -C tweak clean package`.
 - Look at Spotify's views through recorded trees (`make session` records clean ones into

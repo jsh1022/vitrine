@@ -8,8 +8,8 @@ preserved; Vitrine's integration lives in `Shared/AudioSources/SGWireGuard.m`.
 
 This is wireguard-go and gVisor netstack behind an authenticated loopback SOCKS5
 proxy. It does not install a system VPN, change routes or require Network Extension
-entitlements. Vitrine applies it to its own addon sessions only. Spotify's own
-network stack is unchanged. The engine's original YouTube-oriented classification
+entitlements. Vitrine can apply it to addon-only sessions or to new app URLSession HTTP(S)
+configurations, selected independently. It does not replace raw socket networking. The engine's original YouTube-oriented classification
 counters are retained for provenance and are not used for Vitrine routing.
 
 Build from a Mac with Go matching `go.mod`, Xcode and an iPhoneOS SDK:
@@ -20,6 +20,12 @@ MIN_IOS=16.0 bash vendor/wireguard/build-ios.sh
 
 On Linux, `IOS_SDK` and `CLANG` can select an iPhoneOS SDK and an Apple-target-capable
 compiler. iOS URLSession SOCKS5 configuration still requires iOS 17 at runtime.
+
+Vitrine follow-up: `Shared/NetworkProxy/WireGuardProxy.x` now also applies this engine
+to new app URLSession HTTP(S) configurations when the independent app-proxy switch
+is selected at launch. This does not cover raw sockets, Connect discovery or other
+processes. See `docs/wireguard-proxy.ko.md`. `reserved_listener_test.go` is a Vitrine
+regression for pre-bound listener adoption during asynchronous engine startup.
 The parser accepts one peer, numeric DNS, an IPv4 default route and (for a dual-stack
 profile) an IPv6 default route. Script hooks, split-only routes and unknown profile
 directives are rejected. A hostname peer endpoint is resolved outside the tunnel
