@@ -1,5 +1,6 @@
 """Run the simulator check and retain evidence even for a pre-main crash or timeout."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -40,22 +41,28 @@ def collect(device, output, process="AudioPresentation", bundle="dev.vitrine.aud
 def main():
     device, base = sys.argv[1:3]
     handoff = sys.argv[3:] == ["--handoff"]
+    redesigned = sys.argv[3:] == ["--redesigned"]
+    environment = os.environ.copy()
+    if redesigned:
+        environment["SIMCTL_CHILD_SG_QUALITY_REDESIGNED"] = "1"
+    else:
+        environment.pop("SIMCTL_CHILD_SG_QUALITY_REDESIGNED", None)
     bundle = "dev.vitrine.lossless-handoff" if handoff else "dev.vitrine.audio-presentation"
     process = "LosslessHandoff" if handoff else "AudioPresentation"
     markers = ("RESULT failures=0", "PASS wired rate negotiation 44.1 to 48 kHz", "PASS restore app rate after wired mode") if handoff else (
-        "PASS audio source presentations:", "PASS unavailable WireGuard:")
+        "PASS audio source presentations:", "PASS unavailable WireGuard:", "PASS playback quality badge and popover")
     output = Path(base) / "diagnostics"
     output.mkdir(parents=True, exist_ok=True)
     code = 1
     try:
         result = subprocess.run(
             ["xcrun", "simctl", "launch", "--console", device, bundle],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=90, env=environment)
         text = as_text(result.stdout)
         code = result.returncode
     except subprocess.TimeoutExpired as error:
         text = as_text(error.stdout) + "\nFAIL: simulator test timed out after 90 seconds.\n"
-    (output / ("handoff.log" if handoff else "presentation.log")).write_text(text)
+    (output / ("handoff.log" if handoff else "presentation-redesigned.log" if redesigned else "presentation.log")).write_text(text)
     print(text, flush=True)
     print(f"simctl exit status: {code}", flush=True)
     passed = code == 0 and all(marker in text for marker in markers)

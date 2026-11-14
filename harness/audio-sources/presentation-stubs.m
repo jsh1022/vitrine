@@ -60,7 +60,8 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) { c
 void SGAddonRetryCurrentTrack(void) {}
 NSString *SGAddonStatus(void) { return @"Idle"; }
 NSString *SGAddonStatusSummary(void) { return @"Idle"; }
-NSDictionary *SGAddonMediaInfo(void) { return @{}; }
+NSDictionary *SGPresentationPreparedInfo;
+NSDictionary *SGAddonMediaInfo(void) { return SGPresentationPreparedInfo ?: @{}; }
 BOOL SGWireGuardImport(NSString *text, NSString **reason) { return YES; }
 BOOL SGWireGuardDelete(void) { return YES; }
 BOOL SGWireGuardHasProfile(void) { return NO; }
@@ -76,12 +77,23 @@ void SGSetEnabled(NSString *key, BOOL on) {}
 SPTPlayerState *SGPlayerState(void) { return nil; }
 NSString *SGURIString(id uri) { return nil; }
 BOOL SGLosslessPlaying(void) { return NO; }
-BOOL SGLosslessRendering(void) { return NO; }
-NSDictionary *SGLosslessSourceInfo(void) { return @{}; }
-BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) { return NO; }
+BOOL SGPresentationExternal;
+NSDictionary *SGPresentationSourceInfo;
+BOOL SGLosslessRendering(void) { return SGPresentationExternal; }
+NSDictionary *SGLosslessSourceInfo(void) { return SGPresentationSourceInfo ?: @{}; }
+BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) {
+    if (!SGPresentationExternal) return NO;
+    *format = (AudioStreamBasicDescription){44100,kAudioFormatLinearPCM,kAudioFormatFlagsNativeFloatPacked|kAudioFormatFlagIsNonInterleaved,4,1,4,2,32,0};
+    return YES;
+}
 double SGPlayerSpeed(void) { return 1; }
 float SGPlayerPitch(void) { return 0; }
 float SGPlayerReverb(void) { return 0; }
 NSDictionary *SGWiredOutputStatus(void) { return @{@"state": @"Off", @"detail": @"Wired source output is off"}; }
 void SGWiredOutputSettingsChanged(void) {}
 BOOL SGSingOn(void) { return NO; }
+BOOL SGRedesignedUI(void) { return getenv("SG_QUALITY_REDESIGNED") != NULL; }
+BOOL SGNativeUI(void) { return !SGRedesignedUI(); }
+void SGRequireClasses(NSArray<NSString *> *names) {
+    for (NSString *name in names) NSCAssert(NSClassFromString(name), @"Fixture class missing: %@", name);
+}

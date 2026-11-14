@@ -2,9 +2,9 @@ name: Audio sources checks
 on:
   workflow_dispatch:
   push:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'tweak/Sources/Native/Player/PlaybackQuality.x', 'tweak/Sources/Redesigned/Player/PlaybackQuality.x', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
   pull_request:
-    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
+    paths: ['tweak/Sources/Shared/AudioSources/**', 'tweak/Sources/Shared/NetworkProxy/**', 'tweak/Sources/Shared/Lossless/**', 'tweak/Sources/App/Pages.m', 'tweak/Sources/App/ModSettings.x', 'tweak/Sources/Shared/Player/SpeedPitch.*', 'tweak/Sources/Native/Player/PlaybackQuality.x', 'tweak/Sources/Redesigned/Player/PlaybackQuality.x', 'vendor/wireguard/**', 'harness/audio-sources/**', 'harness/lossless/**', '.github/workflows/audio-sources.yml']
 jobs:
   tunnel:
     runs-on: ubuntu-latest

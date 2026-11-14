@@ -296,7 +296,6 @@ static void realTests(void) {
         expect(SGPlayerSourceEpoch()!=epoch,"mixer disposal invalidates source");
     }),
     step(0.5,^{
-<<<<<<< HEAD
         check(AudioOutputUnitStop(output),"stop mixer output before converter test");
         check(AudioComponentInstanceDispose(output),"dispose previous output before converter test");
         output = make(kAudioUnitType_Output,kAudioUnitSubType_RemoteIO);
@@ -323,8 +322,6 @@ static void realTests(void) {
         expect(SGPlayerTryMusicSampleRate(44100,rateIdentity,&reason),"restore converter source rate");
     }),
     step(0.5,^{
-=======
->>>>>>> aec9e9d0fbe79fdec18f913e31688c584e5fa32e
         SGPCMReplacementCancel(); SGPlayerSetStage(NULL); SGPlayerSetSourceSelector(NULL);
         AudioOutputUnitStop(output); AudioComponentInstanceDispose(output); AudioComponentInstanceDispose(converter);
         printf("RESULT failures=%d nativeFrames=%llu replacementFrames=%llu stageFrames=%llu\n",failures,

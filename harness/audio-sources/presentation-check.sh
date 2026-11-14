@@ -8,12 +8,17 @@ mkdir -p "$APP"
 SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 perl "${LOGOS:?Set LOGOS to a theos/logos checkout}/bin/logos.pl" -c generator=internal \
   "$SRC/Shared/NetworkProxy/WireGuardProxy.x" > "$OUT/WireGuardProxy.m"
+for mode in Native Redesigned; do
+  perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$mode/Player/PlaybackQuality.x" > "$OUT/${mode}PlaybackQuality.m"
+done
 OBJ="$OUT/presentation-objects"
 mkdir -p "$OBJ"
 SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sources/presentation-stubs.m"
   "$ROOT/harness/scene.m" "$SRC/Shared/AudioSources/AudioSourcesSettings.m"
   "$SRC/Shared/AudioSources/PlaybackDetails.m" "$SRC/Shared/AudioSources/SGAudioPresentation.m"
-  "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Core/SGGlass.m" "$OUT/WireGuardProxy.m")
+  "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Shared/AudioSources/SGPlaybackQuality.m"
+  "$SRC/Core/SGGlass.m" "$SRC/Core/SGViewTree.m" "$OUT/WireGuardProxy.m"
+  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m")
 for index in "${!SOURCES[@]}"; do
   xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
     -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \
@@ -38,3 +43,4 @@ xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP"
 python3 "$ROOT/harness/audio-sources/run-presentation.py" "$DEVICE" "$OUT"
+python3 "$ROOT/harness/audio-sources/run-presentation.py" "$DEVICE" "$OUT" --redesigned
