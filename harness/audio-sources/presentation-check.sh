@@ -29,12 +29,4 @@ DEVICE="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; 
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP"
-python3 - "$DEVICE" "$OUT" <<'PY'
-import subprocess,sys
-from pathlib import Path
-r=subprocess.run(['xcrun','simctl','launch','--console',sys.argv[1],'dev.vitrine.audio-presentation'],
- stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=90)
-(Path(sys.argv[2])/'presentation.log').write_text(r.stdout)
-print(r.stdout)
-if r.returncode or 'PASS audio source presentations:' not in r.stdout: raise SystemExit(1)
-PY
+python3 "$ROOT/harness/audio-sources/run-presentation.py" "$DEVICE" "$OUT"

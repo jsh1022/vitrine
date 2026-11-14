@@ -89,6 +89,7 @@ NSDictionary *SGWireGuardProxyCounters(void) {
     SGWireGuardSetAppProxyActive(active);
     if (!active) return;
     %init;
-    // Starts the engine asynchronously; no Go entry or network wait on this constructor.
-    (void)NSURLSessionConfiguration.ephemeralSessionConfiguration;
+    // Register hooks only. Foundation/CFNetwork configuration creation can initialize
+    // other frameworks and must not be forced under dyld's constructor context.
+    // The first real session configuration starts the engine asynchronously.
 }

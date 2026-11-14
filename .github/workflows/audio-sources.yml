@@ -38,3 +38,10 @@ jobs:
       - run: bash harness/audio-sources/presentation-check.sh
         env:
           LOGOS: ${{ github.workspace }}/.check-tools/logos
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: audio-presentation-diagnostics
+          path: harness/audio-sources/build/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7

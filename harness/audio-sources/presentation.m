@@ -9,6 +9,13 @@ static void fail(NSString *reason) {
     fprintf(stderr, "FAIL audio source presentations: %s\n", reason.UTF8String);
     fflush(stderr); exit(1);
 }
+static void progress(NSString *stage) {
+    fprintf(stderr, "CHECK audio source presentations: %s\n", stage.UTF8String);
+    fflush(stderr);
+}
+static void uncaught(NSException *exception) {
+    fail([NSString stringWithFormat:@"uncaught %@: %@\n%@", exception.name, exception.reason, exception.callStackSymbols]);
+}
 @interface SGUnrelatedProtocol : NSURLProtocol
 @end
 @implementation SGUnrelatedProtocol
@@ -16,6 +23,7 @@ static void fail(NSString *reason) {
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 @end
 static void checkBlockedTransport(void) {
+    progress(@"checking URLSession hooks and unavailable-engine blocking");
     if (!SGWireGuardAppProxyActive()) { fail(@"proxy hooks not installed"); return; }
     NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
     config.HTTPAdditionalHeaders = @{@"X-Fixture": @"preserved"};
@@ -54,6 +62,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
 @end
 @implementation SGPresentationApp
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    progress(@"didFinishLaunching");
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.nav = [[UINavigationController alloc] initWithRootViewController:SGAudioSourcesPage()];
     self.window.rootViewController = self.nav;
@@ -62,6 +71,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     return YES;
 }
 - (void)step:(NSUInteger)index {
+    progress([NSString stringWithFormat:@"step %lu", (unsigned long)index]);
     if (index == 5) {
         checkBlockedTransport(); return;
     }
@@ -73,7 +83,9 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     } else if (index == 3) {
         SGShowPlaybackDetails();
     } else {
-        if (index == 1) [self.nav setViewControllers:@[SGWireGuardSettingsPage()] animated:NO];
+        // Do not replace the navigation stack during the previous modal's dismissal.
+        // The WireGuard page only supplies the actual action rows for these two steps.
+        if (index == 1) (void)SGWireGuardSettingsPage();
         NSString *title = @[@"Add source", @"Import .conf file", @"Delete saved profile"][index];
         SGModRow *found = nil;
         for (SGModRow *row in SGPresentationRows) if ([row.title isEqualToString:title]) found = row;
@@ -82,7 +94,14 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     }
     waitFor(^BOOL {
         UIViewController *shown = self.nav.presentedViewController;
-        return shown.viewIfLoaded.window && !shown.isBeingPresented && !shown.isBeingDismissed && !shown.transitionCoordinator;
+        if (!shown.viewIfLoaded.window || shown.isBeingPresented || shown.isBeingDismissed || shown.transitionCoordinator) return NO;
+        // A just-dismissed controller can remain attached until the next run-loop turn.
+        // Wait for this step's expected controller, not the previous step's modal.
+        if (index == 0) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"Add lossless source"];
+        if (index == 1) return [shown isKindOfClass:UIDocumentPickerViewController.class];
+        if (index == 2) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"WireGuard"];
+        if (index == 3) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"Playback details"];
+        return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"Worker request"];
     }, ^{
         UIViewController *shown = self.nav.presentedViewController;
         if (shown.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) fail(@"missing dark style");
@@ -101,4 +120,8 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     }, 200);
 }
 @end
-int main(int argc, char **argv) { @autoreleasepool { return UIApplicationMain(argc, argv, nil, @"SGPresentationApp"); } }
+int main(int argc, char **argv) { @autoreleasepool {
+    NSSetUncaughtExceptionHandler(uncaught);
+    progress(@"entered main");
+    return UIApplicationMain(argc, argv, nil, @"SGPresentationApp");
+} }
