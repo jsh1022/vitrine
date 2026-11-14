@@ -165,7 +165,8 @@ UIViewController *SGWireGuardSettingsPage(void) {
                 }),
                 SGActionRow(@"Import .conf file", @"Single-peer profile · numeric DNS · default routes", ^{
                     sg_importer = [SGWGImporter new];
-                    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.data", @"public.text", @"public.item"] inMode:UIDocumentPickerModeImport];
+                    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+                        initForOpeningContentTypes:@[UTTypeData, UTTypeText, UTTypeItem] asCopy:YES];
                     picker.delegate = sg_importer;
                     picker.allowsMultipleSelection = NO;
                     SGShowAudioController(picker);

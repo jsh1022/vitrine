@@ -24,8 +24,11 @@ done
 for enabled in 0 1; do
   for source in "$SRC"/Shared/AudioSources/*.m "$SRC/Shared/Lossless/SGLosslessEngine.m" \
                 "$SRC/App/Pages.m" "$SRC/Redesigned/Player/PlayerMenu.m"; do
+    # Match the release's strict deprecation policy for the newly added code.
+    deprecations=-Wno-deprecated-declarations
+    case "$source" in */Shared/AudioSources/*) deprecations=-Werror=deprecated-declarations ;; esac
     xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
-      -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
+      -fobjc-arc -fblocks -fsyntax-only -Wall -Werror "$deprecations" \
       -DSG_WIREGUARD="$enabled" '-DSG_VERSION="test"' -I"$SRC" \
       -I"$ROOT/vendor/wireguard/build" "$source"
   done
