@@ -71,9 +71,9 @@ BOOL SGLiveActivityAllowedByInstall(void) {
 
 // At the top while the install lacks the key, saying why nothing shows and what to do.
 static SGModRow *missingRow(void) {
-    SGModRow *row = SGWarningRow(@"Missing from this install", @"Tap for why", ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Live Activity is missing"
-            message:@"iOS shows a Live Activity only for an app that says it has one, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so iOS turns the card down. Build the IPA with Vitrine to get it."
+    SGModRow *row = SGWarningRow(@"이 설치에 포함되지 않음", @"탭하여 이유 확인", ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Live Activity 기능이 없습니다"
+            message:@"iOS는 지원을 선언한 앱에만 Live Activity를 표시합니다. Vitrine IPA 빌드만 Spotify에 해당 선언을 추가합니다. 이 설치에는 선언이 없어 카드를 표시하지 못합니다. Vitrine으로 IPA를 빌드하세요."
             preferredStyle:UIAlertControllerStyleAlert];
         alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
@@ -90,16 +90,16 @@ UIViewController *SGLiveActivitySettingsPage(void) {
 
     SGModRow *on = SGOptionRow(@"Live Activity", nil, SGKeyLiveActivity);
     on.changed = ^(BOOL value) { SGSetLiveActivityEnabled(value); };
-    SGModRow *view = SGChoiceRow(@"Shows", nil, SGKeyLiveActivityView, viewNames(), SGLiveActivityLyrics);
+    SGModRow *view = SGChoiceRow(@"표시 내용", nil, SGKeyLiveActivityView, viewNames(), SGLiveActivityLyrics);
     // The lyrics view's own rows, shown while it is picked.
     SGModRow *without = menuRow(@"가사가 없을 때", SGKeyLiveActivityWithoutLyrics, @[@"음표", @"곡"], SGLiveActivityWithoutLyricsNote, preview);
     SGModRow *alignment = menuRow(@"정렬", SGKeyLiveActivityAlignment, @[@"왼쪽", @"가운데"], SGLiveActivityAlignCenter, preview);
-    SGModRow *translation = SGOptionRow(@"번역", @"Under the line, when the lyrics have one", SGKeyLiveActivityTranslation);
+    SGModRow *translation = SGOptionRow(@"번역", @"번역이 있으면 가사 아래에 표시", SGKeyLiveActivityTranslation);
     translation.changed = switched;
     SGModRow *size = SGChoiceRow(@"글자 크기", nil, SGKeyLiveActivityTextSize, @[@"작게", @"중간", @"크게"], SGLiveActivityTextMedium);
     for (SGModRow *row in @[without, alignment, translation, size]) row.visible = ^BOOL { return SGInt(SGKeyLiveActivityView, SGLiveActivityLyrics) == SGLiveActivityLyrics; };
     // Every view's.
-    SGModRow *artwork = SGSwitchRow(@"아트워크", @"The cover beside the track's name and in the Dynamic Island", SGKeyLiveActivityArtwork);
+    SGModRow *artwork = SGSwitchRow(@"아트워크", @"곡 이름 옆과 Dynamic Island에 커버 표시", SGKeyLiveActivityArtwork);
     artwork.changed = switched;
     SGModRow *colors = menuRow(@"색상", SGKeyLiveActivityColors, @[@"Spotify", @"아트워크", @"Plain"], SGLiveActivityColorsSpotify, preview);
     SGModRow *progress = SGSwitchRow(@"재생 진행 막대", nil, SGKeyLiveActivityProgressBar);
@@ -112,12 +112,9 @@ UIViewController *SGLiveActivitySettingsPage(void) {
     SGLiveActivityPage *page = [[SGLiveActivityPage alloc] initWithTitle:@"Live Activity" intro:nil sections:@[
         SGSection(nil, @[missingRow(), on, view, without, alignment, translation, size]),
         SGNotedSection(@"카드", @[artwork, colors, progress],
-                       @"Colors: Spotify puts the cover's color behind Spotify's green, Artwork takes the green from the cover too, "
-                       @"and Plain is white on the lock screen's own background. "
-                       @"The card also shows on a paired Apple Watch, in its Smart Stack, from iOS 18, and in CarPlay from iOS 26, "
-                       @"as a smaller card of the line or the track. A tap there opens Spotify on the iPhone."),
-        SGNotedSection(@"Sleep timer", @[fade],
-                       @"How long the sound fades before a sleep timer pauses Spotify: the one set from the Timer tab, the Sleep Timer shortcut or Control Center, and Spotify's own from the player's ⋯ menu."),
+                       @"Spotify 색상은 커버 배경과 Spotify 초록색을 사용하고, 아트워크 색상은 강조색도 커버에서 가져옵니다. 단색은 잠금 화면 배경 위에 흰색으로 표시합니다. iOS 18부터 연결된 Apple Watch의 스마트 스택, iOS 26부터 CarPlay에도 가사 또는 곡 정보를 작은 카드로 표시합니다. 카드를 탭하면 iPhone에서 Spotify를 엽니다."),
+        SGNotedSection(@"수면 타이머", @[fade],
+                       @"수면 타이머가 Spotify를 일시정지하기 전 음량을 줄이는 시간입니다. 타이머 탭, 수면 타이머 단축어, 제어 센터 및 플레이어 ⋯ 메뉴의 Spotify 타이머에 적용됩니다."),
     ] footer:nil];
     page.preview = preview;
     return page;

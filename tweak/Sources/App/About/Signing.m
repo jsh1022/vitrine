@@ -57,19 +57,14 @@ static void showFix(void) {
     UIViewController *top = SGTopController();
     if (!appID || !top) return;
     NSString *message = [NSString stringWithFormat:
-        @"Sign Spotify again with the bundle id set to\n\n%@\n\n"
-        @"In Feather that is the Identifier field; leave PPQ protection off, it appends a random "
-        @"string and breaks this again.\n\n"
-        @"Why: this build is installed as %@ but signed under the App ID %@. iOS opens the now "
-        @"playing card by the App ID, so it asks for an app that is not there. Nothing else in the "
-        @"mod is affected.", appID, bundleID, appID];
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"The lock screen cannot open Spotify"
+        @"번들 ID를 다음으로 설정하여 Spotify를 다시 서명하세요.\n\n%@\n\nFeather에서는 Identifier 항목입니다. PPQ 보호는 임의 문자열을 덧붙이므로 꺼 두세요.\n\n현재 설치 ID는 %@이지만 서명 App ID는 %@입니다. iOS는 App ID로 재생 카드를 열기 때문에 존재하지 않는 앱을 찾게 됩니다. Mod의 다른 기능에는 영향이 없습니다.", appID, bundleID, appID];
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"잠금 화면에서 Spotify를 열 수 없습니다"
                                                                   message:message
                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Copy the bundle id" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [sheet addAction:[UIAlertAction actionWithTitle:@"번들 ID 복사" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIPasteboard.generalPasteboard.string = appID;
     }]];
-    if (SGRepoURL) [sheet addAction:[UIAlertAction actionWithTitle:@"Read more" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    if (SGRepoURL) [sheet addAction:[UIAlertAction actionWithTitle:@"자세히 보기" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         SGOpenURL([SGRepoURL stringByAppendingString:@"#signing"]);
     }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
@@ -79,8 +74,8 @@ static void showFix(void) {
 // nil while the signature is sound, which is what keeps the row out of Mod Settings entirely.
 SGModRow *SGSigningWarningRow(void) {
     if (SGSigningOpensFromLockScreen()) return nil;
-    return SGWarningRow(@"The lock screen cannot open Spotify",
-                        @"Tap for the fix",
+    return SGWarningRow(@"잠금 화면에서 Spotify를 열 수 없습니다",
+                        @"탭하여 해결 방법 보기",
                         ^{ showFix(); });
 }
 
@@ -158,8 +153,8 @@ SGModRow *SGSigningExpiryRow(void) {
     if (week) [day setLocalizedDateFormatFromTemplate:@"EEEMMMd"];   // "Mon, Oct 12"
     else day.dateStyle = NSDateFormatterMediumStyle;                 // "Oct 6, 2027"
     NSString *value = [day stringFromDate:expires];
-    SGModRow *row = SGStatRow(@"Signed until", ^NSString *{ return value; });
-    if (week) row.subtitle = [NSString stringWithFormat:@"At %@. A free Apple ID signs for 7 days.",
+    SGModRow *row = SGStatRow(@"서명 만료일", ^NSString *{ return value; });
+    if (week) row.subtitle = [NSString stringWithFormat:@"%@에 만료됩니다. 무료 Apple ID의 서명은 7일간 유효합니다.",
                               [NSDateFormatter localizedStringFromDate:expires dateStyle:NSDateFormatterNoStyle
                                                              timeStyle:NSDateFormatterShortStyle]];
     return row;

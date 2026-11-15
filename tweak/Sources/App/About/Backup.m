@@ -167,11 +167,11 @@ static void importSettings(NSDictionary *settings) {
     id file = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     NSDictionary *settings = [file isKindOfClass:NSDictionary.class] ? file[@"settings"] : nil;
     if (![settings isKindOfClass:NSDictionary.class]) {
-        showAlert(@"Not a settings file", @"Pick a file made by Export settings.", nil);
+        showAlert(@"설정 파일이 아닙니다", @"설정 내보내기로 만든 파일을 선택하세요.", nil);
         return;
     }
     NSString *mod = [file[@"mod"] isKindOfClass:NSString.class] ? file[@"mod"] : @"unknown";
-    NSString *message = [NSString stringWithFormat:@"Your settings are replaced by the file's, exported from version %@. Anything it does not have goes back to its default, and Spotify restarts.", mod];
+    NSString *message = [NSString stringWithFormat:@"현재 설정을 버전 %@에서 내보낸 파일의 설정으로 교체합니다. 파일에 없는 항목은 기본값으로 되돌린 후 Spotify를 재시작합니다.", mod];
     showAlert(@"설정을 가져올까요?", message, [UIAlertAction actionWithTitle:@"가져온 후 재시작" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         importSettings(settings);
     }]);

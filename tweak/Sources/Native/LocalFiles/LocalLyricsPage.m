@@ -150,7 +150,7 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
     NSString *title = state.track.trackTitle, *artist = state.track.artistName;
     _title.text = title;
     _artist.text = artist;
-    _status.text = @"Loading lyrics…";
+    _status.text = @"가사 불러오는 중…";
     _status.hidden = NO;
     // The file is read off the main thread the first time; after that it is kept.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -165,7 +165,7 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
     _lines = lyrics.karaokeLines;
     _timed = SGKaraokeLinesTiming(_lines) != SGKaraokeTimingNone;
     if (!_lines.count) {
-        _status.text = SGImportedLRCLinkedTo(_uri) ? @"This LRC file has no lines to show." : @"No imported lyrics for this track.";
+        _status.text = SGImportedLRCLinkedTo(_uri) ? @"이 LRC 파일에 표시할 가사가 없습니다." : @"이 곡에 가져온 가사가 없습니다.";
         return;
     }
     _status.hidden = YES;

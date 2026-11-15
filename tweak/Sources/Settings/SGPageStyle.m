@@ -1,6 +1,16 @@
 #import "SGPageStyle.h"
 #import "Core/SGCore.h"
 
+NSString *SGKoreanUI(NSString *text) {
+    if (!text) return nil;
+    static NSDictionary<NSString *, NSString *> *translations;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ translations = @{
+#include "SGKoreanStrings.inc"
+    }; });
+    return translations[text] ?: text;
+}
+
 // The rows' title font of Spotify's settings list ([0]) and of its side drawer ([1]).
 static UIFont *sg_spotifyFont[2];
 
@@ -77,7 +87,7 @@ UIImageView *SGSymbolView(NSString *name, CGFloat size, UIImageSymbolWeight weig
 // A gray note in a wrapper view, for the table header and footer.
 UIView *SGNote(NSString *text) {
     UILabel *label = [UILabel new];
-    label.text = text;
+    label.text = SGKoreanUI(text);
     label.font = SGSubtitleFont();
     label.adjustsFontForContentSizeCategory = YES;
     label.textColor = SGGrey();
@@ -199,8 +209,10 @@ const CGFloat SGSectionGap = 20;
 // with an optional symbol in the leading slot.
 void SGFillCell(UITableViewCell *cell, NSString *title, NSString *subtitle, UIColor *color, NSString *symbolName) {
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
-    content.text = title;
-    content.secondaryText = subtitle;
+    content.textProperties.numberOfLines = 0;
+    content.secondaryTextProperties.numberOfLines = 0;
+    content.text = SGKoreanUI(title);
+    content.secondaryText = SGKoreanUI(subtitle);
     content.textProperties.font = SGTitleFont();
     content.textProperties.color = color ?: UIColor.whiteColor;
     content.secondaryTextProperties.font = SGSubtitleFont();
@@ -247,7 +259,7 @@ static CGFloat footerTextHeight(UITableView *table, NSString *text) {
 
 UIView *SGSectionFooter(UITableView *table, NSString *text) {
     UILabel *label = [UILabel new];
-    label.text = text;
+    label.text = SGKoreanUI(text);
     label.font = SGSubtitleFont();
     label.adjustsFontForContentSizeCategory = YES;
     label.textColor = SGGrey();

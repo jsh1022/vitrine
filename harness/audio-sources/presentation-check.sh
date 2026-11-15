@@ -10,6 +10,7 @@ perl "${LOGOS:?Set LOGOS to a theos/logos checkout}/bin/logos.pl" -c generator=i
   "$SRC/Shared/NetworkProxy/WireGuardProxy.x" > "$OUT/WireGuardProxy.m"
 for mode in Native Redesigned; do
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$mode/Player/PlaybackQuality.x" > "$OUT/${mode}PlaybackQuality.m"
+  perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$mode/Player/InlineLyrics.x" > "$OUT/${mode}InlineLyrics.m"
 done
 perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Native/Player/FullArtwork.x" > "$OUT/NativeFullArtwork.m"
 OBJ="$OUT/presentation-objects"
@@ -19,7 +20,8 @@ SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sourc
   "$SRC/Shared/AudioSources/PlaybackDetails.m" "$SRC/Shared/AudioSources/SGAudioPresentation.m"
   "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Shared/AudioSources/SGPlaybackQuality.m"
   "$SRC/Core/SGGlass.m" "$SRC/Core/SGViewTree.m" "$OUT/WireGuardProxy.m"
-  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m" "$OUT/NativeFullArtwork.m")
+  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m" "$OUT/NativeFullArtwork.m" "$OUT/NativeInlineLyrics.m" "$OUT/RedesignedInlineLyrics.m"
+  "$SRC/Shared/Lyrics/KaraokeTiming.m" "$SRC/Shared/AdBlock/Protobuf.m")
 for index in "${!SOURCES[@]}"; do
   xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
     -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \

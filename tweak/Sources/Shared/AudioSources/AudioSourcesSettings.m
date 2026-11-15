@@ -112,7 +112,7 @@ UIViewController *SGAudioSourcesPage(void) {
                 SGStatActionRow(@"출력 상태", @"탭하여 자세히 보기", ^NSString *{ return SGWiredOutputStatus()[@"state"]; }, ^{
                     message(@"유선 출력", SGWiredOutputStatus()[@"detail"]);
                 }),
-            ], @"USB DAC, wired headphones and line output only. Applies to local and addon lossless files. Negotiation may briefly pause playback. Unsupported devices or Spotify mixers keep their existing rate. Source level can be louder. Disable EQ, Sing, reverb and speed/pitch effects for an unprocessed path. Matching rates alone do not prove bit-perfect output."),
+            ], @"USB DAC, 유선 헤드폰, 라인 출력에서만 사용할 수 있습니다. 로컬 및 애드온 무손실 파일에 적용되며 협상 중 재생이 잠시 멈출 수 있습니다. 지원하지 않는 기기나 Spotify 믹서는 기존 레이트를 유지합니다. 원본 음량이 더 클 수 있습니다. 가공하지 않은 출력을 원하면 EQ, Sing, 리버브, 속도·피치 효과를 끄세요. 레이트 일치만으로 bit-perfect 출력을 입증하지는 않습니다."),
             SGNotedSection(@"선택적 라우팅", @[tunnel,
                 SGPageRow(@"WireGuard 프록시", ^UIViewController *{ return SGWireGuardSettingsPage(); }),
             ], @"애드온은 WireGuard 없이도 작동합니다. 앱 프록시 모드에서는 이 개별 스위치와 관계없이 애드온의 URLSession 트래픽에도 프록시가 적용됩니다."),
@@ -137,9 +137,9 @@ UIViewController *SGWireGuardSettingsPage(void) {
                 return;
             }
         }
-        message(@"Spotify 재시작", @"The app-wide URLSession proxy is selected at launch. Fully close and reopen Spotify to apply this change. Import your profile before enabling. Lossless addons can stay off.");
+        message(@"Spotify 재시작", @"앱 전체 URLSession 프록시는 시작할 때 선택됩니다. 적용하려면 Spotify를 완전히 종료하고 다시 여세요. 먼저 프로필을 가져온 후 켜세요. 무손실 애드온을 켤 필요는 없습니다.");
     };
-    return [[SGModPage alloc] initWithTitle:@"WireGuard 프록시" intro:@"Import your own .conf, optionally test tunnel DNS, then enable Spotify app proxy and restart Spotify. Requires iOS 17+."
+    return [[SGModPage alloc] initWithTitle:@"WireGuard 프록시" intro:@"본인의 .conf를 가져와 필요하면 터널 DNS를 검사한 후 Spotify 앱 프록시를 켜고 재시작하세요. iOS 17 이상이 필요합니다."
         sections:@[
             SGNotedSection(@"앱 내부 WireGuard", @[
                 app,
@@ -150,28 +150,28 @@ UIViewController *SGWireGuardSettingsPage(void) {
                     NSNumber *count = SGWireGuardStatus()[@"engine"][@"connections"][@"total"];
                     return count ? count.stringValue : @"0";
                 }),
-                SGStatRow(@"Tunnel bytes received / sent", ^NSString *{
+                SGStatRow(@"터널 수신 / 송신 바이트", ^NSString *{
                     NSDictionary *engine = SGWireGuardStatus()[@"engine"];
                     return [NSString stringWithFormat:@"%.1f / %.1f KiB", [engine[@"wgRxBytes"] doubleValue] / 1024, [engine[@"wgTxBytes"] doubleValue] / 1024];
                 }),
-                SGStatRow(@"Profile", ^NSString *{ return SGWireGuardHasProfile() ? @"Saved in Keychain" : @"Not imported"; }),
-                SGStatRow(@"Tunnel", ^NSString *{ return SGWireGuardStatus()[@"state"]; }),
-                SGStatRow(@"Last handshake", ^NSString *{
+                SGStatRow(@"프로필", ^NSString *{ return SGWireGuardHasProfile() ? @"Keychain에 저장됨" : @"가져오지 않음"; }),
+                SGStatRow(@"터널", ^NSString *{ return SGWireGuardStatus()[@"state"]; }),
+                SGStatRow(@"마지막 핸드셰이크", ^NSString *{
                     NSNumber *age = SGWireGuardStatus()[@"engine"][@"handshakeAgeSec"];
-                    return age && age.doubleValue >= 0 ? [NSString stringWithFormat:@"%.0f s ago", age.doubleValue] : @"Not verified";
+                    return age && age.doubleValue >= 0 ? [NSString stringWithFormat:@"%.0f s ago", age.doubleValue] : @"확인되지 않음";
                 }),
-                SGStatRow(@"Tunnel DNS test", ^NSString *{ return testState; }),
-                SGActionRow(@"Test tunnel DNS", @"Resolve api.spotify.com through the peer", ^{
+                SGStatRow(@"터널 DNS 검사", ^NSString *{ return testState; }),
+                SGActionRow(@"터널 DNS 검사하기", @"피어를 통해 api.spotify.com의 주소 확인", ^{
                     if (testing) return;
                     testing = YES; testState = @"Testing…";
-                    SGWireGuardTestDNS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard test", result); });
+                    SGWireGuardTestDNS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard 검사", result); });
                 }),
-                SGActionRow(@"Check tunnel HTTPS / exit country", @"Contacts Cloudflare through the selected tunnel", ^{
+                SGActionRow(@"터널 HTTPS / 출구 국가 확인", @"선택한 터널을 통해 Cloudflare에 연결합니다", ^{
                     if (testing) return;
-                    testing = YES; testState = @"Testing HTTPS…";
+                    testing = YES; testState = @"HTTPS 검사 중…";
                     SGWireGuardTestHTTPS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard HTTPS", result); });
                 }),
-                SGActionRow(@".conf 파일 가져오기", @"Single-peer profile · numeric DNS · default routes", ^{
+                SGActionRow(@".conf 파일 가져오기", @"단일 피어 프로필 · 숫자 DNS · 기본 경로", ^{
                     sg_importer = [SGWGImporter new];
                     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
                         initForOpeningContentTypes:@[UTTypeData, UTTypeText, UTTypeItem] asCopy:YES];
@@ -179,17 +179,17 @@ UIViewController *SGWireGuardSettingsPage(void) {
                     picker.allowsMultipleSelection = NO;
                     SGShowAudioController(picker);
                 }),
-                SGActionRow(@"클립보드에서 가져오기", @"Paste a copied WireGuard configuration", ^{
+                SGActionRow(@"클립보드에서 가져오기", @"복사한 WireGuard 구성 붙여넣기", ^{
                     NSString *text = UIPasteboard.generalPasteboard.string;
                     NSString *reason;
                     BOOL ok = text.length && SGWireGuardImport(text, &reason);
                     if (ok) { UIPasteboard.generalPasteboard.string = @""; SGAddonRetryCurrentTrack(); }
-                    message(@"WireGuard", ok ? @"Profile saved. Configuration text removed from the clipboard." : reason ?: @"먼저 UTF-8 .conf 전체 내용을 복사하세요.");
+                    message(@"WireGuard", ok ? @"프로필을 저장하고 클립보드에서 구성 텍스트를 지웠습니다." : reason ?: @"먼저 UTF-8 .conf 전체 내용을 복사하세요.");
                 }),
                 SGActionRow(@"저장된 프로필 삭제", @"실행 중인 엔진을 중지하려면 WireGuard를 끄고 재시작하세요", ^{
                     SGSetEnabled(SGKeyAppWireGuard, NO); SGSetEnabled(SGKeySourceWireGuard, NO); SGAddonRetryCurrentTrack();
-                    message(@"WireGuard", SGWireGuardDelete() ? @"Saved profile deleted. Restart Spotify to release an engine already running in memory." : @"Keychain could not delete the profile.");
+                    message(@"WireGuard", SGWireGuardDelete() ? @"저장된 프로필을 삭제했습니다. 메모리의 실행 중인 엔진을 해제하려면 Spotify를 재시작하세요." : @"Keychain에서 프로필을 삭제하지 못했습니다.");
                 }),
-            ], @"This app-local proxy routes new Spotify/Vitrine URLSession traffic, even with lossless addons off. It is not a system VPN. Raw sockets, Spotify Connect discovery, other apps, and WebKit/AVFoundation processes are outside the verified scope. Enabled URLSession configurations block when the tunnel is unavailable. A ready proxy does not prove a peer handshake. A hostname peer endpoint requires one local DNS lookup at startup."),
-        ] footer:@"Keep the same signed app Identifier when reinstalling to preserve Keychain. To replace or stop an in-memory engine, disable both app and addon routing and restart first."];
+            ], @"이 앱 내부 프록시는 무손실 애드온이 꺼져 있어도 새 Spotify/Vitrine URLSession 트래픽을 라우팅합니다. 시스템 VPN은 아닙니다. 일반 소켓, Spotify Connect 검색, 다른 앱, WebKit/AVFoundation 프로세스는 검증 범위에 포함되지 않습니다. 프록시를 사용하는 URLSession 구성은 터널이 없으면 차단됩니다. 프록시 준비 완료가 피어 핸드셰이크 성공을 뜻하지는 않습니다. 피어 주소가 호스트 이름이면 시작 시 로컬 DNS 조회를 한 번 사용합니다."),
+        ] footer:@"재설치할 때 서명 앱 Identifier를 유지해야 Keychain이 보존됩니다. 메모리의 엔진을 교체하거나 중지하려면 앱 및 애드온 라우팅을 모두 끈 후 먼저 재시작하세요."];
 }

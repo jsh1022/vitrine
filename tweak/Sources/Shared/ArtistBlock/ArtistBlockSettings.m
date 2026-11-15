@@ -49,7 +49,7 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
-    if (section == SGArtistSectionMode) return SGSectionHeader(table, @"Skip when the artist is");
+    if (section == SGArtistSectionMode) return SGSectionHeader(table, @"아티스트가 다음에 해당하면 건너뛰기");
     if (section == SGArtistSectionList) return SGSectionHeader(table, @"Blocked");
     return nil;
 }
@@ -66,7 +66,7 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
     UITableViewCell *cell = SGDequeueCell(table, @"artist");
     switch (path.section) {
         case SGArtistSectionSwitch: {
-            SGFillCell(cell, @"Skip blocked artists", nil, nil, nil);
+            SGFillCell(cell, @"차단한 아티스트 건너뛰기", nil, nil, nil);
             UISwitch *toggle = [UISwitch new];
             toggle.onTintColor = SGGreen();
             toggle.on = SGFlag(SGKeyArtistBlock, NO);
@@ -76,8 +76,8 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
         }
         case SGArtistSectionMode: {
             BOOL featured = path.row == 1;
-            SGFillCell(cell, featured ? @"Main or featured" : @"The main artist",
-                       featured ? @"Any credit on the track" : @"The first name on the track", nil, nil);
+            SGFillCell(cell, featured ? @"주 아티스트 또는 피처링" : @"주 아티스트",
+                       featured ? @"곡 크레딧에 포함된 모든 아티스트" : @"곡의 첫 아티스트", nil, nil);
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             if (featured == SGFlag(SGKeyArtistBlockFeatured, NO)) {
                 UIImageView *tick = SGSymbolView(@"checkmark", 13, UIImageSymbolWeightSemibold, 16);
@@ -87,12 +87,12 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
             break;
         }
         case SGArtistSectionAdd:
-            SGFillCell(cell, @"Block from what's playing…", nil, nil, @"person.crop.circle.badge.xmark");
+            SGFillCell(cell, @"현재 재생 중인 아티스트 차단…", nil, nil, @"person.crop.circle.badge.xmark");
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         default:
             if (!_blocked.count) {
-                SGFillCell(cell, @"No one yet", nil, SGGrey(), nil);
+                SGFillCell(cell, @"아직 없음", nil, SGGrey(), nil);
                 break;
             }
             NSDictionary *artist = _blocked[(NSUInteger)path.row];
@@ -129,8 +129,8 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
 - (void)pickFromPlaying:(UIView *)source {
     NSArray<NSDictionary *> *artists = SGPlayingArtists();
     if (!artists.count) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Nothing playing"
-                                                                      message:@"Play a track by the artist first, then come back here."
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"재생 중인 곡 없음"
+                                                                      message:@"먼저 이 아티스트의 곡을 재생한 후 다시 여세요."
                                                                preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];

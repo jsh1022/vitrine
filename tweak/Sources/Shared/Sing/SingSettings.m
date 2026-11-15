@@ -39,7 +39,7 @@ NSString *SGSingLevelText(double level) {
     if (level < 0.999) return [NSString stringWithFormat:@"%.0f%%", level * 100];
     if (level <= 1.001) return @"원래 보컬";
     if (level >= 1.999) return @"보컬만";
-    return [NSString stringWithFormat:@"Backing %.0f%%", (2 - level) * 100];
+    return [NSString stringWithFormat:@"반주 %.0f%%", (2 - level) * 100];
 }
 
 static NSString *bytes(long long count) {
@@ -59,15 +59,15 @@ static NSString *modelValue(void) {
     switch (rowState()) {
         case SGSingModelDownloading:
             if (SGSingModelChecking()) return @"Checking…";
-            if (SGSingModelWaitingForNetwork()) return SGSingModelOverCellular() ? @"Waiting for the network" : @"Waiting for Wi-Fi";
+            if (SGSingModelWaitingForNetwork()) return SGSingModelOverCellular() ? @"네트워크 대기 중" : @"Wi-Fi 대기 중";
             return [NSString stringWithFormat:@"%.0f%%", SGSingModelProgress() * 100];
-        case SGSingModelReady: return [NSString stringWithFormat:@"Downloaded · %@", SGSingModelSizeText()];
+        case SGSingModelReady: return [NSString stringWithFormat:@"다운로드됨 · %@", SGSingModelSizeText()];
         case SGSingModelMissing:
-            if (SGSingModelError()) return update ? @"Update failed, try again" : @"실패했습니다. 다시 시도하세요";
+            if (SGSingModelError()) return update ? @"업데이트 실패 · 다시 시도하세요" : @"실패했습니다. 다시 시도하세요";
             if (SGSingModelPausedBytes()) {
-                return [NSString stringWithFormat:@"%@ · %@ of %@", update ? @"Update paused" : @"일시정지됨", bytes(SGSingModelPausedBytes()), SGSingModelSizeText()];
+                return [NSString stringWithFormat:@"%@ · %@ of %@", update ? @"업데이트 일시정지됨" : @"일시정지됨", bytes(SGSingModelPausedBytes()), SGSingModelSizeText()];
             }
-            return [NSString stringWithFormat:update ? @"Update available · %@" : @"Download, %@", SGSingModelSizeText()];
+            return [NSString stringWithFormat:update ? @"업데이트 가능 · %@" : @"다운로드 · %@", SGSingModelSizeText()];
     }
     return @"";
 }
@@ -80,30 +80,30 @@ static void modelTapped(UITableViewController *page) {
     switch (rowState()) {
         case SGSingModelMissing: {
             BOOL update = SGSingModelUpdateAvailable();
-            NSString *message = [NSString stringWithFormat:@"%@%@%@ from Hugging Face. It waits for Wi-Fi unless you let it use cellular. It stays on this iPhone, and no audio leaves it.",
-                                 SGSingModelError() ? [NSString stringWithFormat:@"The last try failed: %@\n\n", SGSingModelError()] : @"",
-                                 update ? @"The new voice model runs on the Neural Engine, faster and cooler, and Karaoke keeps the one it has until it is in. " : @"",
+            NSString *message = [NSString stringWithFormat:@"Hugging Face에서 %@%@%@을 받습니다. 셀룰러 사용을 허용하지 않으면 Wi-Fi를 기다립니다. 모델은 이 iPhone에 보관되며 소리는 외부로 전송하지 않습니다.",
+                                 SGSingModelError() ? [NSString stringWithFormat:@"마지막 시도 실패: %@\n\n", SGSingModelError()] : @"",
+                                 update ? @"새 모델은 Neural Engine에서 더 빠르고 발열이 적게 작동합니다. 새 모델을 받을 때까지 기존 모델을 유지합니다. " : @"",
                                  SGSingModelSizeText()];
             if (untestedChip()) {
                 message = [message stringByAppendingString:SGSingChosenModel() == SGSingModelLight
-                    ? @"\n\nKaraoke is tested on the iPhone 15 Pro. On iPhones older than the iPhone 12 it may not keep up, even with the light model."
-                    : @"\n\nKaraoke is tested on the iPhone 15 Pro. On iPhones older than the iPhone 12 it may not keep up; the light model has a better chance."];
+                    ? @"\n\niPhone 15 Pro에서 노래방을 검증했습니다. iPhone 12 이전 모델에서는 경량 모델도 실시간 처리 속도를 따라가지 못할 수 있습니다."
+                    : @"\n\niPhone 15 Pro에서 노래방을 검증했습니다. iPhone 12 이전 모델에서는 처리 속도가 부족할 수 있으며 경량 모델이 더 적합합니다."];
             }
-            NSString *title = SGSingModelPausedBytes() ? (update ? @"Carry on with the update?" : @"Carry on with the download?")
+            NSString *title = SGSingModelPausedBytes() ? (update ? @"업데이트를 계속할까요?" : @"다운로드를 계속할까요?")
                                                        : (update ? @"업데이트를 다운로드할까요?" : @"음성 모델을 다운로드할까요?");
             ask(title, message, @"다운로드", NO, ^{ SGSingDownloadModel(); });
             break;
         }
         case SGSingModelDownloading:
             if (SGSingModelWaitingForNetwork() && !SGSingModelOverCellular()) {
-                ask(@"셀룰러로 다운로드할까요?", [NSString stringWithFormat:@"The download waits for Wi-Fi. Over cellular or a Low Data Mode network it uses up to %@ of your plan.",
-                                                 SGSingModelSizeText()], @"Use cellular", NO, ^{ SGSingDownloadModelOverCellular(); });
+                ask(@"셀룰러로 다운로드할까요?", [NSString stringWithFormat:@"Wi-Fi 연결을 기다리고 있습니다. 셀룰러나 저데이터 모드에서 다운로드하면 최대 %@의 데이터를 사용합니다.",
+                                                 SGSingModelSizeText()], @"셀룰러 사용", NO, ^{ SGSingDownloadModelOverCellular(); });
                 break;
             }
-            ask(@"Stop the download?", @"What has come in is kept, so the next download carries on from it.", @"Stop", YES, ^{ SGSingCancelModelDownload(); });
+            ask(@"다운로드를 중지할까요?", @"받은 데이터는 보관되며 다음 다운로드에서 이어받습니다.", @"Stop", YES, ^{ SGSingCancelModelDownload(); });
             break;
         case SGSingModelReady:
-            ask(@"음성 모델을 삭제할까요?", [NSString stringWithFormat:@"It frees %@. Karaoke needs it again to turn the vocals down.", SGSingModelInUseSizeText()],
+            ask(@"음성 모델을 삭제할까요?", [NSString stringWithFormat:@"%@의 공간을 확보합니다. 보컬을 줄이려면 모델을 다시 받아야 합니다.", SGSingModelInUseSizeText()],
                 @"삭제", YES, ^{
                     SGSetSingOn(NO);
                     SGSingDeleteModel();
@@ -149,26 +149,21 @@ UIViewController *SGSpatialVoiceSettingsPage(void) {
     };
     SGSpatialVoicePage *made = [[SGSpatialVoicePage alloc] initWithTitle:@"공간 음성" intro:nil sections:@[
         SGNotedSection(nil, @[spatial],
-                       @"The singer's voice keeps its place in front of you as you turn your head, while the rest of the song turns with "
-                       @"you; stay turned, and it comes round in front again. It follows your head through headphones that "
-                       @"track it: AirPods Pro, AirPods 3 or later, AirPods Max, and asks for Motion & Fitness the first time. "
-                       @"While iOS's own Spatialize Stereo is on, which already holds the whole song in place, the voice is left to it."),
-        SGNotedSection(@"Sound", @[
-            SGSliderRow(@"Distance", nil, 1, 6.5, 0.5, ^double { return SGSingSpatialDistance(); }, ^(double value) {
+                       @"고개를 돌려도 목소리는 앞쪽에 머무르고 반주는 고개를 따라 움직입니다. 고개를 돌린 채 유지하면 목소리가 다시 앞으로 돌아옵니다. 머리 추적을 지원하는 AirPods Pro, AirPods 3 이후 모델, AirPods Max를 사용하며 처음에는 동작 및 피트니스 권한을 요청합니다. iOS 스테레오 공간화가 켜져 있으면 목소리도 iOS에서 처리합니다."),
+        SGNotedSection(@"소리", @[
+            SGSliderRow(@"거리", nil, 1, 6.5, 0.5, ^double { return SGSingSpatialDistance(); }, ^(double value) {
                 SGSetSingSpatialSound(value, SGSingSpatialRoom(), SGSingSpatialFront(), SGSingSpatialWidth());
             }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.1f m", value]; }),
-            SGSliderRow(@"Room", nil, 0, 100, 5, ^double { return SGSingSpatialRoom(); }, ^(double value) {
+            SGSliderRow(@"공간", nil, 0, 100, 5, ^double { return SGSingSpatialRoom(); }, ^(double value) {
                 SGSetSingSpatialSound(SGSingSpatialDistance(), value, SGSingSpatialFront(), SGSingSpatialWidth());
             }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.0f%%", value]; }),
-            SGSliderRow(@"Back in front", nil, 5, 60, 1, ^double { return SGSingSpatialFront(); }, ^(double value) {
+            SGSliderRow(@"정면 복귀", nil, 5, 60, 1, ^double { return SGSingSpatialFront(); }, ^(double value) {
                 SGSetSingSpatialSound(SGSingSpatialDistance(), SGSingSpatialRoom(), value, SGSingSpatialWidth());
-            }, ^NSString *(double value) { return [NSString stringWithFormat:@"After %.0f s", value]; }),
-            SGSliderRow(@"Instruments width", nil, 0, 200, 5, ^double { return SGSingSpatialWidth(); }, ^(double value) {
+            }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.0f초 후", value]; }),
+            SGSliderRow(@"악기 폭", nil, 0, 200, 5, ^double { return SGSingSpatialWidth(); }, ^(double value) {
                 SGSetSingSpatialSound(SGSingSpatialDistance(), SGSingSpatialRoom(), SGSingSpatialFront(), value);
             }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.0f%%", value]; }),
-        ], @"How far ahead the voice sings, and how much of the room you hear around it: farther, the voice is quieter and "
-           @"more of it is the room. Back in front is how long a head that stays turned takes to bring the voice ahead again. "
-           @"Instruments width spreads the rest of the song wider than the recording, or narrows it below 100%."),
+        ], @"목소리의 거리와 주변 공간감을 조절합니다. 멀어질수록 목소리는 작아지고 공간의 울림이 늘어납니다. 정면 복귀 시간은 고개를 돌린 채 유지할 때 목소리가 다시 앞으로 돌아오는 시간입니다. 악기 폭은 반주를 원본보다 넓게 펼치며 100% 미만에서는 좁힙니다."),
     ] footer:nil];
     page = made;
     return made;
@@ -210,21 +205,21 @@ UIViewController *SGSingSettingsPage(void) {
     SGModRow *sing = SGOptionRow(@"노래방", nil, SGKeySing);
     sing.changed = ^(BOOL on) { SGSetSingOn(on); };
     // Only the redesign's lyrics have the mic.
-    SGModRow *button = SGSwitchRow(@"가사에서 전환", @"The mic in the corner of the lyrics", SGKeySingButton);
+    SGModRow *button = SGSwitchRow(@"가사에서 전환", @"가사 모서리의 마이크", SGKeySingButton);
     button.defaultOn = SGSingOSSupported();
     button.changed = ^(BOOL on) { [NSNotificationCenter.defaultCenter postNotificationName:SGSingButtonDidChangeNotification object:nil]; };
     button.visible = ^BOOL { return SGRedesignedUIStored(); };
-    SGModRow *heat = SGOptionRow(@"발열 경고 무시", @"Keeps Karaoke going on a hot iPhone, which then gets hotter", SGKeySingIgnoreHeat);
-    SGModRow *memory = SGOptionRow(@"메모리 경고 무시", @"Keeps Karaoke going when iOS is low on memory, which may then close Spotify",
+    SGModRow *heat = SGOptionRow(@"발열 경고 무시", @"발열 중에도 노래방을 유지합니다. 기기가 더 뜨거워질 수 있습니다", SGKeySingIgnoreHeat);
+    SGModRow *memory = SGOptionRow(@"메모리 경고 무시", @"메모리가 부족해도 노래방을 유지합니다. iOS가 Spotify를 종료할 수 있습니다",
                                    SGKeySingIgnoreMemory);
     heat.changed = ^(BOOL on) { SGSetSingIgnoresHeat(on); };
     __block __weak SGModPage *page;
     SGModRow *model = SGStatActionRow(@"음성 모델", nil, ^NSString *{ return modelValue(); }, ^{ modelTapped(page); });
-    SGModRow *remove = SGActionRow(@"Remove voice model", nil, ^{
+    SGModRow *remove = SGActionRow(@"음성 모델 제거", nil, ^{
         BOOL partial = SGSingModelCurrentState() != SGSingModelReady;
-        ask(partial ? @"Remove the paused download?" : @"Remove the voice model?",
-            partial ? [NSString stringWithFormat:@"It frees %@. A new download starts from the beginning.", bytes(SGSingModelPausedBytes())]
-                    : [NSString stringWithFormat:@"It frees %@. Karaoke needs it again to turn the vocals down.", SGSingModelInUseSizeText()],
+        ask(partial ? @"일시정지한 다운로드를 제거할까요?" : @"음성 모델을 제거할까요?",
+            partial ? [NSString stringWithFormat:@"%@의 공간을 확보합니다. 새 다운로드는 처음부터 시작합니다.", bytes(SGSingModelPausedBytes())]
+                    : [NSString stringWithFormat:@"%@의 공간을 확보합니다. 보컬을 줄이려면 모델을 다시 받아야 합니다.", SGSingModelInUseSizeText()],
             @"제거", YES, ^{
                 SGSetSingOn(NO);
                 SGSingDeleteModel();
@@ -244,17 +239,17 @@ UIViewController *SGSingSettingsPage(void) {
             };
             BOOL downloading = SGSingModelCurrentState() == SGSingModelDownloading || SGSingModelUpdateDownloading();
             if (!downloading) choose();
-            else ask(@"Stop the download?", @"The voice model coming in stops, and what has come in is kept for when you choose it again.", @"Switch", NO, choose);
+            else ask(@"다운로드를 중지할까요?", @"모델 다운로드를 중지하고 받은 데이터는 해당 모델을 다시 선택할 때까지 보관합니다.", @"Switch", NO, choose);
         });
         row.checked = ^BOOL { return SGSingChosenModel() == kind; };
         return row;
     };
-    SGModRow *full = choice(@"최고 음질", @"The full model, %@: the cleanest result, for recent iPhones", SGSingModelFull);
-    SGModRow *light = choice(@"경량", @"A small model, %@, for older iPhones: more of the voice is left in, and the music dips under it",
+    SGModRow *full = choice(@"최고 음질", @"전체 모델 %@ · 최신 iPhone용, 가장 선명한 결과", SGSingModelFull);
+    SGModRow *light = choice(@"경량", @"소형 모델 %@ · 구형 iPhone용, 보컬이 더 남고 반주 음량이 줄어듭니다",
                              SGSingModelLight);
-    SGModRow *other = SGStatActionRow(@"Remove the other model", nil, ^NSString *{ return bytes(SGSingOtherModelBytes()); }, ^{
+    SGModRow *other = SGStatActionRow(@"다른 모델 제거", nil, ^NSString *{ return bytes(SGSingOtherModelBytes()); }, ^{
         NSString *name = SGSingChosenModel() == SGSingModelFull ? @"경량" : @"최고 음질";
-        ask(@"Remove the other model?", [NSString stringWithFormat:@"%@ is not in use. Removing it frees %@, and choosing it again downloads it again.",
+        ask(@"다른 모델을 제거할까요?", [NSString stringWithFormat:@"%@은 사용 중이 아닙니다. 제거하면 %@의 공간을 확보하며 다시 선택하면 다시 받습니다.",
                                          name, bytes(SGSingOtherModelBytes())],
             @"제거", YES, ^{
                 SGSingDeleteOtherModel();
@@ -264,30 +259,23 @@ UIViewController *SGSingSettingsPage(void) {
     other.color = SGRed();
     other.visible = ^BOOL { return SGSingOtherModelBytes() > 0; };
     SGModRow *spatial = SGPageRow(@"공간 음성", ^UIViewController *{ return SGSpatialVoiceSettingsPage(); });
-    spatial.subtitle = @"With AirPods, the voice stays in front of you as you turn your head";
+    spatial.subtitle = @"AirPods를 사용하면 고개를 돌려도 목소리가 앞쪽에 머무릅니다";
     spatial.value = ^NSString *{ return SGSingSpatial() ? @"켜짐" : @"꺼짐"; };
     // Facts about the iPhone, which do not change while the page shows.
     spatial.visible = ^BOOL { return SGSingSpatialAvailable(); };
     SGModRow *units = SGChoiceRow(@"실행 장치", nil, SGKeySingComputeUnits, SGSingComputeUnitNames(), 0);
-    units.choiceNotes = @[@"The Neural Engine, the fastest, with the CPU while it loads", @"Slower and warmer, and a little less memory"];
-    units.choiceFooter = @"Karaoke loads the voice model on the CPU first and starts with it. On Automatic a second copy then loads on "
-                         @"the Neural Engine and takes over, in the background too. The iPhone prepares it the first time after Vitrine "
-                         @"is installed or updated, for a minute or so, and Karaoke runs on the CPU until then, unless Prepare after "
-                         @"updates did it already. If it does not load, "
-                         @"Karaoke stays on the CPU until Spotify is opened again.";
+    units.choiceNotes = @[@"가장 빠른 Neural Engine 사용 · 로딩 중에는 CPU 사용", @"더 느리고 발열이 많지만 메모리는 조금 적게 사용"];
+    units.choiceFooter = @"노래방은 먼저 CPU에 음성 모델을 불러와 시작합니다. 자동 모드에서는 Neural Engine용 모델을 추가로 불러와 백그라운드에서도 사용합니다. Vitrine 설치 또는 업데이트 후 첫 준비에는 약 1분이 걸리며 그동안 CPU를 사용합니다. 업데이트 후 미리 준비가 완료됐다면 바로 전환합니다. 로드하지 못하면 다음 Spotify 실행까지 CPU를 사용합니다.";
     units.chosen = ^(NSInteger index) { SGSingComputeUnitsChanged(); };
     SGModRow *prepare = SGSwitchRow(@"업데이트 후 미리 준비",
-                                    @"Readies the Neural Engine in the background after Vitrine or iOS updates, so Karaoke starts at full speed", SGKeySingPrepareAhead);
+                                    @"Vitrine 또는 iOS 업데이트 후 백그라운드에서 Neural Engine을 준비하여 노래방을 빠르게 시작합니다", SGKeySingPrepareAhead);
     SGSingPage *made = [[SGSingPage alloc] initWithTitle:@"노래방" intro:nil sections:@[
         SGSection(nil, @[sing, button, heat, memory]),
         SGNotedSection(@"음성 모델", @[full, light, model, remove, other],
-                       @"Each model is downloaded and kept on its own, and Karaoke needs only the chosen one. A switch takes effect "
-                       @"without restarting Spotify: the model loads in a few seconds, and the song plays as it is until it is in."),
+                       @"모델은 각각 따로 받아 보관하며 선택한 모델만 필요합니다. Spotify를 재시작하지 않아도 변경됩니다. 모델은 몇 초 내에 로드되며 준비될 때까지 원래 음악을 재생합니다."),
         SGSection(nil, @[spatial]),
         SGNotedSection(@"고급", @[units, prepare],
-                       @"Karaoke turns a song's vocals down to sing over, or the rest down to hear the vocals alone, with a voice model that "
-                       @"runs only on this iPhone: no audio leaves it. It listens a few seconds ahead of what plays, so the vocals change a "
-                       @"few seconds after a song starts or after a seek."),
+                       @"노래방은 보컬을 줄여 따라 부르거나 반주를 줄여 보컬만 들을 수 있습니다. 음성 모델은 이 iPhone에서만 실행되며 소리는 외부로 전송하지 않습니다. 몇 초 앞의 소리를 분석하므로 곡 시작이나 탐색 후 효과가 적용되기까지 몇 초 걸립니다."),
     ] footer:nil];
     page = made;
     return made;

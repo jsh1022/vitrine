@@ -40,11 +40,11 @@ static const CGFloat kCardPadding = 16, kCoverSide = 64;
 // What each background does, in SGRPlayerBackgroundKind's order.
 static NSArray<NSString *> *backgroundNotes(void) {
     return @[
-        @"The cover, blurred and held still.",
-        @"The cover's colors, drifting slowly.",
-        @"The cover itself, blurred and slowly turning. It rests while a song is paused.",
-        @"The song's Canvas or the album's moving cover, else Fluid. The player's ⋯ menu switches between this, Fluid and Visualizer.",
-        @"The song's sound as gentle hills in the cover's colors, over Fluid held still. They settle while a song is paused.",
+        @"커버를 흐리게 표시하고 움직이지 않습니다.",
+        @"커버의 색상이 천천히 움직입니다.",
+        @"커버를 흐리게 표시하고 천천히 회전합니다. 일시정지하면 멈춥니다.",
+        @"곡의 Canvas 또는 움직이는 앨범 커버를 사용합니다. 없으면 유동 배경을 표시합니다. 플레이어의 ⋯ 메뉴에서 유동 배경, 애니메이션, 시각화를 전환할 수 있습니다.",
+        @"정지된 유동 배경 위에 커버 색상의 부드러운 물결로 소리를 표현합니다. 일시정지하면 잦아듭니다.",
     ];
 }
 
@@ -73,7 +73,7 @@ static NSArray<NSString *> *backgroundNotes(void) {
     self.userInteractionEnabled = NO;
     self.isAccessibilityElement = YES;
     self.accessibilityTraits = UIAccessibilityTraitImage;
-    self.accessibilityLabel = @"Player preview";
+    self.accessibilityLabel = @"플레이어 미리보기";
 
     _field = [[SGRArtworkField alloc] initWithFrame:frame];
     _field.showsBackdrop = YES;
@@ -148,7 +148,7 @@ static NSArray<NSString *> *backgroundNotes(void) {
 - (void)reloadTrack {
     SPTPlayerState *state = SGPlayerState();
     SGShownTrack *shown = SGShownTrackNow();
-    _title.text = shown.title ?: @"Not Playing";
+    _title.text = shown.title ?: @"재생 중이 아님";
     _artist.text = shown.artist ?: @"";
     _position = shown.current && state.duration > 0 ? MIN(1, MAX(0, state.position / state.duration)) : 0;
     // The clip covers the field, and the hills move over it, which then holds still, as in the player.
@@ -362,14 +362,11 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
             SGOptionRow(@"정지 커버 대체", @"움직이는 아트워크가 없으면 전체 화면 앨범 커버를 사용합니다", SGRKeyPlayerStaticCover),
             SGOptionRow(@"하단까지 아트워크 채우기", @"컨트롤 뒤 전체 화면을 채우도록 움직이는 아트워크를 잘라 표시합니다", SGRKeyPlayerFillArtwork),
         ], @"앨범 커버의 비율을 유지하며 양옆이 잘릴 수 있습니다. 어두운 그라데이션으로 컨트롤의 가독성을 유지합니다."),
-        SGNotedSection(nil, fluid, @"Brightness above 100% can make white text harder to read. A paused song holds the "
-                                   @"background still. Animated and Visualizer use these where they show Fluid."),
+        SGNotedSection(nil, fluid, @"밝기가 100%를 넘으면 흰색 글자를 읽기 어려울 수 있습니다. 일시정지하면 배경이 멈춥니다. 애니메이션과 시각화의 유동 배경에도 이 설정을 사용합니다."),
         SGNotedSection(@"컨트롤", @[SGSwitchRow(@"음량", nil, SGRKeyPlayerVolume),
                                       SGOptionRow(@"커버 색상 따르기", nil, SGRKeyPlayerFollowsCover),
                                       SGOptionRow(@"Spotify 아이콘", @"가사, 기기, 대기열 및 AI DJ 버튼", SGRKeyPlayerSpotifyIcons)],
-                       @"Volume puts a slider under the controls for this iPhone, or the speaker's while Spotify plays on another device. "
-                       @"Follow the cover paints the like, shuffle, repeat, device and queue buttons, and the mini player's device and like, in the color of the song playing. "
-                       @"Spotify's icons keeps Spotify's own glyphs in the row under the controls instead of the Music app's."),
+                       @"음량 슬라이더를 컨트롤 아래에 표시합니다. 이 iPhone 또는 Spotify가 재생 중인 다른 기기의 음량을 조절합니다. 커버 색상 따르기는 좋아요, 셔플, 반복, 기기, 대기열 버튼과 미니플레이어의 기기·좋아요 버튼에 현재 곡의 커버 색상을 적용합니다. Spotify 아이콘은 컨트롤 아래 행에 Music 앱 대신 Spotify의 아이콘을 사용합니다."),
         SGNotedSection(@"미니플레이어", SGRNowPlayingBarRows(),
                        @"Apple Music 스타일은 아래로 스크롤할 때 미니플레이어를 두 탭 사이로 이동합니다."), nil];
     [sections addObjectsFromArray:more];

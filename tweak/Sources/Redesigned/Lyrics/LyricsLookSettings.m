@@ -94,9 +94,8 @@ static void presentStyleSheet(UIViewController *owner) {
         lookSlider(@"물결", 0, 2, 0.1, ^CGFloat(SGRLyricsLook l) { return l.wave; },
                    ^(SGRLyricsLook *l, double v) { l->wave = v; }, ^NSString *(double v) { return share(v); }, &sheetPage),
     ];
-    NSString *footer = @"Blur is how much the lines away from the one sung soften. Glow and Wave are how strongly a held "
-                       @"word glows and its letters rise. 100% is Apple Music's.";
-    SGRLyricsStyleSheet *page = [[SGRLyricsStyleSheet alloc] initWithTitle:@"Lyrics Style" intro:nil
+    NSString *footer = @"흐림은 현재 줄 이외 가사의 흐림 정도입니다. 빛 효과와 물결은 길게 부르는 단어의 빛과 글자가 떠오르는 강도입니다. 100%는 Apple Music 기준입니다.";
+    SGRLyricsStyleSheet *page = [[SGRLyricsStyleSheet alloc] initWithTitle:@"가사 스타일" intro:nil
                                                                  sections:@[SGNotedSection(nil, rows, footer)] footer:nil];
     sheetPage = page;
     page.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
@@ -184,7 +183,7 @@ static UIButtonConfiguration *chipConfiguration(NSString *title, NSString *symbo
     _card.layer.cornerCurve = kCACornerCurveContinuous;
     _card.clipsToBounds = YES;
     _card.isAccessibilityElement = YES;
-    _card.accessibilityLabel = @"Preview of the lyrics";
+    _card.accessibilityLabel = @"가사 미리보기";
     _preview = [[SGRKaraokeView alloc] initWithSampleLines:SGRLyricsSampleLines() length:SGRLyricsSampleLength()];
     _preview.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [_card addSubview:_preview];
@@ -228,7 +227,7 @@ static UIButtonConfiguration *chipConfiguration(NSString *title, NSString *symbo
     _adjust.configuration = adjust;
     _adjust.accessibilityLabel = @"Adjust";
     _adjust.accessibilityValue = chosen < 0 ? @"사용자 설정" : names[(NSUInteger)chosen];
-    _adjust.accessibilityHint = @"Opens the sliders";
+    _adjust.accessibilityHint = @"슬라이더 열기";
     _adjust.accessibilityTraits = UIAccessibilityTraitButton | (chosen < 0 ? UIAccessibilityTraitSelected : 0);
     _showChosen = YES;
     [self.view setNeedsLayout];

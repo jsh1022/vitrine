@@ -123,7 +123,7 @@ static NSString *cellLabel(SGGestureAction action) {
     _header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [_header addSubview:_grid];
     self.tableView.tableHeaderView = _header;
-    _footer = SGNote(@"Spotify's own buttons keep their taps.");
+    _footer = SGNote(@"Spotify 자체 버튼의 탭 동작은 유지됩니다.");
     self.tableView.tableFooterView = _footer;
 }
 
@@ -144,7 +144,7 @@ static NSString *cellLabel(SGGestureAction action) {
 
 - (void)pickActionFor:(NSInteger)cell {
     NSArray<NSString *> *names = SGGestureActionNames();
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Double tap here"
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"여기를 두 번 탭하세요"
                                                                   message:nil
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
     [names enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, BOOL *stop) {
@@ -173,7 +173,7 @@ static NSString *cellLabel(SGGestureAction action) {
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
     if (section == 1) return SGSectionHeader(table, @"Split");
-    if (section == 2) return SGSectionHeader(table, @"Seek step");
+    if (section == 2) return SGSectionHeader(table, @"탐색 간격");
     return nil;
 }
 
@@ -189,7 +189,7 @@ static NSString *cellLabel(SGGestureAction action) {
     UITableViewCell *cell = SGDequeueCell(table, @"gesture");
     switch (path.section) {
         case 0: {
-            SGFillCell(cell, @"Double tap the player", @"Tap a cell to set it", nil, nil);
+            SGFillCell(cell, @"플레이어 두 번 탭", @"칸을 탭하여 설정하세요", nil, nil);
             UISwitch *toggle = [UISwitch new];
             toggle.onTintColor = SGGreen();
             toggle.on = SGFlag(SGKeyGestures, NO);
@@ -212,7 +212,7 @@ static NSString *cellLabel(SGGestureAction action) {
             break;
         }
         default:
-            SGFillCell(cell, @"Start over", nil, nil, @"arrow.uturn.backward");
+            SGFillCell(cell, @"다시 시작", nil, nil, @"arrow.uturn.backward");
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
     }

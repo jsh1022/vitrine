@@ -89,10 +89,10 @@ static void removeImported(void) {
 static void tell(NSString *title, NSString *message, BOOL restart) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
     if (restart) {
-        [alert addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Restart now" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"나중에" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"지금 재시작" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
     } else {
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     }
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
@@ -342,7 +342,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontYou
 // Swiping the imported family away deletes its files; Default comes back if it was the choice.
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section != SGFontYours || path.row != 0 || !self.importedName.length) return nil;
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Delete"
+    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"삭제"
         handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             removeImported();
             [self refresh];

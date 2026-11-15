@@ -55,7 +55,7 @@ def main():
     bundle = "dev.vitrine.lossless-handoff" if handoff else "dev.vitrine.audio-presentation"
     process = "LosslessHandoff" if handoff else "AudioPresentation"
     markers = ("RESULT failures=0", "PASS wired rate negotiation 44.1 to 48 kHz", "PASS restore app rate after wired mode") if handoff else (
-        "PASS audio source presentations:", "PASS unavailable WireGuard:", "PASS playback quality badge and popover", "PASS full-screen static artwork and live option removal")
+        "PASS inline lyric position, delay, seek and track replacement", "PASS audio source presentations:", "PASS unavailable WireGuard:", "PASS playback quality badge and popover", "PASS full-screen static artwork and live option removal")
     output = Path(base) / "diagnostics"
     output.mkdir(parents=True, exist_ok=True)
     code = 1
@@ -89,7 +89,7 @@ def main():
             print(f"Test result receipt unavailable: {error}", flush=True)
         passed = code == 0 and receipt_ok
         if passed:
-            print("PASS persisted completion receipt: all four checks verified for this launch", flush=True)
+            print("PASS persisted completion receipt: all checks verified for this launch", flush=True)
     if not passed:
         print("FAIL: expected test completion markers are missing; collecting diagnostics.", flush=True)
         collect(device, output, process, bundle)

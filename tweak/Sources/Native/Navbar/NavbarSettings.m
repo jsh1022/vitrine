@@ -8,23 +8,23 @@
 // name of the SPTEncoreIcon class method that draws its glyph.
 static NSArray<NSDictionary *> *tabPresets(void) {
     return @[
-        @{SGTabTitle: @"Home", SGTabURI: @"spotify:home", SGTabIcon: @"home"},
+        @{SGTabTitle: @"홈", SGTabURI: @"spotify:home", SGTabIcon: @"home"},
         @{SGTabTitle: @"검색", SGTabURI: @"spotify:search", SGTabIcon: @"search"},
-        @{SGTabTitle: @"Your Library", SGTabURI: @"spotify:collection", SGTabIcon: @"collection"},
-        @{SGTabTitle: @"Liked Songs", SGTabURI: @"spotify:collection:tracks", SGTabIcon: @"heart"},
-        @{SGTabTitle: @"Playlists", SGTabURI: @"spotify:playlists", SGTabIcon: @"playlist"},
+        @{SGTabTitle: @"내 보관함", SGTabURI: @"spotify:collection", SGTabIcon: @"collection"},
+        @{SGTabTitle: @"좋아요 표시한 곡", SGTabURI: @"spotify:collection:tracks", SGTabIcon: @"heart"},
+        @{SGTabTitle: @"플레이리스트", SGTabURI: @"spotify:playlists", SGTabIcon: @"playlist"},
         @{SGTabTitle: @"앨범", SGTabURI: @"spotify:collection:albums", SGTabIcon: @"album"},
         @{SGTabTitle: @"아티스트", SGTabURI: @"spotify:collection:artists", SGTabIcon: @"artist"},
-        @{SGTabTitle: @"Podcasts", SGTabURI: @"spotify:collection:podcasts", SGTabIcon: @"podcasts"},
-        @{SGTabTitle: @"Audiobooks", SGTabURI: @"spotify:collection:audiobooks", SGTabIcon: @"audiobook"},
-        @{SGTabTitle: @"Downloads", SGTabURI: @"spotify:collection:downloads", SGTabIcon: @"downloaded"},
-        @{SGTabTitle: @"Your Episodes", SGTabURI: @"spotify:collection:your-episodes", SGTabIcon: @"bookmark"},
-        @{SGTabTitle: @"Browse", SGTabURI: @"spotify:browse", SGTabIcon: @"browse"},
-        @{SGTabTitle: @"New Releases", SGTabURI: @"spotify:new-releases", SGTabIcon: @"star"},
-        @{SGTabTitle: @"Made For You", SGTabURI: @"spotify:made-for-you", SGTabIcon: @"user"},
-        @{SGTabTitle: @"Concerts", SGTabURI: @"spotify:concerts", SGTabIcon: @"events"},
+        @{SGTabTitle: @"팟캐스트", SGTabURI: @"spotify:collection:podcasts", SGTabIcon: @"podcasts"},
+        @{SGTabTitle: @"오디오북", SGTabURI: @"spotify:collection:audiobooks", SGTabIcon: @"audiobook"},
+        @{SGTabTitle: @"다운로드", SGTabURI: @"spotify:collection:downloads", SGTabIcon: @"downloaded"},
+        @{SGTabTitle: @"내 에피소드", SGTabURI: @"spotify:collection:your-episodes", SGTabIcon: @"bookmark"},
+        @{SGTabTitle: @"둘러보기", SGTabURI: @"spotify:browse", SGTabIcon: @"browse"},
+        @{SGTabTitle: @"새로 발매된 음악", SGTabURI: @"spotify:new-releases", SGTabIcon: @"star"},
+        @{SGTabTitle: @"나를 위한 음악", SGTabURI: @"spotify:made-for-you", SGTabIcon: @"user"},
+        @{SGTabTitle: @"공연", SGTabURI: @"spotify:concerts", SGTabIcon: @"events"},
         @{SGTabTitle: @"대기열", SGTabURI: @"spotify:now-playing:queue", SGTabIcon: @"queue"},
-        @{SGTabTitle: @"Create", SGTabURI: @"spotify:create-menu", SGTabIcon: @"plus"},
+        @{SGTabTitle: @"만들기", SGTabURI: @"spotify:create-menu", SGTabIcon: @"plus"},
     ];
 }
 
@@ -76,8 +76,7 @@ static void appendTab(NSDictionary *tab) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _intro = SGNote(@"Tabs switched on here sit apart from the others at the right end of the bar, the way the Music "
-                    "app sets Search apart. Hidden tabs stay hidden.");
+    _intro = SGNote(@"선택한 탭을 Music 앱의 검색처럼 막대 오른쪽에 따로 표시합니다. 숨긴 탭은 계속 숨겨집니다.");
     self.tableView.tableHeaderView = _intro;
     _entries = navbarEntries();
     _split = [NSMutableSet setWithArray:SGNavbarSplit()];
@@ -98,7 +97,7 @@ static void appendTab(NSDictionary *tab) {
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
-    return SGSectionHeader(table, @"Tabs");
+    return SGSectionHeader(table, @"탭");
 }
 
 - (CGFloat)tableView:(UITableView *)table heightForHeaderInSection:(NSInteger)section {
@@ -113,7 +112,7 @@ static void appendTab(NSDictionary *tab) {
     UITableViewCell *cell = SGDequeueCell(table, @"split");
     NSDictionary *entry = _entries[(NSUInteger)path.row];
     BOOL apart = [_split containsObject:entry[SGNavbarID]];
-    NSString *where = [entry[SGNavbarHidden] boolValue] ? @"Hidden" : apart ? @"Apart, on the right" : @"With the others";
+    NSString *where = [entry[SGNavbarHidden] boolValue] ? @"Hidden" : apart ? @"오른쪽에 따로 표시" : @"다른 탭과 함께 표시";
     SGFillCell(cell, entry[SGNavbarTitle], where, nil, nil);
     UISwitch *toggle = [UISwitch new];
     toggle.onTintColor = SGGreen();
@@ -165,7 +164,7 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
     [super viewDidLoad];
     self.tableView.allowsSelectionDuringEditing = YES;
     self.tableView.editing = YES;
-    _intro = SGNote(@"Drag to reorder, tap to show or hide.");
+    _intro = SGNote(@"드래그하여 순서를 바꾸고 탭하여 표시하거나 숨기세요.");
     self.tableView.tableHeaderView = _intro;
     _entries = navbarEntries();
 }
@@ -202,7 +201,7 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
 }
 
 - (NSString *)headerFor:(NSInteger)section {
-    return section == SGNavbarSectionTabs ? @"Tabs" : nil;
+    return section == SGNavbarSectionTabs ? @"탭" : nil;
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
@@ -223,7 +222,7 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
     UITableViewCell *cell = SGDequeueCell(table, @"navbar");
     switch (path.section) {
         case SGNavbarSectionSwitch: {
-            SGFillCell(cell, @"Custom navbar", nil, nil, nil);
+            SGFillCell(cell, @"사용자 설정 탐색 막대", nil, nil, nil);
             UISwitch *toggle = [UISwitch new];
             toggle.onTintColor = SGGreen();
             toggle.on = SGEnabled(SGKeyNavbar);
@@ -235,7 +234,7 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
             NSDictionary *entry = _entries[(NSUInteger)path.row];
             BOOL hidden = [entry[SGNavbarHidden] boolValue];
             NSString *uri = entry[SGNavbarURI];
-            SGFillCell(cell, entry[SGNavbarTitle], hidden ? @"Hidden" : (uri ?: @"Spotify's own tab"),
+            SGFillCell(cell, entry[SGNavbarTitle], hidden ? @"Hidden" : (uri ?: @"Spotify 기본 탭"),
                      hidden ? SGGrey() : nil, hidden ? @"eye.slash" : @"eye");
             break;
         }
@@ -244,12 +243,12 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         case SGNavbarSectionSplit:
-            SGFillCell(cell, @"탭 분리", @"Place chosen tabs apart on the right", nil, @"rectangle.split.2x1");
+            SGFillCell(cell, @"탭 분리", @"선택한 탭을 오른쪽에 따로 배치", nil, @"rectangle.split.2x1");
             cell.accessoryView = SGSymbolView(@"chevron.right", 13, UIImageSymbolWeightSemibold, 16);
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         default:
-            SGFillCell(cell, @"Use Spotify's order", nil, nil, @"arrow.uturn.backward");
+            SGFillCell(cell, @"Spotify 순서 사용", nil, nil, @"arrow.uturn.backward");
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
     }
@@ -314,8 +313,8 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
 }
 
 - (void)reset {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Use Spotify's order"
-                                                                  message:@"Every tab of Spotify's comes back where Spotify put it, the tabs you added go, and no tab is split apart."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Spotify 순서 사용"
+                                                                  message:@"Spotify 탭을 기본 위치로 되돌리고 추가한 탭과 탭 분리를 제거합니다."
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"초기화" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {

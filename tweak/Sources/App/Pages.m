@@ -25,7 +25,7 @@
 #import "Redesigned/NowPlayingBar/NowPlayingBar.h"
 #import "Redesigned/Kit/SGRAccent.h"
 
-NSString *const SGRedesignedUIInfo = @"The newest version of Vitrine, leaning toward Apple Music's style. It is not compatible with the legacy look's settings.\n\nThe legacy look gives you more freedom, yet still looks like Spotify.";
+NSString *const SGRedesignedUIInfo = @"Apple Music 스타일을 적용한 Vitrine의 새 화면입니다. 기본 화면 전용 설정과 함께 사용할 수 없습니다.\n\n기본 화면에서는 Spotify의 모습을 유지하며 더 많은 부분을 직접 설정할 수 있습니다.";
 
 // Below iOS 26 the redesign also needs SGKeyRedesignUntested (Core/SGUIMode.h): whoever calls this has
 // shown the warning. Turning it off takes that back, so turning it on again warns again.
@@ -35,7 +35,7 @@ void SGSetRedesignedUI(BOOL on) {
 }
 
 NSString *SGRedesignUntestedWarning(void) {
-    return [NSString stringWithFormat:@"The redesign is built on iOS 26's Liquid Glass. iOS %@ draws a blur in its place, and nobody has tested the redesign there: pages can be laid out wrongly, and Spotify can freeze as it starts. If Spotify does not start with it, the next launch goes back to Legacy.",
+    return [NSString stringWithFormat:@"재설계 UI는 iOS 26의 Liquid Glass를 기반으로 합니다. iOS %@에서는 흐림 효과로 대체되며 검증되지 않았습니다. 화면 배치가 잘못되거나 Spotify가 시작 중 멈출 수 있습니다. 실행하지 못하면 다음 실행에서 기본 화면으로 돌아갑니다.",
             UIDevice.currentDevice.systemVersion];
 }
 
@@ -43,17 +43,17 @@ NSString *SGRedesignUntestedWarning(void) {
 // leaving Spotify half in the old look.
 static void offerRestart(BOOL on) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Spotify 재시작"
-        message:on ? @"The redesign takes over when Spotify starts again. Spotify closes now; open it again to see it." : @"Spotify's own look comes back when Spotify starts again. Spotify closes now; open it again to see it."
+        message:on ? @"Spotify를 다시 실행하면 재설계 UI가 적용됩니다. 지금 앱을 종료한 후 다시 여세요." : @"Spotify를 다시 실행하면 기본 화면이 적용됩니다. 지금 앱을 종료한 후 다시 여세요."
         preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"나중에" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Restart now" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"지금 재시작" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
 // Below iOS 26 the switch stores the warning's key, not the look's: it is on only once the warning has
 // been accepted, which restarts Spotify at once, so the switch never reads on for a look that is not coming.
 static SGModRow *untestedRow(void) {
-    SGModRow *row = SGOptionRow(@"재설계 UI", [NSString stringWithFormat:@"Untested on iOS %@", UIDevice.currentDevice.systemVersion], SGKeyRedesignUntested);
+    SGModRow *row = SGOptionRow(@"재설계 UI", [NSString stringWithFormat:@"iOS %@에서 미검증", UIDevice.currentDevice.systemVersion], SGKeyRedesignUntested);
     row.glows = YES;
     row.info = SGRedesignedUIInfo;
     row.changed = ^(BOOL on) {
@@ -63,11 +63,11 @@ static SGModRow *untestedRow(void) {
             return;
         }
         SGSetEnabled(SGKeyRedesignUntested, NO);   // the page reloads to off; the warning's button turns it on
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Turn on the redesign?"
-            message:[SGRedesignUntestedWarning() stringByAppendingString:@"\n\nSpotify restarts to turn it on."]
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"재설계 UI를 켤까요?"
+            message:[SGRedesignUntestedWarning() stringByAppendingString:@"\n\n적용하려면 Spotify를 재시작합니다."]
             preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Turn On and Restart" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"켜고 재시작" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             SGSetRedesignedUI(YES);
             SGRestartSpotify();
         }]];
@@ -114,12 +114,12 @@ static UIViewController *lyricsPage(void) {
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:SGSection(nil, @[SGWithTile(sing, @"music.mic", UIColor.systemRedColor)]),
                                                 SGLyricsSourcesSection(redesigned), nil];
     SGModSection *timing = SGNotedSection(@"타이밍", @[SGLyricsDelayRow()],
-        @"Every line shows this much later than the song, for Bluetooth headphones that play a little behind the lyrics. Applies at once.");
+        @"Bluetooth 헤드폰의 출력 지연에 맞춰 가사를 이 시간만큼 늦게 표시합니다. 즉시 적용됩니다.");
     if (redesigned) {
         [sections addObjectsFromArray:@[
             SGSection(@"표시", @[SGRLyricsTextSizesRow(), SGLyricsWordTimingRow(), SGLyricsRomanisedRow(), SGLyricsRomanisedReplaceRow(),
                 SGRLyricsHideRow(),
-                SGSwitchRow(@"Landscape lyrics", @"Turn the phone with the lyrics open", SGRKeyLyricsLandscape)]),
+                SGSwitchRow(@"가로 화면 가사", @"가사를 연 상태에서 휴대전화를 돌리세요", SGRKeyLyricsLandscape)]),
             timing,
             SGSection(@"번역", [[[@[SGLyricsTranslationLanguageRow(), SGTranslateEverySongRow()] arrayByAddingObjectsFromArray:SGOnDeviceTranslatorRows()]
                                           arrayByAddingObjectsFromArray:SGAITranslatorRows()] arrayByAddingObject:SGSavedTranslationsRow()]),
@@ -130,7 +130,7 @@ static UIViewController *lyricsPage(void) {
     }
     [sections addObject:SGSection(nil, more)];
     // The redesign's page leads with its lyrics playing in the look the page sets, and that look's presets.
-    if (redesigned) return SGRLyricsSettingsPage(@"가사", @"The look applies at once. The settings below apply after you restart Spotify.", sections);
+    if (redesigned) return SGRLyricsSettingsPage(@"가사", @"가사 모양은 즉시 적용됩니다. 아래 설정은 Spotify 재시작 후 적용됩니다.", sections);
     return [[SGModPage alloc] initWithTitle:@"가사" intro:SGRestartNote sections:sections footer:nil];
 }
 
@@ -159,22 +159,19 @@ UIViewController *SGPlayerSettingsPage(void) {
         [sections addObjectsFromArray:SGNativePlayerScreenSections()];
     }
     // Switch to video is the same chip of Spotify's player under either look.
-    SGModRow *video = SGHideRow(@"Switch to video", @"The chip over the title of a song with a music video", SGKeyHideVideoSwitch);
+    SGModRow *video = SGHideRow(@"동영상으로 전환", @"뮤직비디오가 있는 곡의 제목 위 버튼", SGKeyHideVideoSwitch);
     // Spotify's own, under either look: a tap on the cover opens it full screen, where it turns a little with the phone.
-    SGModRow *tilt = SGHideRow(@"전체 화면 커버", @"What a tap on the cover opens", SGKeyHideFullScreenCover);
+    SGModRow *tilt = SGHideRow(@"전체 화면 커버", @"커버를 탭했을 때 여는 화면", SGKeyHideFullScreenCover);
     // The native look's Shuffle and Repeat rows are in its Hide on the player section, with their own keys.
     NSArray<SGModRow *> *hidden = native ? @[video, tilt]
         : @[SGHideRow(@"셔플", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"반복", nil, SGRKeyPlayerHideRepeat), video, tilt];
     [sections addObject:SGSection(native ? nil : @"플레이어에서 숨기기", hidden)];
 
     [sections addObject:SGNotedSection(@"무손실", @[
-        SGOptionRow(@"무손실 파일", @"Your own FLACs in place of Spotify's stream", SGKeyLossless),
+        SGOptionRow(@"무손실 파일", @"Spotify 스트림 대신 본인의 FLAC 파일 재생", SGKeyLossless),
         SGPageRow(@"무손실 소스", ^UIViewController *{ return SGAudioSourcesPage(); }),
         SGPageRow(@"상세 재생 정보", ^UIViewController *{ return SGPlaybackDetailsPage(); }),
-    ], @"Put FLAC or ALAC files in Files › Spotify › Lossless. A file plays when its title and length match the song "
-       @"and its sound matches what Spotify plays, from about 4 s after the song starts or you seek. Spotify still "
-       @"streams its own copy, at its lowest quality while the next song has a file. Karaoke and speeds other than "
-       @"1x keep Spotify's sound. Applies after you restart Spotify.")];
+    ], @"파일 앱 › Spotify › Lossless에 FLAC 또는 ALAC 파일을 넣으세요. 제목과 길이가 일치하고 Spotify 오디오와 소리가 맞아야 재생합니다. 곡 시작이나 탐색 후 약 4초부터 전환됩니다. Spotify는 자체 스트림도 계속 받으며 다음 곡의 파일이 있으면 최저 품질을 사용합니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다. 재시작 후 적용됩니다.")];
 
     // The redesign's page leads with a card of its player and the background's control, the background's
     // rows and the Mini player section under it.

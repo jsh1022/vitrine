@@ -82,7 +82,7 @@ typedef NS_ENUM(NSInteger, SGSourcesSection) {
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
-    if (section == SGSourcesSectionOn) return SGSectionHeader(table, _on.count ? @"Asked in this order" : @"None on");
+    if (section == SGSourcesSectionOn) return SGSectionHeader(table, _on.count ? @"이 순서로 조회합니다" : @"모두 꺼짐");
     return _off.count ? SGSectionHeader(table, @"꺼짐") : nil;
 }
 

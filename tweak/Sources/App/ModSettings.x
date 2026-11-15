@@ -65,7 +65,7 @@ static UIViewController *modSettingsPage(void) {
 
     // A newer Vitrine Addon inside this Vitrine than the one installed: at the top, while it is so. Only the add-on's own
     // answer from SpringBoard makes it so, so only a jailbroken phone with the add-on shows it (SGHapticRelay.h).
-    SGModRow *addonUpdate = SGWithTile(SGActionRow(@"Update Vitrine Addon", @"A newer add-on comes with this Vitrine", ^{ SGHapticAddonShareSoon(); }),
+    SGModRow *addonUpdate = SGWithTile(SGActionRow(@"Vitrine Addon 업데이트", @"이 Vitrine에는 더 최신 Addon이 포함되어 있습니다", ^{ SGHapticAddonShareSoon(); }),
                                        @"arrow.down.circle.fill", UIColor.systemBlueColor);
     addonUpdate.visible = ^BOOL { return SGHapticAddonOutdated(); };
     [sections addObject:SGSection(nil, @[addonUpdate])];
@@ -84,7 +84,7 @@ static UIViewController *modSettingsPage(void) {
     artists.visible = redesigned;
     SGModRow *home = pageRow(@"홈 및 보관함", @"house.fill", UIColor.systemBrownColor, ^UIViewController *{ return SGHomeSettingsPage(); });
     home.visible = native;
-    SGModRow *redesignedHome = pageRow(@"Home", @"house.fill", UIColor.systemBrownColor, ^UIViewController *{ return SGRHomeSettingsPage(); });
+    SGModRow *redesignedHome = pageRow(@"홈", @"house.fill", UIColor.systemBrownColor, ^UIViewController *{ return SGRHomeSettingsPage(); });
     redesignedHome.visible = redesigned;
     [sections addObject:SGSection(nil, @[
         redesignedHome,

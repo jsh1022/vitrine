@@ -22,7 +22,7 @@ static NSString *switchKeyOf(SGDSPFileKind kind) {
 
 NSString *SGDSPChosenFile(SGDSPFileKind kind) {
     NSString *name = SGDSPString(fileKeyOf(kind));
-    return name.length ? name : @"None";
+    return name.length ? name : @"없음";
 }
 
 // ".eel", ".vdc", ".wav, .flac or .irs".
@@ -37,13 +37,13 @@ static NSString *extensionList(SGDSPFileKind kind) {
 
 static void showAlert(UIViewController *owner, NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [owner presentViewController:alert animated:YES completion:nil];
 }
 
 static UITableViewCell *errorCell(UITableView *table, NSString *text) {
     UITableViewCell *cell = SGDequeueCell(table, @"error");
-    SGFillCell(cell, @"Not applied", text, SGRed(), @"exclamationmark.triangle.fill");
+    SGFillCell(cell, @"적용되지 않음", text, SGRed(), @"exclamationmark.triangle.fill");
     UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
     content.secondaryTextProperties.color = SGRed();
     cell.contentConfiguration = content;
@@ -151,13 +151,13 @@ static UITableViewCell *tiledCell(UITableView *table, NSString *title, NSString 
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
     _kind = kind;
     self.errorKey = switchKeyOf(kind);
-    self.title = kind == SGDSPFileImpulseResponse ? @"Impulse responses" : kind == SGDSPFileDDC ? @"DDC files" : @"Scripts";
+    self.title = kind == SGDSPFileImpulseResponse ? @"임펄스 응답" : kind == SGDSPFileDDC ? @"DDC 파일" : @"Scripts";
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _footer = SGNote(@"Choosing a file uses it straight away. Swipe left on one to delete it.");
+    _footer = SGNote(@"파일을 선택하면 즉시 사용합니다. 왼쪽으로 밀어 삭제하세요.");
     self.tableView.tableFooterView = _footer;
 }
 
@@ -184,12 +184,12 @@ static UITableViewCell *tiledCell(UITableView *table, NSString *title, NSString 
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section == 0) return [self errorCellIn:table];
     if (path.section == 2) {
-        NSString *subtitle = [NSString stringWithFormat:@"A %@ file from Files", extensionList(_kind)];
-        return tiledCell(table, @"Import file…", subtitle, @"square.and.arrow.down", nil);
+        NSString *subtitle = [NSString stringWithFormat:@"파일 앱에서 %@ 파일 선택", extensionList(_kind)];
+        return tiledCell(table, @"파일 가져오기…", subtitle, @"square.and.arrow.down", nil);
     }
     UITableViewCell *cell = SGDequeueCell(table, @"file");
     if (!_files.count) {
-        SGFillCell(cell, @"No files yet", nil, SGGrey(), nil);
+        SGFillCell(cell, @"아직 파일 없음", nil, SGGrey(), nil);
         cell.accessibilityTraits = UIAccessibilityTraitNone;
         return cell;
     }
@@ -224,7 +224,7 @@ static UITableViewCell *tiledCell(UITableView *table, NSString *title, NSString 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section != 1 || !_files.count) return nil;
     NSString *name = _files[(NSUInteger)path.row];
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Delete"
+    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"삭제"
         handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             [self deleteFile:name at:path];
             done(YES);
@@ -236,7 +236,7 @@ static UITableViewCell *tiledCell(UITableView *table, NSString *title, NSString 
 // The chosen file going leaves the effect with none, rather than naming a file that is not there.
 - (void)deleteFile:(NSString *)name at:(NSIndexPath *)path {
     if (!SGDSPDeleteFile(_kind, name)) {
-        showAlert(self, @"Could not delete the file", nil);
+        showAlert(self, @"파일을 삭제하지 못했습니다", nil);
         return;
     }
     if ([name isEqualToString:SGDSPString(fileKeyOf(_kind))]) SGDSPSetString(fileKeyOf(_kind), @"");
@@ -257,13 +257,13 @@ static UITableViewCell *tiledCell(UITableView *table, NSString *title, NSString 
     NSURL *url = urls.firstObject;
     if (!url) return;
     if (![SGDSPFileExtensions(_kind) containsObject:url.pathExtension.lowercaseString]) {
-        showAlert(self, @"Not a file this effect takes", [NSString stringWithFormat:@"Pick a %@ file.", extensionList(_kind)]);
+        showAlert(self, @"이 효과가 지원하는 파일이 아닙니다", [NSString stringWithFormat:@"%@ 파일을 선택하세요.", extensionList(_kind)]);
         return;
     }
     NSError *error = nil;
     NSString *name = SGDSPImportFile(_kind, url, &error);
     if (!name) {
-        showAlert(self, @"Could not import the file", error.localizedDescription);
+        showAlert(self, @"파일을 가져오지 못했습니다", error.localizedDescription);
         return;
     }
     SGDSPSetString(fileKeyOf(_kind), name);
@@ -306,8 +306,7 @@ typedef NS_ENUM(NSInteger, SGGraphicEqRow) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _intro = SGNote(@"AutoEq's GraphicEQ format: \"GraphicEQ:\", then a frequency and a gain in dB per point, "
-                     "separated by semicolons. Paste the GraphicEQ file for your headphones, or edit the text and save.");
+    _intro = SGNote(@"AutoEq GraphicEQ 형식은 \"GraphicEQ:\" 뒤에 주파수와 dB 게인의 쌍을 세미콜론으로 구분합니다. 헤드폰용 GraphicEQ 파일을 붙여넣거나 텍스트를 편집해 저장하세요.");
     self.tableView.tableHeaderView = _intro;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
 
@@ -362,18 +361,18 @@ typedef NS_ENUM(NSInteger, SGGraphicEqRow) {
         [cell.contentView addSubview:_text];
         return cell;
     }
-    if (path.section == 3) return tiledCell(table, @"AutoEq", @"GraphicEQ files for thousands of headphones", @"safari", nil);
+    if (path.section == 3) return tiledCell(table, @"AutoEq", @"수천 종의 헤드폰용 GraphicEQ 파일", @"safari", nil);
     switch (path.row) {
         case SGGraphicEqSave: {
             BOOL edited = [self edited];
-            UITableViewCell *cell = tiledCell(table, @"Save", edited ? @"Use the text above" : @"Nothing changed", @"checkmark", edited ? nil : SGGrey());
+            UITableViewCell *cell = tiledCell(table, @"Save", edited ? @"위 텍스트 사용" : @"변경 사항 없음", @"checkmark", edited ? nil : SGGrey());
             cell.accessibilityTraits = edited ? UIAccessibilityTraitButton : UIAccessibilityTraitButton | UIAccessibilityTraitNotEnabled;
             return cell;
         }
         case SGGraphicEqPaste:
-            return tiledCell(table, @"Paste", @"Replace the text with what you copied, and use it", @"doc.on.clipboard", nil);
+            return tiledCell(table, @"붙여넣기", @"복사한 텍스트로 교체하고 사용", @"doc.on.clipboard", nil);
         default:
-            return tiledCell(table, @"Reset", @"Back to flat", @"arrow.counterclockwise", nil);
+            return tiledCell(table, @"초기화", @"평탄하게 초기화", @"arrow.counterclockwise", nil);
     }
 }
 
@@ -396,7 +395,7 @@ typedef NS_ENUM(NSInteger, SGGraphicEqRow) {
 - (void)save:(NSString *)text {
     NSString *line = SGDSPGraphicEqLine(text);
     if (!line) {
-        showAlert(self, text.length ? @"Not a GraphicEQ line" : @"Nothing to paste",
+        showAlert(self, text.length ? @"GraphicEQ 형식이 아닙니다" : @"붙여넣을 내용이 없습니다",
                   @"It starts with \"GraphicEQ:\", then pairs of a frequency and a gain: GraphicEQ: 20 -1.2; 21 -1.1; …");
         return;
     }

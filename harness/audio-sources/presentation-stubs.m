@@ -20,7 +20,7 @@ NSArray<SGModRow *> *SGPresentationRows;
 - (instancetype)initWithTitle:(NSString *)title intro:(NSString *)intro sections:(NSArray<SGModSection *> *)sections footer:(NSString *)footer {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
     self.title = title;
-    if ([@[@"Lossless sources", @"WireGuard proxy"] containsObject:title]) {
+    if ([@[@"무손실 소스", @"WireGuard 프록시"] containsObject:title]) {
         NSMutableArray *rows = [NSMutableArray array];
         for (SGModSection *section in sections) [rows addObjectsFromArray:section.rows];
         SGPresentationRows = rows;
@@ -121,3 +121,12 @@ void SGShownTrackArtwork(SGShownTrack *track, void (^done)(UIImage *)) { done(SG
 - (instancetype)initWithBegin:(BOOL (^)(NSString *, SPTPlayerState *))begin found:(void (^)(NSString *, NSURL *))found { return [super init]; }
 - (void)restart {}
 @end
+
+#import "Shared/Lyrics/Lyrics.h"
+NSString *SGPresentationLyricsTrack = @"fixture";
+NSArray<SGKaraokeLine *> *SGPresentationLyrics;
+NSInteger SGPresentationLyricsPosition, SGPresentationLyricsDelay;
+NSString *SGKaraokePlayingTrack(void) { return SGPresentationLyricsTrack; }
+NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *track) { return SGPresentationLyrics; }
+NSInteger SGKaraokePositionMs(void) { return SGPresentationLyricsPosition; }
+NSInteger SGKaraokeDelayMs(void) { return SGPresentationLyricsDelay; }

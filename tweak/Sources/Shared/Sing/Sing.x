@@ -639,7 +639,7 @@ NSString *SGSingStatusText(void) {
         case SGSingStateNoModel: return @"Needs its voice model";
         case SGSingStateDownloading:
             if (SGSingModelChecking()) return @"Checking the download";
-            if (SGSingModelWaitingForNetwork()) return SGSingModelOverCellular() ? @"Waiting for the network" : @"Waiting for Wi-Fi";
+            if (SGSingModelWaitingForNetwork()) return SGSingModelOverCellular() ? @"네트워크 대기 중" : @"Wi-Fi 대기 중";
             return [NSString stringWithFormat:@"Downloading %.0f%%", SGSingModelProgress() * 100];
         case SGSingStateOff: return SGSingLoaderPreparingSeconds() >= 0 ? @"Off · preparing for the Neural Engine" : @"Off";
         case SGSingStatePreparing: {

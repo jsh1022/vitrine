@@ -40,8 +40,7 @@ NSArray<SGModRow *> *SGRAppearanceRows(void) {
     return @[
         SGWithSymbol(menu, @"paintpalette"),
         SGWithSymbol(colour, @"eyedropper"),
-        SGWithSymbol(SGOptionRow(@"Plain checkmark", @"A saved song's tick without its circle, in the accent", SGRKeyPlainCheck), @"checkmark"),
-        SGWithSymbol(SGSwitchRow(@"상단 전체 너비 커버", @"Album and playlist covers across the top. Off, a square cover; "
-                                 @"an animated cover still fills the top", SGRKeyFullBleedCovers), @"photo"),
+        SGWithSymbol(SGOptionRow(@"단순 체크 표시", @"저장한 곡의 체크 표시를 원 없이 강조 색상으로 표시", SGRKeyPlainCheck), @"checkmark"),
+        SGWithSymbol(SGSwitchRow(@"상단 전체 너비 커버", @"앨범과 플레이리스트 커버를 상단 전체 너비로 표시합니다. 끄면 정사각형 커버를 사용하며 움직이는 커버는 상단을 계속 채웁니다.", SGRKeyFullBleedCovers), @"photo"),
     ];
 }

@@ -10,10 +10,10 @@
 // (Shared/AnimatedArtwork/LockScreenStar.x locks the flag off). Spotify's flags for podcasts, audiobooks and its
 // own lock screen artwork stay on the All flags page: the Artwork section is the mod's.
 UIViewController *SGLockScreenWidgetPage(void) {
-    SGModRow *likes = SGFlagRow(@"Like and dislike buttons", @"ios-feature-lockscreen.like_dislike_enabled");
-    likes.subtitle = @"Off and locked while Switch with the star is on: the star takes their place";
+    SGModRow *likes = SGFlagRow(@"좋아요 및 싫어요 버튼", @"ios-feature-lockscreen.like_dislike_enabled");
+    likes.subtitle = @"별표로 전환이 켜져 있으면 별표가 대신 표시되며 이 항목은 꺼진 상태로 잠깁니다";
     return [[SGModPage alloc] initWithTitle:@"잠금 화면" intro:SGRestartNote sections:@[
-        SGSection(@"Widget", @[SGLockScreenLyricsRow(), SGLockScreenTranslationRow(), likes]),
+        SGSection(@"위젯", @[SGLockScreenLyricsRow(), SGLockScreenTranslationRow(), likes]),
         SGSection(@"아트워크", SGLockScreenMotionRows()),
     ] footer:nil];
 }

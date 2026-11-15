@@ -99,55 +99,55 @@ static NSString *graphicEqSummary(void) {
         points++;
         flat &= parts[1].doubleValue == 0;
     }
-    return flat ? @"Flat" : [NSString stringWithFormat:@"%lu points", (unsigned long)points];
+    return flat ? @"평탄함" : [NSString stringWithFormat:@"포인트 %lu개", (unsigned long)points];
 }
 
 // The effects' cards. The engine runs them in an order of its own (SGDSPEngine.m).
 static NSArray<SGDSPEffect *> *effects(void) {
     // Stored as 0 to 100 around 50, shown as the side's level, 100% leaving it as it is.
-    SGDSPRow *width = slider(@"Width", SGKeyDSPStereoWideLevel, @"%");
+    SGDSPRow *width = slider(@"폭", SGKeyDSPStereoWideLevel, @"%");
     width.scale = 2;
     return @[
-        effect(nil, @"Output control", @"Gain and limiter, always on", @[
-            slider(@"Post gain", SGKeyDSPPostGain, @" dB"),
-            slider(@"Limiter threshold", SGKeyDSPLimiterThreshold, @" dB"),
-            slider(@"Limiter release", SGKeyDSPLimiterRelease, @" ms"),
+        effect(nil, @"출력 제어", @"게인 및 리미터 · 항상 켜짐", @[
+            slider(@"후단 게인", SGKeyDSPPostGain, @" dB"),
+            slider(@"리미터 임계값", SGKeyDSPLimiterThreshold, @" dB"),
+            slider(@"리미터 해제 시간", SGKeyDSPLimiterRelease, @" ms"),
         ]),
-        effect(SGKeyDSPCompander, @"Multiband compander", @"Evens out or livens up the dynamics", @[
+        effect(SGKeyDSPCompander, @"멀티밴드 컴팬더", @"다이내믹을 고르게 하거나 강조합니다", @[
             row(SGDSPRowCurve, nil, SGKeyDSPCompanderGains),
-            slider(@"Release", SGKeyDSPCompanderTime, @" s"),
+            slider(@"해제 시간", SGKeyDSPCompanderTime, @" s"),
         ]),
-        effect(SGKeyDSPBass, @"Bass boost", @"Lifts the low end", @[
-            slider(@"Maximum gain", SGKeyDSPBassGain, @" dB"),
+        effect(SGKeyDSPBass, @"베이스 부스트", @"저음을 강조합니다", @[
+            slider(@"최대 게인", SGKeyDSPBassGain, @" dB"),
         ]),
-        effect(SGKeyDSPEqualizer, @"Equalizer", @"15 bands, with presets", @[
+        effect(SGKeyDSPEqualizer, @"Equalizer", @"15밴드 · 프리셋 제공", @[
             row(SGDSPRowCurve, nil, SGKeyDSPEqualizerGains),
         ]),
-        effect(SGKeyDSPGraphicEq, @"Graphic EQ", @"Any curve, like AutoEq's corrections", @[
-            pageRow(@"Response", ^NSString *{ return graphicEqSummary(); }, ^UIViewController *{ return SGDSPGraphicEqPage(); }),
+        effect(SGKeyDSPGraphicEq, @"Graphic EQ", @"AutoEq 보정 등 임의의 곡선 사용", @[
+            pageRow(@"응답", ^NSString *{ return graphicEqSummary(); }, ^UIViewController *{ return SGDSPGraphicEqPage(); }),
         ]),
-        effect(SGKeyDSPConvolver, @"Convolver", @"Recorded rooms and speakers", @[
-            fileRow(@"Impulse response", SGDSPFileImpulseResponse),
-            choice(@"Optimization", SGKeyDSPConvolverMode, SGDSPConvolverModeNames()),
+        effect(SGKeyDSPConvolver, @"Convolver", @"녹음된 공간 및 스피커", @[
+            fileRow(@"임펄스 응답", SGDSPFileImpulseResponse),
+            choice(@"최적화", SGKeyDSPConvolverMode, SGDSPConvolverModeNames()),
         ]),
-        effect(SGKeyDSPDDC, @"ViPER DDC", @"Headphone correction files", @[
-            fileRow(@"DDC file", SGDSPFileDDC),
+        effect(SGKeyDSPDDC, @"ViPER DDC", @"헤드폰 보정 파일", @[
+            fileRow(@"DDC 파일", SGDSPFileDDC),
         ]),
-        effect(SGKeyDSPLiveprog, @"Liveprog", @"Effects written as EEL scripts", @[
-            fileRow(@"Script", SGDSPFileLiveprog),
+        effect(SGKeyDSPLiveprog, @"Liveprog", @"EEL 스크립트로 작성한 효과", @[
+            fileRow(@"스크립트", SGDSPFileLiveprog),
         ]),
-        effect(SGKeyDSPReverb, @"Reverb", @"A room around the music", @[
-            choice(@"Room", SGKeyDSPReverbPreset, SGDSPReverbPresetNames()),
-            slider(@"Amount", SGKeyDSPReverbAmount, @"%"),
+        effect(SGKeyDSPReverb, @"Reverb", @"음악에 공간감을 더합니다", @[
+            choice(@"공간", SGKeyDSPReverbPreset, SGDSPReverbPresetNames()),
+            slider(@"양", SGKeyDSPReverbAmount, @"%"),
         ]),
-        effect(SGKeyDSPStereoWide, @"Stereo widening", @"A wider or narrower stereo image", @[
+        effect(SGKeyDSPStereoWide, @"스테레오 폭 조절", @"스테레오 이미지를 넓히거나 좁힙니다", @[
             width,
         ]),
-        effect(SGKeyDSPCrossfeed, @"Crossfeed", @"Softer stereo on headphones", @[
-            choice(@"Preset", SGKeyDSPCrossfeedMode, SGDSPCrossfeedModeNames()),
+        effect(SGKeyDSPCrossfeed, @"Crossfeed", @"헤드폰의 스테레오를 부드럽게 합니다", @[
+            choice(@"프리셋", SGKeyDSPCrossfeedMode, SGDSPCrossfeedModeNames()),
         ]),
-        effect(SGKeyDSPTube, @"Analog modeling", @"Tube amplifier warmth", @[
-            slider(@"Drive", SGKeyDSPTubeDrive, @" dB"),
+        effect(SGKeyDSPTube, @"아날로그 모델링", @"진공관 앰프의 따뜻한 소리", @[
+            slider(@"드라이브", SGKeyDSPTubeDrive, @" dB"),
         ]),
     ];
 }
@@ -158,11 +158,11 @@ static NSSet<NSString *> *reportingEffects(void) {
 }
 
 NSString *SGDSPSummary(void) {
-    if (!SGDSPSwitch(SGKeyDSP)) return @"Off";
+    if (!SGDSPSwitch(SGKeyDSP)) return @"꺼짐";
     NSUInteger on = 0;
     for (SGDSPEffect *e in effects()) on += e.key && SGDSPSwitch(e.key);
-    if (!on) return @"On";
-    return on == 1 ? @"1 effect" : [NSString stringWithFormat:@"%lu effects", (unsigned long)on];
+    if (!on) return @"켜짐";
+    return on == 1 ? @"1 effect" : [NSString stringWithFormat:@"효과 %lu개", (unsigned long)on];
 }
 
 #pragma mark - numbers
@@ -394,7 +394,7 @@ static UIFont *tabular(UIFont *font) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Audio effects";
+    self.title = @"오디오 효과";
     _effects = effects();
     _open = [NSMutableSet set];
     _errors = [NSMutableDictionary dictionary];
@@ -403,7 +403,7 @@ static UIFont *tabular(UIFont *font) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _intro = SGNote(@"Changes apply straight away.");
+    _intro = SGNote(@"변경 사항은 즉시 적용됩니다.");
     self.tableView.tableHeaderView = _intro;
     [self buildCredits];
     self.tableView.tableFooterView = _credits;
@@ -412,7 +412,7 @@ static UIFont *tabular(UIFont *font) {
 // The libraries two of the effects run on, in the gray of a note with the names as links.
 - (void)buildCredits {
     NSDictionary *grey = @{NSFontAttributeName: SGSubtitleFont(), NSForegroundColorAttributeName: SGGrey()};
-    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:@"Crossfeed is " attributes:grey];
+    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:@"Crossfeed: " attributes:grey];
     NSArray<NSArray<NSString *> *> *parts = @[
         @[@"libbs2b", @"https://github.com/alexmarsev/libbs2b"], @[@" by Boris Mikhaylov. Liveprog runs on ", @""],
         @[@"EEL2", @"https://github.com/justinfrankel/WDL"], @[@", from Cockos' WDL.", @""],
@@ -553,18 +553,18 @@ static UIFont *tabular(UIFont *font) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
-    if (path.section == 0 && path.row == 1) return [self valueCell:table title:@"Presets" value:@""];
-    if (path.section == 0 && path.row == 2) return [self valueCell:table title:@"Headphones" value:SGDSPHeadphoneSummary()];
+    if (path.section == 0 && path.row == 1) return [self valueCell:table title:@"프리셋" value:@""];
+    if (path.section == 0 && path.row == 2) return [self valueCell:table title:@"헤드폰" value:SGDSPHeadphoneSummary()];
     if (path.section == 0) {
         UITableViewCell *cell = SGDequeueCell(table, @"master");
-        [self fillHead:cell title:@"Effects" subtitle:SGDSPStatus()];
+        [self fillHead:cell title:@"효과" subtitle:SGDSPStatus()];
         cell.accessoryView = [self switchOn:SGDSPSwitch(SGKeyDSP) action:@selector(masterToggled:) tag:0];
         return cell;
     }
     SGDSPEffect *e = [self effectIn:path.section];
     if (!e) {
         UITableViewCell *cell = SGDequeueCell(table, @"reset");
-        [self fillHead:cell title:@"Reset all effects" subtitle:nil];
+        [self fillHead:cell title:@"모든 효과 초기화" subtitle:nil];
         UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
         content.textProperties.color = SGRed();
         cell.contentConfiguration = content;
@@ -622,7 +622,7 @@ static UIFont *tabular(UIFont *font) {
 // Red, the way Settings' warning rows are: the effect's last change did not take, and why.
 - (UITableViewCell *)errorCell:(UITableView *)table text:(NSString *)text {
     UITableViewCell *cell = SGDequeueCell(table, @"error");
-    SGFillCell(cell, @"Not applied", text, SGRed(), @"exclamationmark.triangle.fill");
+    SGFillCell(cell, @"적용되지 않음", text, SGRed(), @"exclamationmark.triangle.fill");
     UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
     content.secondaryTextProperties.color = SGRed();
     cell.contentConfiguration = content;
@@ -717,17 +717,17 @@ static UIFont *tabular(UIFont *font) {
 }
 
 - (void)confirmReset {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Reset all effects?"
-        message:@"Every effect goes off, and every value, curve and file choice back to its default. The Effects switch and your imported files stay."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"모든 효과를 초기화할까요?"
+        message:@"각 효과를 끄고 값, 곡선, 파일 선택을 기본값으로 되돌립니다. 오디오 효과의 전체 스위치와 가져온 파일은 유지됩니다."
         preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"초기화" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGDSPResetAll();
         [self readState];
         [UIView transitionWithView:self.tableView duration:0.25 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
             [self.tableView reloadData];
         } completion:nil];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

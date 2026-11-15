@@ -57,3 +57,6 @@ UIViewController *SGTopController(void);
 // `panel` as a dark popover from `from`, at its preferredContentSize, a popover on iPhone too. Picked from a
 // system menu, which is still going away, it waits for the menu.
 void SGPresentPopover(UIViewController *panel, UIView *from);
+
+// Translate display values only; preference keys and service payloads remain untouched.
+NSString *SGKoreanUI(NSString *text);

@@ -14,9 +14,9 @@
 #import "SGHapticRelay.h"
 #import "SGVibrationsPreview.h"
 
-static NSString *const kMusicInfo = @"The iPhone taps along with the drums and rumbles under the bass, worked out from the sound as Spotify plays it. Only while Spotify is open: iOS stops an app's own haptics in the background, and a song playing on another device through Connect has no sound here to follow.\n\nWith In the Background on too, iOS plays its own haptic track for the songs it has one for, and this waits, so the two never double up.";
+static NSString *const kMusicInfo = @"Spotify가 재생하는 소리를 분석해 드럼에 맞춰 탭하고 베이스에 진동을 더합니다. Spotify가 열린 동안만 작동합니다. iOS는 앱 자체의 백그라운드 햅틱을 중지하며 다른 Connect 기기에서 재생하면 분석할 소리가 없습니다.\n\n백그라운드에서도 함께 켜면 지원되는 곡에는 iOS 햅틱을 우선하여 두 진동이 겹치지 않습니다.";
 
-static NSString *const kEverywhereInfo = @"With a jailbreak, Music Haptics above keeps playing when Spotify leaves the screen: on the home screen, in other apps and on the lock screen. Spotify still listens to its own sound, and SpringBoard, which iOS lets play haptics at any time, plays the taps and the rumble for it.\n\nThat part is an add-on, Vitrine Addon, installed once with a package manager (Sileo, Zebra or Filza): Vitrine itself lives in Spotify and cannot reach SpringBoard.";
+static NSString *const kEverywhereInfo = @"탈옥 환경에서는 Spotify를 벗어나 홈, 다른 앱, 잠금 화면에서도 음악 햅틱을 유지합니다. Spotify가 소리를 분석하고 언제든 햅틱을 재생할 수 있는 SpringBoard가 진동을 출력합니다.\n\n이 기능은 패키지 관리자(Sileo, Zebra, Filza)로 한 번 설치하는 Vitrine Addon이 담당합니다. Spotify 안에서 실행되는 Vitrine 자체는 SpringBoard에 접근할 수 없습니다.";
 // The add-on's .deb inside Spotify handed to the package manager, once the alert it is picked from has gone.
 static void shareAddon(void) {
     SGHapticAddonShareSoon();
@@ -24,10 +24,10 @@ static void shareAddon(void) {
 
 // Everywhere switched on without the add-on: what it needs, and the add-on two taps away (SGHapticAddonExplain).
 static void explainAddon(void) {
-    SGHapticAddonExplain(@"Music Haptics outside Spotify");
+    SGHapticAddonExplain(@"Spotify 밖에서 음악 햅틱 사용");
 }
 
-static NSString *const kBackgroundInfo = @"Keeps the vibrations going on the lock screen and in other apps, where iOS stops Spotify's own. The mod tells iOS which recording is playing, by its ISRC code from Apple Music's catalog (no sound leaves the phone), and iOS's own Music Haptics, the one Apple Music uses, plays Apple's haptic track for it.\n\nIt needs Settings > Accessibility > Music Haptics on, and only songs Apple has a haptic track for vibrate. While Spotify is open, Music Haptics above plays the others, if it is on.";
+static NSString *const kBackgroundInfo = @"잠금 화면과 다른 앱에서 iOS 음악 햅틱으로 진동을 유지합니다. Apple Music 카탈로그에서 얻은 ISRC로 현재 녹음을 iOS에 알리며 소리는 휴대전화 밖으로 전송하지 않습니다. iOS가 Apple Music과 같은 햅틱 트랙을 재생합니다.\n\n설정 > 손쉬운 사용 > 음악 햅틱이 켜져 있어야 하며 Apple이 햅틱을 제공하는 곡만 지원합니다. Spotify가 열린 동안에는 위 음악 햅틱 기능이 다른 곡의 진동을 담당합니다.";
 
 NSNotificationName const SGMusicHapticsSwitchesChangedNotification = @"SGMusicHapticsSwitchesChangedNotification";
 NSNotificationName const SGSystemMusicHapticsChangedNotification = @"SGSystemMusicHapticsChangedNotification";
@@ -87,9 +87,9 @@ static NSArray<NSString *> *followsNames(void) {
 }
 
 static NSArray<NSString *> *followsNotes(void) {
-    return @[@"A tap on each kick and snare, and a rumble under the bass",
-             @"A tap on each kick and snare, no rumble",
-             @"A tap on each kick, and a rumble under the bass"];
+    return @[@"킥과 스네어마다 탭하며 베이스에 진동을 더합니다",
+             @"킥과 스네어마다 탭하며 지속 진동은 없습니다",
+             @"킥마다 탭하며 베이스에 진동을 더합니다"];
 }
 
 static void strengthRange(NSString *key, NSInteger *minimum, NSInteger *maximum) {
@@ -150,13 +150,13 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
         [weakPreview rippleAt:SGHapticsStrength(SGKeyMusicStrength) / 2];
     });
     musicStrength.waitsOn = SGKeyMusicHaptics;
-    SGModRow *follows = SGChoiceRow(@"Follows", nil, SGKeyMusicFollows, followsNames(), SGMusicFollowsEverything);
+    SGModRow *follows = SGChoiceRow(@"진동 기준", nil, SGKeyMusicFollows, followsNames(), SGMusicFollowsEverything);
     follows.choiceNotes = followsNotes();
     follows.chosen = ^(NSInteger index) { SGMusicHapticsSettingsChanged(); };
     follows.waitsOn = SGKeyMusicHaptics;
 
     // Everywhere (SGHapticRelay.h): on a jailbroken phone, played from SpringBoard when its side answers, else by the vibration.
-    SGModRow *everywhere = SGOptionRow(@"Everywhere", nil, SGKeyMusicHapticsEverywhere);
+    SGModRow *everywhere = SGOptionRow(@"모든 화면", nil, SGKeyMusicHapticsEverywhere);
     everywhere.info = kEverywhereInfo;
     everywhere.changed = ^(BOOL on) {
         switched(on);
@@ -165,14 +165,14 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     everywhere.waitsOn = SGKeyMusicHaptics;
     everywhere.visible = ^BOOL { return SGHapticEverywhereOffered(); };
     // Everywhere's second switch: with it, Music Haptics plays in Spotify only, everywhere but the lock screen, or everywhere.
-    SGModRow *lockScreen = SGSwitchRow(@"On the lock screen", @"Off: only while the phone is unlocked", SGKeyMusicHapticsLockScreen);
+    SGModRow *lockScreen = SGSwitchRow(@"잠금 화면에서", @"꺼짐: 휴대전화 잠금이 풀린 동안만 작동", SGKeyMusicHapticsLockScreen);
     // Off until asked for: a locked phone in a pocket does not vibrate.
     lockScreen.defaultOn = NO;
     lockScreen.changed = ^(BOOL on) { SGHapticRelaySendLockScreen(); };
     lockScreen.waitsOn = SGKeyMusicHapticsEverywhere;
     lockScreen.visible = ^BOOL { return SGHapticEverywhereOffered(); };
     // A newer add-on inside this Vitrine than the one SpringBoard runs: the same two taps put it in place.
-    SGModRow *addonUpdate = SGActionRow(@"Update Vitrine Addon", @"A newer add-on comes with this Vitrine", ^{ shareAddon(); });
+    SGModRow *addonUpdate = SGActionRow(@"Vitrine Addon 업데이트", @"이 Vitrine에는 더 최신 Addon이 포함되어 있습니다", ^{ shareAddon(); });
     addonUpdate.visible = ^BOOL { return SGHapticAddonOutdated(); };
 
     SGModRow *background = SGOptionRow(@"백그라운드에서", nil, SGKeyMusicHapticsBackground);
@@ -183,16 +183,16 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     SGModRow *status = SGStatRow(@"상태", ^NSString *{ return SGMusicHapticsStatus(); });
     status.visible = ^BOOL { return SGMusicHapticsInBackground() && SGSystemMusicHapticsOn(); };
     // Under In the Background while the install lacks the key iOS lists apps for Music Haptics by.
-    SGModRow *unlisted = SGWarningRow(@"In the Background is missing from this install", @"Tap for why", ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"In the Background is missing"
-            message:@"iOS plays Music Haptics only for apps that say they support it, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both."
+    SGModRow *unlisted = SGWarningRow(@"이 설치에는 백그라운드 기능이 없습니다", @"탭하여 이유 확인", ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"백그라운드 기능이 없습니다"
+            message:@"iOS는 지원을 선언한 앱에만 음악 햅틱을 제공합니다. Vitrine IPA 빌드만 Spotify에 해당 선언을 추가합니다. 이 설치에는 선언이 없어 Spotify를 벗어나면 진동이 멈춥니다. 앱이 열린 동안 위 음악 햅틱은 계속 작동합니다. 두 기능을 모두 사용하려면 Vitrine으로 IPA를 빌드하세요."
             preferredStyle:UIAlertControllerStyleAlert];
         alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
     });
     unlisted.visible = ^BOOL { return backgroundAvailable() && !SGMusicHapticsListedByInstall(); };
-    SGModRow *systemOff = SGActionRow(@"Music Haptics is off in iOS", @"Tap to turn it on in Settings", explain);
+    SGModRow *systemOff = SGActionRow(@"iOS에서 음악 햅틱이 꺼져 있습니다", @"탭하여 설정에서 켜기", explain);
     systemOff.visible = ^BOOL { return SGMusicHapticsInBackground() && !SGSystemMusicHapticsOn(); };
 
     return @[
@@ -254,10 +254,10 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
 - (void)explainBackground {
     // iOS opens no Settings page but an app's own from a third-party app (App-prefs: links fail on iOS 27), so the
     // message gives the path from there.
-    NSString *message = @"In the Background needs iOS's Music Haptics. Settings opens on Spotify's page: go back to Settings, then Accessibility > Music Haptics, and turn it on.";
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Turn On Music Haptics" message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Not Now" style:UIAlertActionStyleCancel handler:nil]];
-    UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    NSString *message = @"백그라운드 기능에는 iOS 음악 햅틱이 필요합니다. Spotify 설정에서 뒤로 이동한 후 손쉬운 사용 > 음악 햅틱을 켜세요.";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"음악 햅틱 켜기" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"나중에" style:UIAlertActionStyleCancel handler:nil]];
+    UIAlertAction *open = [UIAlertAction actionWithTitle:@"설정 열기" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil];
     }];
     [alert addAction:open];

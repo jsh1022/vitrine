@@ -372,7 +372,7 @@ static BOOL adFree(void) {
     UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
     config.contentInsets = NSDirectionalEdgeInsetsMake(4, 32, 4, 0);
     config.baseForegroundColor = SGGreen();
-    config.attributedTitle = [[NSAttributedString alloc] initWithString:@"Report a bug" attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]}];
+    config.attributedTitle = [[NSAttributedString alloc] initWithString:@"버그 신고" attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]}];
     _report = [UIButton buttonWithConfiguration:config primaryAction:[UIAction actionWithHandler:^(UIAction *action) {
         SGOpenURL([SGRepoURL stringByAppendingString:@"/issues"]);
     }]];
@@ -398,7 +398,7 @@ static BOOL adFree(void) {
     } else {
         _noteIcon.image = [UIImage systemImageNamed:@"info.circle.fill"];
         _noteIcon.tintColor = SGGrey();
-        _noteText.text = @"Apple Music style lyrics, the redesigned player and the glass tab bar come with the redesign only.";
+        _noteText.text = @"Apple Music 스타일 가사, 재설계 플레이어, 글래스 탭 막대는 재설계 UI에서만 제공됩니다.";
     }
     _report.hidden = !untested || !SGRepoURL;
     _note.hidden = _redesigned.selected && !untested;
@@ -406,26 +406,24 @@ static BOOL adFree(void) {
     [_column setCustomSpacing:_note.hidden ? 32 : 12 afterView:_legacy];
     // The tips of the picked look: Split Tabs is the redesign's bar's, and the lyrics preview the redesign's page's.
     _splitTip.hidden = !_redesigned.selected;
-    _lyricsTip.text = [(_redesigned.selected ? @"A live preview of the look, the sources in order, and lyrics even where Spotify has none."
-                                             : @"The sources in order, and lyrics even where Spotify has none.")
+    _lyricsTip.text = [(_redesigned.selected ? @"가사 모양을 미리 보고 소스 순서를 정할 수 있으며 Spotify에 없는 가사도 표시합니다."
+                                             : @"가사 소스의 순서를 정하고 Spotify에 없는 가사도 표시합니다.")
                        stringByAppendingString:@"\nMod Settings > Lyrics"];
 }
 
 // What people miss in Mod Settings, as pointers only: the tour has no way into a page but holding Home.
 - (UIView *)tipsView {
     UIStackView *split = cardRow(@"rectangle.split.2x1", @"탭 분리",
-                                 @"Any tab, Queue for one, on a bar of its own at the trailing end.\nMod Settings > Tab bar > Split Tabs", nil);
+                                 @"대기열 등의 탭을 오른쪽 별도 막대로 분리합니다.\nMod 설정 > 탭 막대 > 탭 분리", nil);
     _splitTip = split;
     UIStackView *lyrics = cardRow(@"quote.bubble", @"가사", @"", nil);
     // The row's text stack is its last arranged view, the gray line that stack's; updateNote writes the look's.
     _lyricsTip = (UILabel *)((UIStackView *)lyrics.arrangedSubviews.lastObject).arrangedSubviews.lastObject;
     BOOL liveActivity = NO;
     if (@available(iOS 17.0, *)) liveActivity = YES;
-    UIStackView *airPods = cardRow(@"airpods.pro", liveActivity ? @"AirPods gestures, Live Activity" : @"AirPods 제스처",
-                                   liveActivity ? @"Nod twice or shake your head to control the music, with a chime; and the track on the "
-                                                  @"lock screen. Either look.\nMod Settings > AirPods gestures, Live Activity"
-                                                : @"Nod twice or shake your head to control the music, with a chime. Either look."
-                                                  @"\nMod Settings > AirPods gestures", nil);
+    UIStackView *airPods = cardRow(@"airpods.pro", liveActivity ? @"AirPods 제스처, Live Activity" : @"AirPods 제스처",
+                                   liveActivity ? @"두 번 끄덕이거나 고개를 저어 음악을 제어하고 알림음으로 확인합니다. 잠금 화면에도 곡을 표시합니다. 두 UI 모드에서 사용할 수 있습니다.\nMod 설정 > AirPods 제스처, Live Activity"
+                                                : @"고개를 두 번 끄덕이거나 저어 음악을 제어하며 알림음으로 확인합니다. 두 UI 모드에서 모두 사용할 수 있습니다.\nMod 설정 > AirPods 제스처", nil);
     return tipsCard(@[split, lyrics, airPods]);
 }
 
@@ -441,15 +439,15 @@ static BOOL adFree(void) {
 
     BOOL glass = SGRedesignAvailable();
     UILabel *heading = [UILabel new];
-    heading.text = @"Pick your look.";
+    heading.text = @"화면 모양을 선택하세요.";
     heading.font = [UIFont systemFontOfSize:30 weight:UIFontWeightBold];
     heading.textColor = UIColor.whiteColor;
     heading.numberOfLines = 0;
 
-    NSString *redesign = glass ? @"Looks like Apple Music. Better lyrics, Live Activity."
-                               : [NSString stringWithFormat:@"Looks like Apple Music. Untested on iOS %@.", UIDevice.currentDevice.systemVersion];
-    _redesigned = [[SGLookCard alloc] initWithSymbol:@"sparkles" title:@"Redesigned" subtitle:redesign];
-    _legacy = [[SGLookCard alloc] initWithSymbol:@"slider.horizontal.3" title:@"Legacy" subtitle:@"More options, still looks like Spotify."];
+    NSString *redesign = glass ? @"Apple Music 스타일 화면과 향상된 가사, Live Activity를 제공합니다."
+                               : [NSString stringWithFormat:@"Apple Music 스타일 화면입니다. iOS %@에서 검증되지 않았습니다.", UIDevice.currentDevice.systemVersion];
+    _redesigned = [[SGLookCard alloc] initWithSymbol:@"sparkles" title:@"재설계" subtitle:redesign];
+    _legacy = [[SGLookCard alloc] initWithSymbol:@"slider.horizontal.3" title:@"기본" subtitle:@"Spotify 화면에 추가 옵션을 적용합니다."];
     for (SGLookCard *card in @[_redesigned, _legacy]) [card addTarget:self action:@selector(picked:) forControlEvents:UIControlEventTouchUpInside];
     // The first launch offers the redesign where it is at home; below iOS 26 it waits to be asked for.
     // The tour again from the Mod page shows the stored look.
@@ -463,26 +461,24 @@ static BOOL adFree(void) {
     _ads = [UISwitch new];
     _ads.onTintColor = SGGreen();
     _ads.on = adFree();
-    _adsCard = [[SGLookCard alloc] initWithSymbol:@"speaker.slash" title:@"No ads"
-                                         subtitle:@"No ads, no Premium upsells, and Premium spoofed." accessory:_ads];
+    _adsCard = [[SGLookCard alloc] initWithSymbol:@"speaker.slash" title:@"광고 없음"
+                                         subtitle:@"광고와 Premium 권유를 숨기고 Premium으로 표시합니다." accessory:_ads];
     [_adsCard addTarget:self action:@selector(toggleAds) forControlEvents:UIControlEventTouchUpInside];
     _adsCard.isAccessibilityElement = YES;
-    _adsCard.accessibilityLabel = @"No ads";
-    _adsCard.accessibilityHint = @"No ads, no Premium upsells, and Premium spoofed.";
+    _adsCard.accessibilityLabel = @"광고 없음";
+    _adsCard.accessibilityHint = @"광고와 Premium 권유를 숨기고 Premium으로 표시합니다.";
     _adsCard.accessibilityValue = _ads.on ? @"켜짐" : @"꺼짐";
     if (@available(iOS 17.0, *)) _adsCard.accessibilityTraits = UIAccessibilityTraitToggleButton;
     else _adsCard.accessibilityTraits = UIAccessibilityTraitButton;
     UILabel *adsText = [UILabel new];
-    adsText.text = @"Three switches of Premium, ads & privacy, applied at the restart; off leaves each as it is. Spoof Premium is "
-                   @"untested and can end in a forced logout; a Premium account gains nothing from it. Offline, audio quality and "
-                   @"sessions stay the server's.";
+    adsText.text = @"Premium, 광고 및 개인정보의 스위치 세 개를 재시작 후 적용합니다. 끄면 각 설정을 유지합니다. Spoof Premium은 미검증 기능으로 강제 로그아웃 등이 발생할 수 있으며 Premium 계정에는 이점이 없습니다. 오프라인, 음질 및 세션은 서버 정책을 따릅니다.";
     UIStackView *adsNote = noteLine(SGSymbolView(@"info.circle.fill", 15, UIImageSymbolWeightSemibold, 22), adsText);
     adsNote.arrangedSubviews.firstObject.tintColor = SGGrey();
     adsNote.layoutMargins = UIEdgeInsetsMake(4, 4, 0, 4);
     adsNote.layoutMarginsRelativeArrangement = YES;
 
     UILabel *tipsHeading = [UILabel new];
-    tipsHeading.text = @"Easy to miss";
+    tipsHeading.text = @"알아두면 유용한 기능";
     tipsHeading.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     tipsHeading.textColor = UIColor.whiteColor;
     UIView *tips = [self tipsView];
@@ -505,10 +501,10 @@ static BOOL adFree(void) {
     [scroll addSubview:column];
     [self.view addSubview:scroll];
 
-    _primary = SGOnboardingButton(@"Start listening");
+    _primary = SGOnboardingButton(@"음악 듣기 시작");
     [_primary addTarget:self action:@selector(finish) forControlEvents:UIControlEventTouchUpInside];
     UILabel *footer = [UILabel new];
-    footer.text = @"Hold Home to open settings.";
+    footer.text = @"홈을 길게 눌러 설정을 여세요.";
     footer.font = [UIFont systemFontOfSize:13];
     footer.textColor = SGGrey();
     footer.textAlignment = NSTextAlignmentCenter;
@@ -595,7 +591,7 @@ static BOOL adFree(void) {
 
 - (void)refresh {
     UIButtonConfiguration *config = _primary.configuration;
-    NSString *title = self.needsRestart ? @"Spotify 재시작" : @"Start listening";
+    NSString *title = self.needsRestart ? @"Spotify 재시작" : @"음악 듣기 시작";
     config.attributedTitle = [[NSAttributedString alloc] initWithString:title attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]}];
     _primary.configuration = config;
 }

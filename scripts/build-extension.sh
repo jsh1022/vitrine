@@ -61,6 +61,8 @@ plutil -convert binary1 "$APPEX/Info.plist"
 # name them too, under the module the tweak compiles them in (Theos names it after the tweak instance).
 metadata spotifyglass 16.0 "$OUT/app" "$SHARED" "$SHORTCUTS"
 
-codesign -f -s - "$APPEX" >/dev/null 2>&1
+if [ "${SG_UNSIGNED:-0}" != 1 ]; then
+  codesign -f -s - "$APPEX"
+fi
 rm -rf "$WORK"
 echo "    $APPEX"

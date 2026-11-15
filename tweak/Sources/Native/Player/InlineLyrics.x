@@ -6,6 +6,8 @@
 @interface SGInlineLyrics : NSObject
 @property(nonatomic, weak) UIView *host;
 @property(nonatomic, strong) NSTimer *timer;
+@property(nonatomic, copy) NSString *track;
+@property(nonatomic) BOOL supplied;
 - (void)refresh;
 @end
 @implementation SGInlineLyrics
@@ -21,7 +23,10 @@
     }
     NSString *track = SGKaraokePlayingTrack();
     NSArray<SGKaraokeLine *> *lines = track.length ? SGKaraokeLinesForTrack(track) : nil;
-    if (!lines.count) return;
+    BOOL changed = ![self.track isEqualToString:track];
+    self.track = track;
+    if (!lines.count && (!changed || !self.supplied)) return;
+    self.supplied = lines.count > 0;
     NSInteger position = SGKaraokePositionMs();
     NSInteger index = position < 0 ? -1 : SGKaraokeLeadLine(lines, position - SGKaraokeDelayMs());
     NSString *text = index >= 0 && index < (NSInteger)lines.count ? SGKaraokeLineText(lines[index]) : @"";

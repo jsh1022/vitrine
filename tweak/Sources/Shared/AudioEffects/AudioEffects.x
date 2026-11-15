@@ -589,7 +589,7 @@ void SGDSPApply(NSString *effect) {
 #pragma mark - what the page shows
 
 NSString *SGDSPStatus(void) {
-    if (!SGDSPSwitch(SGKeyDSP)) return @"Off";
+    if (!SGDSPSwitch(SGKeyDSP)) return @"꺼짐";
     if (atomic_load(&sg_outputState) == SGOutputUnsupported) return @"Spotify's output is in a format the engine does not take";
     SGDSPEngine *engine = atomic_load(&sg_engine);
     if (!sg_reachable) return @"Unavailable: Spotify's output could not be reached";

@@ -197,9 +197,9 @@ NSString *SGUpdateStatus(void) {
     if (sg_running) return @"checking…";
     if (sg_failure) return sg_failure;
     NSString *latest = SGUpdateVersion();
-    if (latest) return [latest stringByAppendingString:@" is out"];
-    if (SGUpdateChecked()) return @"up to date";
-    return @"not checked";
+    if (latest) return [latest stringByAppendingString:@" 출시됨"];
+    if (SGUpdateChecked()) return @"최신 버전";
+    return @"확인 전";
 }
 
 #pragma mark - the check
@@ -270,13 +270,13 @@ void SGCheckForUpdate(BOOL force) {
             if (!releases) {
                 // Unauthenticated GitHub allows sixty requests an hour per address; a phone behind a
                 // carrier NAT can be told to wait, and that is worth reading apart from a dead network.
-                sg_failure = status == 403 || status == 429 ? @"asked too often" : @"check failed";
+                sg_failure = status == 403 || status == 429 ? @"요청 제한됨" : @"확인 실패";
                 SGLog(@"update check failed: HTTP %ld, %@", (long)status,
                       error.localizedDescription ?: @"no release in the reply");
             } else {
                 [store setObject:releases forKey:kReleases];
                 [store setDouble:NSDate.date.timeIntervalSince1970 forKey:kChecked];
-                SGLog(@"update check: the newest is %@, this build is %s", releases.firstObject[@"version"] ?: @"none for this build", SG_VERSION);
+                SGLog(@"update check: the newest is %@, this build is %s", releases.firstObject[@"version"] ?: @"이 빌드의 항목 없음", SG_VERSION);
             }
             [NSNotificationCenter.defaultCenter postNotificationName:SGUpdateCheckedNotification object:nil];
         });

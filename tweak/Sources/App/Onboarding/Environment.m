@@ -33,8 +33,8 @@ static BOOL otherVersion(void) {
 }
 
 static SGProblem eevee(void) {
-    return @[@"EeveeSpotify is injected too",
-             @"Vitrine already blocks ads and brings lyrics, and EeveeSpotify hooks the same parts of Spotify. With both, Spotify can freeze as it starts or show the wrong lyrics. Sign Spotify again without EeveeSpotify."];
+    return @[@"EeveeSpotify도 함께 삽입되어 있습니다",
+             @"Vitrine과 EeveeSpotify는 Spotify의 같은 부분에 광고 차단과 가사를 적용합니다. 함께 사용하면 시작 중 멈추거나 잘못된 가사를 표시할 수 있습니다. EeveeSpotify 없이 Spotify를 다시 서명하세요."];
 }
 
 // "a", "a and b", "a, b and c", with `word` for the last join.
@@ -48,8 +48,8 @@ static SGProblem version(void) {
     NSArray<NSString *> *likely = SGSpotifyLikelyWorksVersions;
     NSString *also = !likely.count ? @""
         : [NSString stringWithFormat:@", and %@ likely %@ too", joined(likely, @"and"), likely.count == 1 ? @"works" : @"work"];
-    return @[[NSString stringWithFormat:@"Spotify %@ is not the version Vitrine is made for", SGSpotifyVersion()],
-             [NSString stringWithFormat:@"Vitrine is made for Spotify %@%@. On another version some of its changes find nothing to change, and some screens can look wrong or crash. Inject Vitrine into Spotify %@.",
+    return @[[NSString stringWithFormat:@"Spotify %@는 Vitrine의 대상 버전이 아닙니다", SGSpotifyVersion()],
+             [NSString stringWithFormat:@"Vitrine은 Spotify %@%@용입니다. 다른 버전에서는 일부 기능이 작동하지 않거나 화면 오류와 충돌이 발생할 수 있습니다. Spotify %@에 Vitrine을 삽입하세요.",
                  joined(SGSpotifySupportedVersions, @"and"), also,
                  joined([SGSpotifySupportedVersions arrayByAddingObjectsFromArray:likely], @"or")]];
 }
@@ -62,10 +62,10 @@ static NSArray<NSString *> *missingAppChanges(void) {
     NSMutableArray<NSString *> *missing = [NSMutableArray array];
     id compatibility = [NSBundle.mainBundle objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"];
     if (SGRedesignAvailable() && SGRedesignedUIStored() && [compatibility isKindOfClass:NSNumber.class] && [compatibility boolValue])
-        [missing addObject:@"the tab bar stays Spotify's own, without its glass"];
-    if (!SGLiveActivityAllowedByInstall()) [missing addObject:@"the Live Activity is missing"];
+        [missing addObject:@"탭 막대에 글래스 없이 Spotify 기본 화면을 사용합니다"];
+    if (!SGLiveActivityAllowedByInstall()) [missing addObject:@"Live Activity가 없습니다"];
     if (!SGMusicHapticsListedByInstall())
-        [missing addObject:@"iOS does not list Spotify for Music Haptics, which stops vibrations in the background"];
+        [missing addObject:@"iOS 음악 햅틱 목록에 Spotify가 없어 백그라운드 진동이 중지됩니다"];
     return missing;
 }
 
@@ -74,20 +74,20 @@ static BOOL withoutAppChanges(void) {
 }
 
 static SGProblem appChanges(void) {
-    return @[@"Installed without Vitrine's app changes",
-             [NSString stringWithFormat:@"Some of what Vitrine does needs changes to the app that only its IPA build makes. Without them, %@. Build the IPA with Vitrine instead of injecting its .deb.",
+    return @[@"Vitrine의 앱 변경 사항 없이 설치됨",
+             [NSString stringWithFormat:@"일부 기능은 Vitrine IPA 빌드의 앱 변경 사항이 필요합니다. 없으면 %@. .deb를 삽입하는 대신 Vitrine으로 IPA를 빌드하세요.",
                  joined(missingAppChanges(), @"and")]];
 }
 
 static SGProblem fellBack(void) {
-    return @[@"The redesign did not start",
-             [NSString stringWithFormat:@"Spotify did not get going with the redesign on iOS %@, so it is back in Legacy and Redesigned UI is off. Mod Settings can turn it on again.",
+    return @[@"재설계 UI를 시작하지 못했습니다",
+             [NSString stringWithFormat:@"iOS %@에서 재설계 UI로 Spotify를 실행하지 못해 기본 화면으로 돌아오고 재설계 UI를 껐습니다. Mod 설정에서 다시 켤 수 있습니다.",
                  UIDevice.currentDevice.systemVersion]];
 }
 
 // One problem is the alert's title and message; several are a paragraph each under a count.
 static void tell(NSArray<SGProblem> *list) {
-    NSString *title = list.count == 1 ? list[0][0] : [NSString stringWithFormat:@"%lu things to know", (unsigned long)list.count];
+    NSString *title = list.count == 1 ? list[0][0] : [NSString stringWithFormat:@"확인할 사항 %lu개", (unsigned long)list.count];
     NSMutableArray<NSString *> *paragraphs = [NSMutableArray array];
     for (SGProblem problem in list) {
         [paragraphs addObject:list.count == 1 ? problem[1] : [NSString stringWithFormat:@"%@.\n%@", problem[0], problem[1]]];
@@ -130,8 +130,8 @@ static void offerCleanup(void) {
     NSArray<NSURL *> *leftovers = chromaLeftovers();
     if (!leftovers.count) return;
     NSString *size = sizeOf(leftovers);
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Chroma left %@ on this iPhone", size]
-                                                                  message:@"Its Karaoke voice model and its saved lock screen videos are still in Spotify's storage, and Vitrine uses neither. Your listening history and audio effects stay."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"이 iPhone에 Chroma의 %@ 항목이 남아 있습니다", size]
+                                                                  message:@"Spotify 저장 공간에 Chroma의 노래방 음성 모델과 잠금 화면 동영상이 남아 있습니다. Vitrine은 이 파일들을 사용하지 않습니다. 감상 기록과 오디오 효과는 유지됩니다."
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"삭제" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -156,15 +156,15 @@ static NSArray<SGProblem> *installProblems(void) {
 NSArray<SGModRow *> *SGEnvironmentWarningRows(void) {
     NSMutableArray<SGModRow *> *rows = [NSMutableArray array];
     if (SGEeveeSpotifyInjected())
-        [rows addObject:SGWarningRow(@"EeveeSpotify is injected too", @"Tap for what that does", ^{ tell(@[eevee()]); })];
+        [rows addObject:SGWarningRow(@"EeveeSpotify도 함께 삽입되어 있습니다", @"탭하여 영향 확인", ^{ tell(@[eevee()]); })];
     if (otherVersion())
-        [rows addObject:SGWarningRow([NSString stringWithFormat:@"Made for Spotify %@", joined(SGSpotifySupportedVersions, @"and")],
-                                     [NSString stringWithFormat:@"This is %@. Tap for what that does", SGSpotifyVersion()],
+        [rows addObject:SGWarningRow([NSString stringWithFormat:@"Spotify %@용", joined(SGSpotifySupportedVersions, @"and")],
+                                     [NSString stringWithFormat:@"현재 버전은 %@입니다. 탭하여 영향 확인", SGSpotifyVersion()],
                                      ^{ tell(@[version()]); })];
     if (withoutAppChanges())
-        [rows addObject:SGWarningRow(@"Installed without the app changes", @"Tap for what that does", ^{ tell(@[appChanges()]); })];
+        [rows addObject:SGWarningRow(@"앱 변경 사항 없이 설치됨", @"탭하여 영향 확인", ^{ tell(@[appChanges()]); })];
     if (chromaLeftovers().count)
-        [rows addObject:SGWarningRow(@"Chroma left files behind", [NSString stringWithFormat:@"%@ Vitrine never uses. Tap to delete", sizeOf(chromaLeftovers())], ^{ offerCleanup(); })];
+        [rows addObject:SGWarningRow(@"Chroma 파일이 남아 있습니다", [NSString stringWithFormat:@"Vitrine이 사용하지 않는 %@ 항목입니다. 탭하여 삭제", sizeOf(chromaLeftovers())], ^{ offerCleanup(); })];
     return rows;
 }
 

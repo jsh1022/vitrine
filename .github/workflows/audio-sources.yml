@@ -32,12 +32,17 @@ jobs:
           go-version-file: vendor/wireguard/go.mod
           cache-dependency-path: vendor/wireguard/go.sum
       - run: MIN_IOS=16.0 bash vendor/wireguard/build-ios.sh
+      - run: python3 scripts/localization/check.py
       - run: bash harness/audio-sources/check.sh
         env:
           LOGOS: ${{ github.workspace }}/.check-tools/logos
       - run: bash harness/audio-sources/presentation-check.sh
         env:
           LOGOS: ${{ github.workspace }}/.check-tools/logos
+      - name: Player morph reversal and cleanup
+        run: bash harness/player-morph/check.sh
+        env:
+          THEOS: ${{ github.workspace }}/.check-tools/logos
       - name: Lossless handoff and wired rate negotiation
         run: |
           if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi

@@ -88,6 +88,9 @@ static CGFloat screenRadius(void) {
     CGColorRef _overlayColor;
     BOOL _coverHidden;
     BOOL _tornDown;
+    BOOL _opening;
+    CALayer *_originalMask;
+    CATransform3D _originalTransform;
     BOOL _follows;   // 9.1.90: Spotify animates the player's frame and alpha, which the morph then only reads
 }
 
@@ -100,7 +103,8 @@ static CGFloat screenRadius(void) {
 // 9.1.90's CompactOverlayTransition animates the player itself, so the morph follows where it is drawn. Spotify also
 // crossfades its bar stand-in with the player at each end, on the render server, so the bar is in its place the moment
 // the card lands even when the main thread stalls; the stand-in is left to Spotify.
-- (void)followFrom:(UIView *)source {
+- (void)followFrom:(UIView *)source opening:(BOOL)opening {
+    _opening = opening;
     _follows = YES;
     // Next turn, once every hook on the transition's start has run: a close's glass copies (BarTransition.x) exist by
     // then whichever hook runs first. At either end the strip sits in the stand-in at Spotify's own alpha, so the turn
@@ -188,6 +192,8 @@ static CGFloat screenRadius(void) {
     _overlayColor = CGColorRetain(overlay.layer.backgroundColor);
     overlay.layer.backgroundColor = NULL;
 
+    _originalMask = overlay.layer.mask;
+    _originalTransform = overlay.layer.sublayerTransform;
     _mask = [CALayer layer];
     _mask.backgroundColor = UIColor.blackColor.CGColor;
     _mask.cornerCurve = kCACornerCurveContinuous;
@@ -222,7 +228,7 @@ static CGFloat screenRadius(void) {
         // Where Spotify's animation has the player now: its frame's model value is already the end. Not drawn yet (an
         // open's first frame), it is at the bar and transparent.
         CALayer *drawn = overlay.layer.presentationLayer;
-        _spotifyFrame = drawn ? drawn.frame : (CGRect){{_spotifyFrame.origin.x, self.restY}, _spotifyFrame.size};
+        _spotifyFrame = drawn ? drawn.frame : (CGRect){{_spotifyFrame.origin.x, _opening ? self.restY : 0}, _spotifyFrame.size};
         _spotifyAlpha = drawn ? drawn.opacity : 0;
     }
     CGRect full = container.bounds;
@@ -306,8 +312,8 @@ static CGFloat screenRadius(void) {
     UIView *overlay = _overlay;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    overlay.layer.sublayerTransform = CATransform3DIdentity;
-    if (overlay.layer.mask == _mask) overlay.layer.mask = nil;
+    overlay.layer.sublayerTransform = _originalTransform;
+    if (overlay.layer.mask == _mask) overlay.layer.mask = _originalMask;
     UIView *masked = _masked, *pane = _stripPane;
     if (_stripMask && masked.layer.mask == _stripMask) masked.layer.mask = nil;
     pane.alpha = _stripPaneAlpha;
@@ -369,7 +375,7 @@ static SGRPlayerMorph *morphFor(SPTBarOverlayPresentationTransition *transition,
 // has the player and morphs to match, so Spotify's frame, alpha and completion stay its own. It is let go once the
 // transition is no longer interactive and the player has no animation left and holds still a few frames.
 static const CFTimeInterval kGiveUp = 0.9;   // ticking with no move this long; UIKit's whole presentation runs about 0.5 s
-static const float kCloseSpeed = 1.5;         // how much faster than Spotify's a close it runs on its own plays
+
 
 @interface SGRMorphFollower : NSObject
 @property (nonatomic, strong) SGRPlayerMorph *morph;
@@ -381,17 +387,8 @@ static const float kCloseSpeed = 1.5;         // how much faster than Spotify's 
 @property (nonatomic) CGRect npbFrame;   // Spotify's bar frame, for the Jam close log
 @property (nonatomic) CFTimeInterval settledSince;   // when it last moved or was driven by a finger, or began
 @property (nonatomic) CFTimeInterval lastTick;
-@property (nonatomic) BOOL sped;                     // the container's layer runs at kCloseSpeed until let go
 @property (nonatomic) BOOL closing, wasInteractive;
 @end
-
-// The container's clock runs at `speed` from now on, continuing from where its animations are.
-static void runAtSpeed(CALayer *layer, float speed) {
-    CFTimeInterval now = CACurrentMediaTime(), local = [layer convertTime:now fromLayer:nil];
-    layer.speed = speed;
-    layer.beginTime = layer.superlayer ? [layer.superlayer convertTime:now fromLayer:nil] : now;
-    layer.timeOffset = local;
-}
 
 @implementation SGRMorphFollower
 - (void)tick:(CADisplayLink *)link {
@@ -403,15 +400,10 @@ static void runAtSpeed(CALayer *layer, float speed) {
     CALayer *drawn = overlay.layer.presentationLayer;
     CGFloat rest = self.morph.restY > 0 ? self.morph.restY : container.bounds.size.height;
     // An open's first frame has no presentation layer yet and its model already holds the end; Spotify starts it at the bar.
-    CGFloat y = drawn ? drawn.frame.origin.y : rest;
+    CGFloat y = drawn ? drawn.frame.origin.y : (self.closing ? 0 : rest);
     self.lastT = rest > 0 ? MIN(1, MAX(0, 1 - y / rest)) : 1;
     [self.morph apply:self.lastT];
     BOOL interactive = self.context.isInteractive;
-    // A close dragged by a finger runs faster from the moment it is let go.
-    if (self.closing && self.wasInteractive && !interactive && !self.sped) {
-        runAtSpeed(container.layer, kCloseSpeed);
-        self.sped = YES;
-    }
     self.wasInteractive = interactive;
     BOOL moved = fabs(y - self.lastY) > 0.5;
     BOOL moving = overlay.layer.animationKeys.count > 0 || moved || interactive;
@@ -431,8 +423,6 @@ static void runAtSpeed(CALayer *layer, float speed) {
     if (logged++ < 3) SGLog(@"player morph: let go after %.2f s still, %@", CACurrentMediaTime() - self.settledSince, self.still >= 3 ? @"settled" : @"given up");
     [self.link invalidate];
     self.link = nil;
-    // Back to 1 from where its animations are, so a close Spotify has not finished does not jump back.
-    if (self.sped) runAtSpeed(self.container.layer, 1);
     // Whether a close in a Jam ends at t 0: Spotify parks the player at its bar frame's top, the strip's, and restY is the card's.
     if (self.closing && self.morph.masksStrip) {
         static dispatch_once_t once;
@@ -484,7 +474,7 @@ static void followTransition(id transition, id<UIViewControllerContextTransition
     [old finish];
     SGRPlayerMorph *morph = [[SGRPlayerMorph alloc] initWithContainer:container overlay:overlay bar:ivarOf(transition, "npbSnapshotView") barRest:CGRectZero];
     if (!morph) return;
-    [morph followFrom:ivarOf(transition, "npbView")];
+    [morph followFrom:ivarOf(transition, "npbView") opening:to.isBeingPresented];
     ((UIView *)ivarOf(transition, "tabBarSnapshotView")).alpha = 0;
     SGRMorphFollower *follower = [SGRMorphFollower new];
     follower.morph = morph;
@@ -493,14 +483,9 @@ static void followTransition(id transition, id<UIViewControllerContextTransition
     follower.context = context;
     follower.lastY = CGFLOAT_MAX;
     if (SGRNowPlayingStripHeight() > 0) follower.npbFrame = rectIvarOf(transition, "npbFrame");
-    // A close plays faster: its slide, its stand-ins and so the morph that follows them. One Spotify runs on its own
-    // from the start, one dragged by a finger from when it is let go (tick:).
+    // Follow Spotify's own timing, including release velocity and canceled gestures.
     follower.closing = !to.isBeingPresented;
     follower.wasInteractive = context.isInteractive;
-    if (follower.closing && !context.isInteractive) {
-        runAtSpeed(container.layer, kCloseSpeed);
-        follower.sped = YES;
-    }
     follower.link = [CADisplayLink displayLinkWithTarget:follower selector:@selector(tick:)];
     follower.link.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
     [follower.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];

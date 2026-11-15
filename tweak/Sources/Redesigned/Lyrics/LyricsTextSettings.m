@@ -14,7 +14,7 @@
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Text sizes";
+    self.title = @"글자 크기";
     return self;
 }
 
@@ -22,7 +22,7 @@
     [super viewDidLoad];
     _order = [SGRLyricsTextOrder() mutableCopy];
     self.tableView.editing = YES;
-    _footer = SGNote(@"Pronunciation and translation are turned on from the button in the lyrics' corner.");
+    _footer = SGNote(@"가사 모서리의 버튼에서 발음과 번역을 켤 수 있습니다.");
     self.tableView.tableFooterView = _footer;
 }
 
@@ -41,7 +41,7 @@
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
-    return SGSectionHeader(table, @"Largest first");
+    return SGSectionHeader(table, @"큰 글자부터");
 }
 
 - (CGFloat)tableView:(UITableView *)table heightForHeaderInSection:(NSInteger)section {
@@ -89,5 +89,5 @@
 @end
 
 SGModRow *SGRLyricsTextSizesRow(void) {
-    return SGPageRow(@"Text sizes", ^UIViewController *{ return [SGRLyricsTextPage new]; });
+    return SGPageRow(@"글자 크기", ^UIViewController *{ return [SGRLyricsTextPage new]; });
 }

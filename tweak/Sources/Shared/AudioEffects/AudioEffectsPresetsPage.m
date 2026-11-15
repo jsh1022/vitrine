@@ -8,7 +8,7 @@
 
 static void showAlert(UIViewController *owner, NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [owner presentViewController:alert animated:YES completion:nil];
 }
 
@@ -25,7 +25,7 @@ static void tick(UITableViewCell *cell, BOOL on) {
 
 // A pick replaces every effect's settings, so the first pick each time the page opens saves them first,
 // as one of the user's presets under this name, kept at the top of theirs: a tap on it puts them back.
-static NSString *const kBeforePresets = @"Before presets";
+static NSString *const kBeforePresets = @"프리셋 적용 전";
 
 // The user's presets, the settings from before the last round of picks first.
 static NSArray<NSString *> *userPresetNames(void) {
@@ -57,10 +57,7 @@ static NSArray<NSString *> *userPresetNames(void) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _footer = SGNote(@"Picking a preset turns Audio effects on and replaces the other effects' settings. A built-in "
-                      "preset leaves the Graphic EQ, your headphones' correction, as it is; your own presets keep every "
-                      "effect, the Graphic EQ too. What you had before the first pick is kept under Yours as Before presets. "
-                      "Swipe left on one of yours to delete it.");
+    _footer = SGNote(@"프리셋을 선택하면 오디오 효과를 켜고 다른 효과 설정을 교체합니다. 기본 프리셋은 헤드폰 보정인 Graphic EQ를 유지하며 사용자 프리셋은 Graphic EQ를 포함한 모든 효과를 저장합니다. 첫 선택 전 설정은 사용자 목록의 프리셋 적용 전에 보관됩니다. 사용자 프리셋은 왼쪽으로 밀어 삭제하세요.");
     self.tableView.tableFooterView = _footer;
 }
 
@@ -91,7 +88,7 @@ static NSArray<NSString *> *userPresetNames(void) {
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
-    return section == 2 ? nil : SGSectionHeader(table, section == 0 ? @"Built in" : @"Yours");
+    return section == 2 ? nil : SGSectionHeader(table, section == 0 ? @"기본 제공" : @"Yours");
 }
 
 - (CGFloat)tableView:(UITableView *)table heightForHeaderInSection:(NSInteger)section {
@@ -109,12 +106,12 @@ static NSArray<NSString *> *userPresetNames(void) {
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = SGDequeueCell(table, @"preset");
     if (path.section == 2) {
-        SGFillCell(cell, @"Save current settings…", @"Every effect as it is now, under a name", nil, @"square.and.arrow.down");
+        SGFillCell(cell, @"현재 설정 저장…", @"현재 모든 효과 설정을 이름을 지정해 저장", nil, @"square.and.arrow.down");
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         return cell;
     }
     if (path.section == 1 && !_mine.count) {
-        SGFillCell(cell, @"None saved yet", nil, SGGrey(), nil);
+        SGFillCell(cell, @"저장된 항목 없음", nil, SGGrey(), nil);
         cell.accessibilityTraits = UIAccessibilityTraitNone;
         return cell;
     }
@@ -152,7 +149,7 @@ static NSArray<NSString *> *userPresetNames(void) {
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section != 1 || !_mine.count) return nil;
     NSString *name = _mine[(NSUInteger)path.row];
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Delete"
+    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"삭제"
         handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             SGDSPDeleteUserPreset(name);
             self->_mine = userPresetNames();
@@ -169,14 +166,14 @@ static NSArray<NSString *> *userPresetNames(void) {
 }
 
 - (void)askForName {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Save preset"
-        message:@"A preset of the same name is replaced." preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"프리셋 저장"
+        message:@"같은 이름의 프리셋은 덮어씁니다." preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = @"Name";
+        field.placeholder = @"이름";
         field.autocapitalizationType = UITextAutocapitalizationTypeSentences;
         field.keyboardAppearance = UIKeyboardAppearanceDark;
     }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *name = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (!name.length) return;
@@ -238,7 +235,7 @@ typedef NS_ENUM(NSInteger, SGDSPHeadphoneSection) {
     UITableView *table = self.tableView;
     table.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     _search = [UISearchBar new];
-    _search.placeholder = @"Search headphones";
+    _search.placeholder = @"헤드폰 검색";
     _search.searchBarStyle = UISearchBarStyleMinimal;
     _search.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     _search.keyboardAppearance = UIKeyboardAppearanceDark;
@@ -254,7 +251,7 @@ typedef NS_ENUM(NSInteger, SGDSPHeadphoneSection) {
         [_search.topAnchor constraintEqualToAnchor:_searchHeader.topAnchor constant:kSearchTop],
         [_search.heightAnchor constraintEqualToConstant:44],
     ]];
-    _header = SGNote(@"Corrections that make your headphones sound neutral, measured by AutoEq. Picking one turns Audio effects and the Graphic EQ on with it.");
+    _header = SGNote(@"AutoEq가 측정한 헤드폰 보정으로 균형 잡힌 소리를 만듭니다. 선택하면 오디오 효과와 Graphic EQ를 함께 켭니다.");
     table.tableHeaderView = _header;
     _footer = SGNote(@"From AutoEq by Jaakko Pasanen, MIT License. Pull down to fetch the list again.");
     table.tableFooterView = _footer;
@@ -294,7 +291,7 @@ typedef NS_ENUM(NSInteger, SGDSPHeadphoneSection) {
 }
 
 - (void)load:(BOOL)refresh {
-    if (!_all) _message = @"Loading AutoEq's list…";
+    if (!_all) _message = @"AutoEq 목록 불러오는 중…";
     _failed = NO;
     // From viewDidLoad the table has not asked for its rows yet, and will.
     if (self.tableView.window) [self reload:UITableViewRowAnimationNone];
@@ -302,7 +299,7 @@ typedef NS_ENUM(NSInteger, SGDSPHeadphoneSection) {
         [self.refreshControl endRefreshing];
         if (headphones) self->_all = headphones;
         self->_failed = error != nil;
-        self->_message = error ? [NSString stringWithFormat:@"%@. Tap to try again.", error] : nil;
+        self->_message = error ? [NSString stringWithFormat:@"%@. 탭하여 다시 시도하세요.", error] : nil;
         [self filter];
     });
 }
@@ -358,7 +355,7 @@ static BOOL headphoneInUse(void) {
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
     if (section == SGDSPHeadphoneSearch) return _searchHeader;
-    return section == SGDSPHeadphoneRemembered && [self tableView:table numberOfRowsInSection:section] ? SGSectionHeader(table, @"Remembered outputs") : nil;
+    return section == SGDSPHeadphoneRemembered && [self tableView:table numberOfRowsInSection:section] ? SGSectionHeader(table, @"저장된 출력") : nil;
 }
 
 - (CGFloat)tableView:(UITableView *)table heightForHeaderInSection:(NSInteger)section {
@@ -369,8 +366,7 @@ static BOOL headphoneInUse(void) {
 
 - (NSString *)outputFooter {
     NSString *name = SGAutoEqOutputName();
-    return [NSString stringWithFormat:@"With this on, the correction you pick is kept for %@. It comes back each time audio plays through "
-            "%@, and goes off on outputs with none remembered.", name, name];
+    return [NSString stringWithFormat:@"켜면 선택한 보정을 %@에 저장합니다. %@에서 소리를 재생할 때마다 다시 적용하고 저장된 보정이 없는 출력에서는 해제합니다.", name, name];
 }
 
 - (UIView *)tableView:(UITableView *)table viewForFooterInSection:(NSInteger)section {
@@ -383,7 +379,7 @@ static BOOL headphoneInUse(void) {
 
 // A remembered output's correction, by name.
 static NSString *correctionName(NSString *path) {
-    return path.length ? SGAutoEqNameOf(path) : @"None";
+    return path.length ? SGAutoEqNameOf(path) : @"없음";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
@@ -393,8 +389,8 @@ static NSString *correctionName(NSString *path) {
         NSString *uid = SGAutoEqOutputUID();
         BOOL remembered = SGAutoEqOutputRemembered(uid);
         NSString *current = correctionName(headphoneInUse() ? SGDSPString(SGKeyDSPGraphicEqHeadphone) : nil);
-        SGFillCell(cell, [NSString stringWithFormat:@"Use for %@", SGAutoEqOutputName()],
-                   remembered ? [NSString stringWithFormat:@"%@ while it plays", current] : [NSString stringWithFormat:@"Remember %@ for this output", current], nil, nil);
+        SGFillCell(cell, [NSString stringWithFormat:@"%@에 사용", SGAutoEqOutputName()],
+                   remembered ? [NSString stringWithFormat:@"재생 중 %@", current] : [NSString stringWithFormat:@"이 출력에 %@ 저장", current], nil, nil);
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         UISwitch *toggle = [UISwitch new];
         toggle.onTintColor = SGGreen();
@@ -407,10 +403,10 @@ static NSString *correctionName(NSString *path) {
     if (path.section == SGDSPHeadphoneRemembered) {
         NSDictionary<NSString *, NSString *> *output = _remembered[(NSUInteger)path.row];
         BOOL now = [output[@"uid"] isEqualToString:SGAutoEqOutputUID()];
-        SGFillCell(cell, output[@"name"], now ? [NSString stringWithFormat:@"%@ · playing now", correctionName(output[@"path"])] : correctionName(output[@"path"]), nil, nil);
+        SGFillCell(cell, output[@"name"], now ? [NSString stringWithFormat:@"%@ · 현재 재생 중", correctionName(output[@"path"])] : correctionName(output[@"path"]), nil, nil);
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessibilityTraits = UIAccessibilityTraitNone;
-        cell.accessibilityHint = @"Swipe left to remove";
+        cell.accessibilityHint = @"왼쪽으로 밀어 제거";
         return cell;
     }
     cell.accessibilityHint = nil;
@@ -421,13 +417,13 @@ static NSString *correctionName(NSString *path) {
     }
     cell.accessibilityValue = nil;
     if (path.section == SGDSPHeadphoneNone) {
-        SGFillCell(cell, @"None", nil, nil, nil);
+        SGFillCell(cell, @"없음", nil, nil, nil);
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         tick(cell, !headphoneInUse());
         return cell;
     }
     if (!_shown.count) {
-        SGFillCell(cell, @"No headphones match", nil, SGGrey(), nil);
+        SGFillCell(cell, @"일치하는 헤드폰 없음", nil, SGGrey(), nil);
         cell.accessibilityTraits = UIAccessibilityTraitNone;
         return cell;
     }
@@ -461,7 +457,7 @@ static NSString *correctionName(NSString *path) {
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section != SGDSPHeadphoneRemembered) return nil;
     NSString *uid = _remembered[(NSUInteger)path.row][@"uid"];
-    UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Remove"
+    UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"제거"
         handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             SGAutoEqForgetOutput(uid);
             done(YES);
@@ -490,7 +486,7 @@ static NSString *correctionName(NSString *path) {
     SGAutoEqApply(headphone, ^(NSString *error) {
         self->_applying = nil;
         [self reload:UITableViewRowAnimationNone];
-        if (error) showAlert(self, [NSString stringWithFormat:@"Could not apply %@", headphone.name], error);
+        if (error) showAlert(self, [NSString stringWithFormat:@"%@을 적용하지 못했습니다", headphone.name], error);
     });
 }
 
@@ -502,5 +498,5 @@ UIViewController *SGDSPHeadphonesPage(void) {
 
 NSString *SGDSPHeadphoneSummary(void) {
     NSString *path = SGDSPString(SGKeyDSPGraphicEqHeadphone);
-    return path.length && SGDSPSwitch(SGKeyDSPGraphicEq) ? SGAutoEqNameOf(path) : @"None";
+    return path.length && SGDSPSwitch(SGKeyDSPGraphicEq) ? SGAutoEqNameOf(path) : @"없음";
 }

@@ -17,7 +17,7 @@ typedef NS_ENUM(NSInteger, SGLRCImportRow) {
 
 static void showAlert(UIViewController *owner, NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [owner presentViewController:alert animated:YES completion:nil];
 }
 
@@ -39,15 +39,13 @@ static NSString *playingLocalFile(void) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Imported LRC files";
+    self.title = @"가져온 LRC 파일";
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _footer = SGNote(@"Import for current track links the file to the local file playing, whatever its tags say. "
-                      "Import LRC… keeps a file for any track whose title and artist match its [ti:] and [ar:] tags, "
-                      "or its name as \"Artist - Title\". Swipe left on a file to delete it.");
+    _footer = SGNote(@"현재 곡에 연결하여 가져오기는 태그와 관계없이 현재 로컬 곡에 가사를 연결합니다. LRC 가져오기는 [ti:]·[ar:] 태그 또는 \"Artist - Title\" 파일 이름으로 제목과 아티스트가 일치하는 곡에 사용합니다. 왼쪽으로 밀어 삭제하세요.");
     self.tableView.tableFooterView = _footer;
 }
 
@@ -95,11 +93,11 @@ static NSString *playingLocalFile(void) {
     if (path.section == 1) {
         UITableViewCell *cell = SGDequeueCell(table, @"import");
         if (path.row == SGLRCImportByName) {
-            SGFillCell(cell, @"Import LRC…", @"Matched by title and artist", nil, @"square.and.arrow.down");
+            SGFillCell(cell, @"LRC 가져오기…", @"제목과 아티스트로 매칭", nil, @"square.and.arrow.down");
         } else {
             NSString *uri = playingLocalFile();
-            NSString *title = SGLocalFileInfo(uri)[@"title"] ?: @"The local file playing";
-            SGFillCell(cell, @"Import for current track…", uri ? title : @"Start playing a local track first",
+            NSString *title = SGLocalFileInfo(uri)[@"title"] ?: @"현재 재생 중인 로컬 파일";
+            SGFillCell(cell, @"현재 곡에 연결하여 가져오기…", uri ? title : @"먼저 로컬 곡을 재생하세요",
                        uri ? nil : SGGrey(), @"music.note");
         }
         BOOL enabled = path.row == SGLRCImportByName || playingLocalFile();
@@ -109,7 +107,7 @@ static NSString *playingLocalFile(void) {
     }
     UITableViewCell *cell = SGDequeueCell(table, @"file");
     if (!_files.count) {
-        SGFillCell(cell, @"No imported files", nil, SGGrey(), nil);
+        SGFillCell(cell, @"가져온 파일 없음", nil, SGGrey(), nil);
         return cell;
     }
     SGFillCell(cell, _files[(NSUInteger)path.row], nil, nil, nil);
@@ -134,11 +132,11 @@ static NSString *playingLocalFile(void) {
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
     if (path.section != 0 || !_files.count) return nil;
     NSString *name = _files[(NSUInteger)path.row];
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Delete"
+    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"삭제"
         handler:^(UIContextualAction *action, UIView *view, void (^done)(BOOL)) {
             BOOL deleted = SGDeleteImportedLRC(name);
             if (deleted) [self reloadFiles];
-            else showAlert(self, @"Could not delete the file", nil);
+            else showAlert(self, @"파일을 삭제하지 못했습니다", nil);
             done(deleted);
         }];
     delete.image = [UIImage systemImageNamed:@"trash"];
@@ -154,20 +152,20 @@ static NSString *playingLocalFile(void) {
     NSURL *url = urls.firstObject;
     if (!url) return;
     if (![url.pathExtension.lowercaseString isEqualToString:@"lrc"]) {
-        showAlert(self, @"Not an LRC file", @"Pick a file whose name ends in .lrc.");
+        showAlert(self, @"LRC 파일이 아닙니다", @"이름이 .lrc로 끝나는 파일을 선택하세요.");
         return;
     }
     NSError *error = nil;
     NSString *name = SGImportLRC(url, _linkTo, &error);
     if (!name) {
-        showAlert(self, @"Could not import the file", error.localizedDescription);
+        showAlert(self, @"파일을 가져오지 못했습니다", error.localizedDescription);
         return;
     }
     [self reloadFiles];
     if (_linkTo) {
         NSString *title = SGLocalFileInfo(_linkTo)[@"title"];
-        showAlert(self, @"Lyrics linked", [NSString stringWithFormat:@"%@ now gives the lyrics for %@.", name,
-                                                                     title ? [NSString stringWithFormat:@"\"%@\"", title] : @"this local file"]);
+        showAlert(self, @"가사 연결됨", [NSString stringWithFormat:@"%@에서 %@의 가사를 제공합니다.", name,
+                                                                     title ? [NSString stringWithFormat:@"\"%@\"", title] : @"이 로컬 파일"]);
     }
 }
 

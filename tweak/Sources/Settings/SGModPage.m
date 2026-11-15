@@ -313,7 +313,7 @@ static const CGFloat kValueMaxWidth = 170;
 // At the accessibility sizes a row's value goes under its title (stackedValue), and the accessories that
 // would carry it beside the title show none.
 static NSString *stackedValue(SGModRow *row) {
-    NSString *value = row.value() ?: @"";
+    NSString *value = SGKoreanUI(row.value()) ?: @"";
     return row.subtitle.length ? [NSString stringWithFormat:@"%@\n%@", row.subtitle, value] : value;
 }
 
@@ -342,7 +342,7 @@ static UIView *valueView(SGModRow *row) {
     UILabel *label = [UILabel new];
     label.font = SGTitleFont();
     label.textColor = SGGrey();
-    label.text = row.value();
+    label.text = SGKoreanUI(row.value());
     [label sizeToFit];
     if (!row.swatch) return label;
     CGFloat side = 16, height = MAX(side, label.bounds.size.height);
@@ -548,7 +548,7 @@ static NSArray<UIView *> *controlsIn(UITableViewCell *cell) {
 static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTitle) {
     cell.contentView.alpha = waiting ? kWaitingAlpha : 1;
     cell.accessoryView.alpha = waiting ? kWaitingAlpha : 1;
-    cell.accessibilityHint = waiting ? [NSString stringWithFormat:@"Turn on %@ first.", switchTitle] : nil;
+    cell.accessibilityHint = waiting ? [NSString stringWithFormat:@"먼저 %@ 항목을 켜세요.", switchTitle] : nil;
     if (!waiting) return;
     for (UIControl *control in controlsIn(cell)) {
         control.enabled = NO;
@@ -799,7 +799,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         SGModRow *row = [self rowAt:path];
         if ([cell isKindOfClass:SGModSliderCell.class]) [(SGModSliderCell *)cell readNumber];
         UIButton *menu = (UIButton *)cell.accessoryView;
-        if (row.menu && [menu isKindOfClass:UIButton.class] && ![menu.accessibilityValue isEqualToString:row.value()] && !menu.isTracking) {
+        if (row.menu && [menu isKindOfClass:UIButton.class] && ![menu.accessibilityValue isEqualToString:SGKoreanUI(row.value())] && !menu.isTracking) {
             cell.accessoryView = [self menuButtonFor:row];
         }
     }
@@ -824,7 +824,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         }
         if (row.page && row.value) {
             // valueAndChevron is sized to its text, so a new text gets a new one.
-            NSString *text = row.value();
+            NSString *text = SGKoreanUI(row.value());
             UILabel *shown = (UILabel *)cell.accessoryView.subviews.firstObject;
             if (![shown isKindOfClass:UILabel.class] || [shown.text isEqualToString:text]) continue;
             cell.accessoryView = valueAndChevron(text);
@@ -832,12 +832,12 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         }
         if (row.swatch) {
             UILabel *shown = (UILabel *)cell.accessoryView.subviews.lastObject;
-            if ([shown isKindOfClass:UILabel.class] && ![shown.text isEqualToString:row.value()]) cell.accessoryView = valueView(row);
+            if ([shown isKindOfClass:UILabel.class] && ![shown.text isEqualToString:SGKoreanUI(row.value())]) cell.accessoryView = valueView(row);
             continue;
         }
         UILabel *label = (UILabel *)cell.accessoryView;
         if (!row.value || row.page || ![label isKindOfClass:UILabel.class]) continue;
-        label.text = row.value();
+        label.text = SGKoreanUI(row.value());
         [label sizeToFit];
         [cell setNeedsLayout];
     }
@@ -933,7 +933,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         cell.accessoryView = row.info ? [self infoButtonBeside:toggle] : toggle;
         cell.selectionStyle = locked ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
     } else if (row.page) {
-        UIView *link = row.value && !SGAccessibilityTextSize() ? valueAndChevron(row.value()) : SGChevronView();
+        UIView *link = row.value && !SGAccessibilityTextSize() ? valueAndChevron(SGKoreanUI(row.value())) : SGChevronView();
         cell.accessoryView = row.info ? [self infoButtonBeside:link] : link;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else if (row.menu) {
@@ -981,15 +981,15 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
 // chevrons, the menu opening on the first touch and anchored to the button, so it points at the row on iPad.
 // A pick runs the row's block and every row is read again, the ones that follow from it with it.
 - (UIButton *)menuButtonFor:(SGModRow *)row {
-    NSString *current = row.value();
+    NSString *current = SGKoreanUI(row.value());
     NSMutableArray<UIAction *> *items = [NSMutableArray array];
     __weak typeof(self) weakSelf = self;
     [row.menu enumerateObjectsUsingBlock:^(NSString *name, NSUInteger i, BOOL *stop) {
-        UIAction *item = [UIAction actionWithTitle:name image:nil identifier:nil handler:^(UIAction *action) {
+        UIAction *item = [UIAction actionWithTitle:SGKoreanUI(name) image:nil identifier:nil handler:^(UIAction *action) {
             if (row.chosen) row.chosen((NSInteger)i);
             [weakSelf.tableView reloadData];
         }];
-        item.state = [name isEqualToString:current] ? UIMenuElementStateOn : UIMenuElementStateOff;
+        item.state = [SGKoreanUI(name) isEqualToString:current] ? UIMenuElementStateOn : UIMenuElementStateOff;
         [items addObject:item];
     }];
     UIButtonConfiguration *look = [UIButtonConfiguration plainButtonConfiguration];
@@ -1016,7 +1016,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     UIImageSymbolConfiguration *symbol = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightRegular];
     [info setImage:[UIImage systemImageNamed:@"info.circle" withConfiguration:symbol] forState:UIControlStateNormal];
     info.tintColor = SGGrey();
-    info.accessibilityLabel = @"About this setting";
+    info.accessibilityLabel = @"이 설정 정보";
     [info addTarget:self action:@selector(infoTapped:) forControlEvents:UIControlEventTouchUpInside];
     [toggle sizeToFit];
     CGFloat side = 30, gap = 8, height = MAX(side, toggle.bounds.size.height);
@@ -1032,7 +1032,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     NSIndexPath *path = [self pathOf:button];
     if (!path) return;
     SGModRow *row = [self rowAt:path];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:row.title message:row.info preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:row.title message:SGKoreanUI(row.info) preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -1074,8 +1074,8 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
 }
 
 - (void)warn:(SGModRow *)row {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[row.title stringByAppendingString:@" is unstable"]
-                                                                  message:row.warning
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[row.title stringByAppendingString:@" (불안정)"]
+                                                                  message:SGKoreanUI(row.warning)
                                                            preferredStyle:UIAlertControllerStyleAlert];
     if (SGRepoURL) [alert addAction:[UIAlertAction actionWithTitle:@"GitHub 열기" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         SGOpenURL(SGRepoURL);

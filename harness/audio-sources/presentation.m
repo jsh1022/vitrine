@@ -52,6 +52,17 @@ extern UIImage *SGPresentationArtwork;
     _remaining.frame = CGRectMake(width - 64, 38, 44, 16);
 }
 @end
+
+#import "Shared/Lyrics/Lyrics.h"
+extern NSString *SGPresentationLyricsTrack;
+extern NSArray<SGKaraokeLine *> *SGPresentationLyrics;
+extern NSInteger SGPresentationLyricsPosition, SGPresentationLyricsDelay;
+@interface _TtC22Lyrics_NPVContainerKit19LyricsContainerView : UIView
+@end
+@implementation _TtC22Lyrics_NPVContainerKit19LyricsContainerView
+- (void)layoutSubviews { [super layoutSubviews]; }
+- (void)didMoveToWindow { [super didMoveToWindow]; }
+@end
 static UIView *identified(UIView *root, NSString *identifier) {
     __block UIView *found;
     SGForEachView(root, ^(UIView *view) { if ([view.accessibilityIdentifier isEqualToString:identifier]) found = view; });
@@ -102,8 +113,8 @@ static void checkBlockedTransport(void) {
     progress(@"checking URLSession hooks and unavailable-engine blocking");
     NSDictionary *pipeline = SGAudioPipelineSnapshot();
     NSArray *stages = pipeline[@"stages"];
-    if (stages.count != 5 || ![stages[0][@"title"] isEqual:@"Track Info"] || ![stages[4][@"title"] isEqual:@"Output Device"] ||
-        ![pipeline[@"statsLine"] isEqual:@"No decoder measurement for the selected source"]) {
+    if (stages.count != 5 || ![stages[0][@"title"] isEqual:@"곡 정보"] || ![stages[4][@"title"] isEqual:@"출력 기기"] ||
+        ![pipeline[@"statsLine"] isEqual:@"선택한 소스의 디코더 측정값 없음"]) {
         fail(@"pipeline must contain five stages without inventing unknown source measurements"); return;
     }
     if (!SGWireGuardAppProxyActive()) { fail(@"proxy hooks not installed"); return; }
@@ -200,6 +211,26 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         if (!details) { fail(@"quality popover details action missing"); return; }
         [details sendActionsForControlEvents:UIControlEventTouchUpInside];
     } else if (index == 4) {
+        UIView *preview = [[_TtC22Lyrics_NPVContainerKit19LyricsContainerView alloc] initWithFrame:CGRectMake(0, 0, 300, 30)];
+        UILabel *line = [[UILabel alloc] initWithFrame:preview.bounds];
+        [preview addSubview:line]; [self.window addSubview:preview];
+        SGPresentationLyrics = SGKaraokeEstimatedLines(@[@1000, @3000], @[@"첫 줄", @"다음 줄"]);
+        SGPresentationLyricsPosition = 3200; SGPresentationLyricsDelay = 0;
+        [preview setNeedsLayout]; [preview layoutIfNeeded];
+        if (![line.text isEqual:@"다음 줄"]) { fail(@"inline lyric does not follow playback position"); return; }
+        SGPresentationLyricsDelay = 500;
+        [preview setNeedsLayout]; [preview layoutIfNeeded];
+        if (![line.text isEqual:@"첫 줄"]) { fail(@"inline lyric does not respect user delay"); return; }
+        SGPresentationLyricsPosition = 500;
+        [preview setNeedsLayout]; [preview layoutIfNeeded];
+        if (line.text.length) { fail(@"inline lyric must clear before the first timed line"); return; }
+        SGPresentationLyricsPosition = 3200; SGPresentationLyricsDelay = 0;
+        [preview setNeedsLayout]; [preview layoutIfNeeded];
+        SGPresentationLyricsTrack = @"next"; SGPresentationLyrics = nil;
+        [preview setNeedsLayout]; [preview layoutIfNeeded];
+        if (line.text.length) { fail(@"previous song inline lyric leaked into the next song"); return; }
+        [preview removeFromSuperview];
+        passed(@"PASS inline lyric position, delay, seek and track replacement");
         SGPresentationPreparedInfo = @{@"sourceName": @"Fixture", @"declared": @{@"sampleRate": @96000, @"bitDepth": @24}};
         if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"기본"] ||
             ![SGPlaybackQualityInfo()[@"sourceRate"] isEqualToString:@"확인 불가"]) {

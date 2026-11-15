@@ -438,9 +438,9 @@ SGTranslationSource *SGAITranslatorSource(void) {
 - (NSString *)name {
     const SGAIProvider *p = providerFor(_by);
     if (p) return _model.length ? [NSString stringWithFormat:@"%@ (%@)", p->name, _model] : p->name;
-    if ([_by isEqualToString:SGTranslatedOnDevice]) return @"Translate on iPhone";
+    if ([_by isEqualToString:SGTranslatedOnDevice]) return @"iPhone에서 번역";
     if ([_by isEqualToString:SGTranslatedByAppleIntelligence]) return @"Apple Intelligence";
-    return @"Unknown";
+    return @"알 수 없음";
 }
 
 // Asking the iPhone again costs nothing, and its translation is the same.
@@ -503,7 +503,7 @@ NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger s
         *problem = error.code == NSURLErrorTimedOut
             ? [NSString stringWithFormat:@"%@ timed out. Try a longer timeout on the Lyrics page.", who]
             : [NSString stringWithFormat:@"%@ could not be reached.", who];
-    } else if (status == 401 || status == 403 || (status == 400 && [says localizedCaseInsensitiveContainsString:@"API key"])) {
+    } else if (status == 401 || status == 403 || (status == 400 && [says localizedCaseInsensitiveContainsString:@"API 키"])) {
         *problem = [NSString stringWithFormat:@"%@ turned the key down. Check it on the Lyrics page.", who];
     } else if (status == 400 || status == 404) {
         *problem = says.length ? [NSString stringWithFormat:@"%@ did not take the request: %@", who, says]
@@ -1094,7 +1094,7 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
 NSNotificationName const SGLyricsTranslationsDidChangeNotification = @"spotifyglass.lyricsTranslationsDidChange";
 
 SGModRow *SGTranslateEverySongRow(void) {
-    SGModRow *row = SGOptionRow(@"Translate any song", @"The lyrics' translate menu for songs that already read as your language",
+    SGModRow *row = SGOptionRow(@"모든 곡 번역", @"The lyrics' translate menu for songs that already read as your language",
                                 SGKeyLyricsTranslateEverySong);
     row.changed = ^(BOOL on) {
         [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
@@ -1108,7 +1108,7 @@ static void translatorChanged(void) {
 }
 
 NSArray<SGModRow *> *SGOnDeviceTranslatorRows(void) {
-    SGModRow *onDevice = SGSwitchRow(@"Translate on iPhone", @"Apple's Translate in the lyrics' translate menu", SGKeyLyricsTranslateOnDevice);
+    SGModRow *onDevice = SGSwitchRow(@"iPhone에서 번역", @"Apple's Translate in the lyrics' translate menu", SGKeyLyricsTranslateOnDevice);
     SGModRow *intelligence = SGSwitchRow(@"Apple Intelligence", @"Apple Intelligence in the lyrics' translate menu", SGKeyLyricsAppleIntelligence);
     onDevice.changed = intelligence.changed = ^(BOOL on) { translatorChanged(); };
     return @[onDevice, intelligence];
@@ -1146,7 +1146,7 @@ static void askForKey(void) {
         NSString *url = SGAIServerIn(weakAlert.textFields.firstObject.text);
         storeSecret(p, kServerAccount, [url isEqualToString:kOpenAIDefaultURL] ? nil : url);
     };
-    UIAlertAction *paste = [UIAlertAction actionWithTitle:@"Paste Key" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    UIAlertAction *paste = [UIAlertAction actionWithTitle:@"키 붙여넣기" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         // A key copied with the quotes around it, as from a code sample, is turned down as it stands.
         NSMutableCharacterSet *around = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
         [around addCharactersInString:@"\"'“”‘’"];
@@ -1154,10 +1154,10 @@ static void askForKey(void) {
         NSString *key = [board.string stringByTrimmingCharactersInSet:around];
         if (!key.length || [key rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
             UIAlertController *none = [UIAlertController alertControllerWithTitle:@"No key on the clipboard"
-                                                                          message:@"Copy the API key, then tap Paste Key again."
+                                                                          message:@"API 키를 복사한 후 키 붙여넣기를 다시 누르세요."
                                                                    preferredStyle:UIAlertControllerStyleAlert];
             none.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-            [none addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+            [none addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
             [SGTopController() presentViewController:none animated:YES completion:nil];
             return;
         }
@@ -1189,13 +1189,13 @@ static void askForKey(void) {
     [alert addAction:paste];
     if (save) [alert addAction:save];
     if (stored) {
-        [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"제거" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             storeSecret(p, kKeyAccount, nil);
             storeSecret(p, kServerAccount, nil);
             translatorChanged();
         }]];
     }
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1221,7 +1221,7 @@ static void askForModel(void) {
         forControlEvents:UIControlEventEditingChanged];
     }];
     [alert addAction:save];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1251,7 +1251,7 @@ static NSArray<NSString *> *modelMenu(const SGAIProvider *p) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = _batch ? @"Batch prompt" : @"Translation prompt";
+    self.title = _batch ? @"일괄 번역 프롬프트" : @"번역 프롬프트";
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
     _text = [UITextView new];
     _text.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -1315,7 +1315,7 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSUInteger i = 0; i < kProviderCount; i++) [names addObject:kProviders[i].name];
     // A pick in a menu row reloads the page's rows; the model row's menu is the chosen provider's presets.
-    SGModRow *models = SGMenuRow(@"Model", modelMenu(chosen()), ^NSString *{
+    SGModRow *models = SGMenuRow(@"모델", modelMenu(chosen()), ^NSString *{
         const SGAIProvider *p = chosen();
         NSString *current = model(p);
         for (NSUInteger i = 0; i < 4 && p->models[i]; i++) if ([p->models[i] isEqualToString:current]) return p->modelNames[i];
@@ -1329,19 +1329,19 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
         else askForModel();
         translatorChanged();
     };
-    SGModRow *provider = SGMenuRow(@"AI translator", names, ^NSString *{ return chosen()->name; }, ^(NSInteger index) {
+    SGModRow *provider = SGMenuRow(@"AI 번역기", names, ^NSString *{ return chosen()->name; }, ^(NSInteger index) {
         if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyAITranslator];
         else [NSUserDefaults.standardUserDefaults setObject:kProviders[index].tag forKey:SGKeyAITranslator];
         weakModels.menu = modelMenu(chosen());
         SGLog(@"ai: translator %@", chosen()->tag);
         translatorChanged();
     });
-    SGModRow *key = SGStatActionRow(@"API key", @"Translate any song from the lyrics' corner menu", ^NSString *{
+    SGModRow *key = SGStatActionRow(@"API 키", @"Translate any song from the lyrics' corner menu", ^NSString *{
         const SGAIProvider *p = chosen();
-        if (!storedSecret(p, kKeyAccount)) return @"Off";
+        if (!storedSecret(p, kKeyAccount)) return @"꺼짐";
         return isOpenAI(p) ? serverHost() ?: @"Server not usable" : @"Set";
     }, ^{ askForKey(); });
-    SGModRow *prompt = SGStatActionRow(@"Translation prompt", @"What the AI translator is told to do with a song's lines",
+    SGModRow *prompt = SGStatActionRow(@"번역 프롬프트", @"What the AI translator is told to do with a song's lines",
                                        ^NSString *{ return storedString(SGKeyAIPrompt) ? @"Edited" : @"Default"; }, ^{
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[SGPromptEditor new]];
         nav.modalPresentationStyle = UIModalPresentationPageSheet;
@@ -1349,8 +1349,8 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
         [SGTopController() presentViewController:nav animated:YES completion:nil];
     });
     // Low first: 3.8 Flash refuses minimal.
-    NSArray<NSString *> *thinkingLevels = @[@"Low", @"Medium", @"High"];
-    SGModRow *thinking = SGMenuRow(@"Thinking", thinkingLevels, ^NSString *{
+    NSArray<NSString *> *thinkingLevels = @[@"Low", @"중간", @"High"];
+    SGModRow *thinking = SGMenuRow(@"생각 수준", thinkingLevels, ^NSString *{
         return geminiThinkingLevel().capitalizedString;
     }, ^(NSInteger index) {
         if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyAIThinking];
@@ -1362,7 +1362,7 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
     NSArray<NSNumber *> *timeoutSeconds = @[@30, @60, @90, @(kDefaultAITimeout), @180, @240, @300];
     NSMutableArray<NSString *> *timeouts = [NSMutableArray array];
     for (NSNumber *seconds in timeoutSeconds) [timeouts addObject:[NSString stringWithFormat:@"%@ s", seconds]];
-    SGModRow *timeout = SGMenuRow(@"Timeout", timeouts, ^NSString *{
+    SGModRow *timeout = SGMenuRow(@"제한 시간", timeouts, ^NSString *{
         return [NSString stringWithFormat:@"%ld s", (long)aiTimeout()];
     }, ^(NSInteger index) {
         NSInteger seconds = timeoutSeconds[index].integerValue;
@@ -1372,7 +1372,7 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
 
     NSArray<NSNumber *> *batchSizes = @[@10, @20, @30, @40, @50, @0];
     NSArray<NSString *> *batchSizeOptions = @[@"10 songs", @"20 songs", @"30 songs", @"40 songs", @"50 songs", @"All at once"];
-    SGModRow *batchSizeRow = SGMenuRow(@"Songs per batch", batchSizeOptions, ^NSString *{
+    SGModRow *batchSizeRow = SGMenuRow(@"묶음당 곡 수", batchSizeOptions, ^NSString *{
         NSUInteger idx = [batchSizes indexOfObject:@(SGLyricsBatchSize())];
         return batchSizeOptions[idx != NSNotFound ? idx : 1];
     }, ^(NSInteger index) {
@@ -1380,13 +1380,13 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
         if (size == 20) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyLyricsBatchSize];
         else [NSUserDefaults.standardUserDefaults setInteger:size forKey:SGKeyLyricsBatchSize];
     });
-    SGModRow *batchPromptRow = SGStatActionRow(@"Batch prompt", @"Prompt used when translating multiple songs at once",
+    SGModRow *batchPromptRow = SGStatActionRow(@"일괄 번역 프롬프트", @"Prompt used when translating multiple songs at once",
                                                ^NSString *{ return storedString(SGKeyLyricsBatchPrompt) ? @"Edited" : @"Default"; }, ^{
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[[SGPromptEditor alloc] initWithBatch:YES]];
         nav.modalPresentationStyle = UIModalPresentationPageSheet;
         SGPresentDark(nav);
         [SGTopController() presentViewController:nav animated:YES completion:nil];
     });
-    SGModRow *skipSavedRow = SGSwitchRow(@"Skip saved translations", @"Skip songs that already have a saved translation", SGKeyLyricsBatchSkipSaved);
+    SGModRow *skipSavedRow = SGSwitchRow(@"저장된 번역 건너뛰기", @"Skip songs that already have a saved translation", SGKeyLyricsBatchSkipSaved);
     return @[provider, key, models, thinking, timeout, prompt, batchSizeRow, batchPromptRow, skipSavedRow];
 }

@@ -7,14 +7,14 @@ UIViewController *SGNowPlayingBarSettingsPage(void) {
         SGSection(nil, @[
             SGHideRow(@"기기 버튼 숨기기", nil, SGHideBarConnect),
         ]),
-        SGSection(@"Spotify's flags", @[
-            SGFlagRow(@"Two lines of track info", @"ios-feature-nowplayingbar.two_lines_information_unit"),
-            SGFlagRow(@"Save button", @"ios-feature-nowplayingbar.add_button"),
-            SGFlagRow(@"Queue badge", @"ios-feature-nowplayingbar.queue_badge"),
-            SGFlagRow(@"Hold and drag to resize", @"ios-feature-nowplayingbar.hold_and_drag_to_resize"),
-            SGFlagRow(@"Video in the mini player", @"ios-feature-nowplaying.video_in_miniplayer"),
-            SGFlagRow(@"Bar to cover art animation", @"ios-feature-nowplaying.bartocoverart_animation_enabled"),
-            SGFlagRow(@"Mini player transition animations", @"ios-feature-nowplaying.miniplayer_transition_animations"),
+        SGSection(@"Spotify 플래그", @[
+            SGFlagRow(@"곡 정보 두 줄 표시", @"ios-feature-nowplayingbar.two_lines_information_unit"),
+            SGFlagRow(@"저장 버튼", @"ios-feature-nowplayingbar.add_button"),
+            SGFlagRow(@"대기열 배지", @"ios-feature-nowplayingbar.queue_badge"),
+            SGFlagRow(@"길게 누르고 드래그하여 크기 조절", @"ios-feature-nowplayingbar.hold_and_drag_to_resize"),
+            SGFlagRow(@"미니플레이어 동영상", @"ios-feature-nowplaying.video_in_miniplayer"),
+            SGFlagRow(@"미니플레이어에서 커버로 이어지는 애니메이션", @"ios-feature-nowplaying.bartocoverart_animation_enabled"),
+            SGFlagRow(@"미니플레이어 전환 애니메이션", @"ios-feature-nowplaying.miniplayer_transition_animations"),
         ]),
     ] footer:nil];
 }

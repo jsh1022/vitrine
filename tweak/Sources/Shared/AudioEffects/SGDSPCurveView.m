@@ -167,11 +167,11 @@ static NSString *signedNumber(double value, int decimals) {
     _bubble.isAccessibilityElement = NO;
     [self addSubview:_bubble];
 
-    _reset = [self barButton:@"Reset" color:SGGrey()];
+    _reset = [self barButton:@"초기화" color:SGGrey()];
     [_reset addTarget:self action:@selector(resetTapped) forControlEvents:UIControlEventTouchUpInside];
     _reset.accessibilityHint = _equalizer ? @"Every band back to zero." : @"Every point back to zero.";
     if (_equalizer) {
-        _presets = [self barButton:@"Custom" color:UIColor.whiteColor];
+        _presets = [self barButton:@"사용자 설정" color:UIColor.whiteColor];
         UIButtonConfiguration *config = _presets.configuration;
         config.image = [UIImage systemImageNamed:@"chevron.up.chevron.down" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:10 weight:UIImageSymbolWeightSemibold]];
         config.imagePlacement = NSDirectionalRectEdgeTrailing;
@@ -404,7 +404,7 @@ static NSString *signedNumber(double value, int decimals) {
     NSArray<NSString *> *names = SGDSPEqualizerPresetNames();
     NSInteger match = [self matchingPreset];
     UIButtonConfiguration *config = _presets.configuration;
-    config.title = match >= 0 ? names[(NSUInteger)match] : @"Custom";
+    config.title = match >= 0 ? names[(NSUInteger)match] : @"사용자 설정";
     _presets.configuration = config;
     _presets.accessibilityValue = config.title;
     NSMutableArray<UIAction *> *actions = [NSMutableArray array];

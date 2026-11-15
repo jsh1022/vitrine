@@ -147,7 +147,7 @@ void SGDSPResetAll(void) {
 #pragma mark - lists
 
 NSArray<NSString *> *SGDSPConvolverModeNames(void) {
-    return @[@"원본", @"Trimmed", @"Minimum phase"];
+    return @[@"원본", @"Trimmed", @"최소 위상"];
 }
 
 NSArray<NSString *> *SGDSPCrossfeedModeNames(void) {
@@ -155,7 +155,7 @@ NSArray<NSString *> *SGDSPCrossfeedModeNames(void) {
 }
 
 NSArray<NSString *> *SGDSPReverbPresetNames(void) {
-    return @[@"Ambience", @"Small room", @"Medium room", @"Large room", @"Chamber", @"Plate", @"Small hall", @"Large hall", @"Cathedral"];
+    return @[@"Ambience", @"작은 방", @"중간 방", @"큰 방", @"Chamber", @"Plate", @"작은 홀", @"큰 홀", @"Cathedral"];
 }
 
 NSArray<NSString *> *SGDSPEqualizerPresetNames(void) {

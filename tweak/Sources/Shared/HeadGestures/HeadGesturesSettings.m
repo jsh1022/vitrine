@@ -11,7 +11,7 @@ static const double kTrySeconds = 6;
 
 // SGHeadAction's names, in its order.
 static NSArray<NSString *> *actionNames(void) {
-    return @[@"Nothing", @"15초 뒤로", @"15초 앞으로", @"Play or pause", @"Next track", @"Previous track",
+    return @[@"Nothing", @"15초 뒤로", @"15초 앞으로", @"재생 또는 일시정지", @"다음 곡", @"이전 곡",
              @"셔플", @"반복", @"Like"];
 }
 
@@ -23,13 +23,13 @@ static void say(NSString *title, NSString *message) {
 
 static BOOL headTracking(void) {
     if (SGHeadGesturesAvailable()) return YES;
-    say(@"No head tracking", @"This iPhone cannot read the motion of headphones.");
+    say(@"머리 추적 불가", @"이 iPhone에서는 헤드폰 움직임을 읽을 수 없습니다.");
     return NO;
 }
 
 static NSString *learnedValue(void) {
     BOOL nod = SGInt(SGKeyHeadNod, 0) > 0, shake = SGInt(SGKeyHeadShake, 0) > 0;
-    return nod && shake ? @"Learned" : nod ? @"Nod learned" : shake ? @"Shake learned" : @"";
+    return nod && shake ? @"Learned" : nod ? @"끄덕임 학습됨" : shake ? @"고개 젓기 학습됨" : @"";
 }
 
 static BOOL anythingLearned(void) {
@@ -39,7 +39,7 @@ static BOOL anythingLearned(void) {
 // Both learned sizes back to the defaults, asked first; `done` runs once they are.
 static void forget(void (^done)(void)) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"끄덕임과 고개 젓기 학습을 삭제할까요?"
-        message:@"Both go back to the default sizes. You can teach them again." preferredStyle:UIAlertControllerStyleAlert];
+        message:@"두 제스처 모두 기본 감도로 돌아갑니다. 다시 학습할 수 있습니다." preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Forget" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGSetInt(SGKeyHeadNod, 0);
         SGSetInt(SGKeyHeadShake, 0);
@@ -56,20 +56,20 @@ static SGModRow *actionRow(NSString *title, SGHeadGesture gesture) {
 }
 
 UIViewController *SGHeadGesturesSettingsPage(void) {
-    SGModRow *toggle = SGOptionRow(@"Head gestures", @"Nod twice or shake your head to control the music", SGKeyHeadGestures);
+    SGModRow *toggle = SGOptionRow(@"머리 제스처", @"두 번 끄덕이거나 고개를 저어 음악을 제어하세요", SGKeyHeadGestures);
     toggle.changed = ^(BOOL on) { SGHeadGesturesSettingsChanged(); };
 
-    SGModRow *nodAction = SGWithSymbol(actionRow(@"Nod twice", SGHeadGestureDoubleNod), @"arrow.up.and.down");
-    SGModRow *shakeAction = SGWithSymbol(actionRow(@"Shake your head", SGHeadGestureShake), @"arrow.left.and.right");
+    SGModRow *nodAction = SGWithSymbol(actionRow(@"두 번 끄덕이기", SGHeadGestureDoubleNod), @"arrow.up.and.down");
+    SGModRow *shakeAction = SGWithSymbol(actionRow(@"고개 젓기", SGHeadGestureShake), @"arrow.left.and.right");
     SGModRow *chime = SGWithSymbol(SGSwitchRow(@"작동 시 알림음", nil, SGKeyHeadChime), @"bell");
 
     __block __weak SGModPage *page;
-    SGModRow *teach = SGStatActionRow(@"Teach your gestures", @"Five of each, one after each tone", ^NSString *{ return learnedValue(); }, ^{
+    SGModRow *teach = SGStatActionRow(@"제스처 학습", @"알림음이 들릴 때마다 하나씩, 각각 다섯 번", ^NSString *{ return learnedValue(); }, ^{
         if (!headTracking()) return;
         SGPresentHeadGesturesTeaching(page, ^{ [page refreshVisibility]; });
     });
 
-    SGModRow *sensitivity = SGSliderRow(@"Sensitivity", @"Higher counts a smaller move",
+    SGModRow *sensitivity = SGSliderRow(@"감도", @"값이 높으면 더 작은 움직임을 감지합니다",
         SGHeadSensitivityMin, SGHeadSensitivityMax, SGHeadSensitivityStep,
         ^double { return MAX(SGHeadSensitivityMin, MIN(SGHeadSensitivityMax, SGInt(SGKeyHeadSensitivity, 100))); },
         ^(double value) {
@@ -81,7 +81,7 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
     // What the last try picked up, read out on its row until the next; a new page starts blank.
     __block NSString *tried = @"";
     __block BOOL trying = NO;
-    SGModRow *tryRow = SGStatActionRow(@"Try it", @"Listens after the tone and says what it picked up", ^NSString *{ return tried; }, ^{
+    SGModRow *tryRow = SGStatActionRow(@"시험하기", @"알림음 이후 움직임을 감지하고 결과를 표시합니다", ^NSString *{ return tried; }, ^{
         if (trying || !headTracking()) return;
         trying = YES;
         tried = @"Listening…";
@@ -89,11 +89,11 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
         SGHeadGesturesCue(SGHeadCueReady);
         SGHeadGesturesTry(kTrySeconds, ^(SGHeadGesture gesture, BOOL heard) {
             trying = NO;
-            tried = gesture == SGHeadGestureDoubleNod ? @"Nod twice" : gesture == SGHeadGestureShake ? @"고개 젓기" : heard ? @"Nothing" : @"No motion";
+            tried = gesture == SGHeadGestureDoubleNod ? @"두 번 끄덕이기" : gesture == SGHeadGestureShake ? @"고개 젓기" : heard ? @"Nothing" : @"움직임 없음";
             SGHeadGesturesCue(gesture != SGHeadGestureNone ? SGHeadCueWorked : SGHeadCueFailed);
-            NSString *spoken = gesture != SGHeadGestureNone ? [@"Picked up: " stringByAppendingString:tried]
-                             : heard ? @"Picked up nothing. Try a bigger move, or raise Sensitivity."
-                                     : @"No motion came. Put in AirPods that track head motion.";
+            NSString *spoken = gesture != SGHeadGestureNone ? [@"감지: " stringByAppendingString:tried]
+                             : heard ? @"움직임을 감지하지 못했습니다. 더 크게 움직이거나 감도를 높이세요."
+                                     : @"움직임이 전달되지 않았습니다. 머리 추적을 지원하는 AirPods를 착용하세요.";
             UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, spoken);
             [page.tableView reloadData];
         });
@@ -107,13 +107,9 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
     SGModPage *shown = [[SGModPage alloc] initWithTitle:@"AirPods 제스처" intro:nil sections:@[
         SGSection(nil, @[SGWithSymbol(toggle, @"airpods.pro")]),
         SGNotedSection(@"제스처", @[nodAction, shakeAction, chime],
-            @"They work while Spotify plays through headphones that track head motion: AirPods Pro, AirPods (3rd "
-            "generation and later), AirPods Max and some Beats. Set to Play or pause, they listen with a song paused too. With the chime on, a "
-            "tone in the music confirms each, a rising pair when it worked and a low one when it did not, with the "
-            "iPhone on silent too. iOS asks once for Motion & Fitness access, which is how Spotify reads the movement."),
+            @"머리 추적을 지원하는 AirPods Pro, AirPods 3 이후 모델, AirPods Max 및 일부 Beats로 Spotify를 재생하는 동안 작동합니다. 재생 또는 일시정지로 설정하면 일시정지 중에도 감지합니다. 알림음을 켜면 성공 시 상승하는 두 음, 실패 시 낮은 음을 무음 모드에서도 재생합니다. 움직임을 읽기 위해 처음 한 번 동작 및 피트니스 권한을 요청합니다."),
         SGNotedSection(@"사용자에게 맞추기", @[teach, sensitivity, tryRow, forgetRow],
-            @"Teaching sets how big a move counts from five of your own. Sensitivity scales that for both. Try it does "
-            "nothing to the music, so you can tune it while a song plays."),
+            @"본인의 움직임을 다섯 번씩 학습해 감지 크기를 정합니다. 감도는 두 제스처에 함께 적용됩니다. 시험하기는 음악을 제어하지 않으므로 재생 중에도 조절할 수 있습니다."),
     ] footer:nil];
     page = shown;
     return shown;

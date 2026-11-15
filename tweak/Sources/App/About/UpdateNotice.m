@@ -29,11 +29,11 @@ static NSArray<SGUpdateChange *> *changesSinceThisBuild(void) {
 // Three lines and a count: enough to know whether to care, with the whole changelog a tap away.
 static NSString *noticeBody(NSString *version, BOOL beta) {
     NSArray<SGUpdateChange *> *changes = changesSinceThisBuild();
-    NSMutableString *body = [NSMutableString stringWithFormat:@"This build is %s.", SG_VERSION];
-    if (beta) [body appendString:@" This one is a beta, a test build ahead of the next release."];
+    NSMutableString *body = [NSMutableString stringWithFormat:@"현재 빌드는 %s입니다.", SG_VERSION];
+    if (beta) [body appendString:@" 이 버전은 다음 릴리스 전의 베타 테스트 빌드입니다."];
     NSUInteger shown = MIN(changes.count, (NSUInteger)3);
     for (NSUInteger i = 0; i < shown; i++) [body appendFormat:@"\n\n• %@", changes[i].text];
-    if (changes.count > shown) [body appendFormat:@"\n\nand %lu more in %@.", (unsigned long)(changes.count - shown), version];
+    if (changes.count > shown) [body appendFormat:@"\n\n외 %lu개 · %@.", (unsigned long)(changes.count - shown), version];
     return body;
 }
 
@@ -61,7 +61,7 @@ static void offerWhenClear(NSInteger tries) {
     // away under it, is still a sheet this release has had.
     [NSUserDefaults.standardUserDefaults setObject:version forKey:kTold];
     SGUpdateRelease *release = SGUpdateNewestRelease();
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ is out", version]
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 출시됨", version]
                                                                   message:noticeBody(version, release.prerelease)
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [sheet addAction:[UIAlertAction actionWithTitle:@"새로운 기능" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
@@ -71,7 +71,7 @@ static void offerWhenClear(NSInteger tries) {
         });
     }]];
     if (release.url.length)
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Get it" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [sheet addAction:[UIAlertAction actionWithTitle:@"다운로드" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             SGOpenURL(release.url);
         }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"나중에" style:UIAlertActionStyleCancel handler:nil]];

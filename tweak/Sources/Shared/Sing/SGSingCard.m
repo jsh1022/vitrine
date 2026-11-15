@@ -311,7 +311,7 @@ static CGFloat height(float rms) {
         _track = player.track;
         _shown = SGShownTrackNow();
     }
-    NSString *title = _shown.title ?: @"Not Playing";
+    NSString *title = _shown.title ?: @"재생 중이 아님";
     NSString *artist = _shown ? _shown.artist ?: @"" : @"Play a song to hear Karaoke";
     _title.text = title;
     _artist.text = artist;

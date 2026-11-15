@@ -272,7 +272,7 @@ static BOOL headOffset(double *pitch, double *yaw) {
     if (!(self = [super initWithNibName:nil bundle:nil])) return nil;
     _closed = [closed copy];
     _samples = [NSMutableArray array];
-    self.title = @"Teach your gestures";
+    self.title = @"제스처 학습";
     return self;
 }
 
@@ -406,7 +406,7 @@ static BOOL headOffset(double *pitch, double *yaw) {
 #pragma mark - what it shows
 
 - (void)showGesture {
-    _heading.text = self.nod ? @"Nod twice" : @"Shake your head";
+    _heading.text = self.nod ? @"두 번 끄덕이기" : @"고개 젓기";
     _dial.accessibilityLabel = self.nod ? @"Double nods" : @"Shakes";
     [self showCount];
 }

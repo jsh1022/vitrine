@@ -13,11 +13,11 @@ UIViewController *SGAutoMixSettingsPage(void) {
     toggle.changed = ^(BOOL on) { SGAutoMixApply(on); };
 
     NSArray<NSString *> *styles = @[@"Beat-matched", @"Crossfade"];
-    SGModRow *style = SGMenuRow(@"Style", styles, ^NSString *{ return styles[(NSUInteger)SGAutoMixCurrentStyle()]; },
+    SGModRow *style = SGMenuRow(@"스타일", styles, ^NSString *{ return styles[(NSUInteger)SGAutoMixCurrentStyle()]; },
                                 ^(NSInteger index) { SGAutoMixSetStyle(index); });
     style.waitsOn = SGKeyAutoMix;
 
-    SGModRow *blend = SGSliderRow(@"Blend length", nil, kShortest, kLongest, 1,
+    SGModRow *blend = SGSliderRow(@"믹스 길이", nil, kShortest, kLongest, 1,
         ^double {
             SGTransitionSettings s;
             return SGTransitionSettingsRead(&s) ? MAX(kShortest, MIN(kLongest, s.milliseconds / 1000.0)) : 5;
@@ -26,7 +26,7 @@ UIViewController *SGAutoMixSettingsPage(void) {
         ^NSString *(double value) { return [NSString stringWithFormat:@"%ld s", lround(value)]; });
     blend.waitsOn = SGKeyAutoMix;
 
-    NSString *note = SGAutoMixAccountAllows() ? nil : @"AutoMix needs Premium, or Spoof Premium under Premium, ads & privacy.";
+    NSString *note = SGAutoMixAccountAllows() ? nil : @"AutoMix에는 Premium 또는 Premium, 광고 및 개인정보의 Spoof Premium이 필요합니다.";
     return [[SGModPage alloc] initWithTitle:@"AutoMix" intro:nil sections:@[
         SGNotedSection(nil, @[toggle, style, blend], note),
     ] footer:nil];

@@ -55,3 +55,11 @@ NSArray<SGModRow *> *SGEnvironmentWarningRows(void) {
 SGModRow *SGLyricsRomanisedRow(void) { return SGOptionRow(@"Romanized lyrics", nil, @"spotifyglass.harness.romanised"); }
 // The lock screen's source order row (MotionSources.m), for AnimatedArtworkSettings.m.
 SGModRow *SGMotionSourcesRow(void) { return SGStatRow(@"Sources", ^NSString *{ return @"Canvas, Apple Music"; }); }
+// Services outside the settings layout under test.
+BOOL SGHapticAddonOutdated(void) { return NO; }
+void SGHapticAddonShareSoon(void) {}
+void SGHapticAddonExplain(NSString *feature) {}
+BOOL SGHapticEverywhereOffered(void) { return NO; }
+BOOL SGHapticRelayAvailable(void) { return NO; }
+void SGHapticRelaySendLockArt(void) {}
+ROW(SGLockScreenTranslationRow) ROW(SGLyricsRomanisedReplaceRow) ROW(SGRLyricsHideRow)

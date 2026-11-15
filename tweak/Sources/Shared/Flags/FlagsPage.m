@@ -6,10 +6,10 @@
 static NSString *flagState(const SGFlagDef *flag, id value) {
     if (value) return [NSString stringWithFormat:@"forced %@", flag->type == SGFlagBool ? ([value boolValue] ? @"on" : @"off") : value];
     switch (flag->type) {
-        case SGFlagBool: return flag->value ? @"on by default" : @"off by default";
-        case SGFlagInt: return [NSString stringWithFormat:@"%ld by default, %ld to %ld", flag->value, flag->lower, flag->upper];
-        case SGFlagEnum: return @"text value";
-        default: return @"type unknown";
+        case SGFlagBool: return flag->value ? @"기본 켜짐" : @"기본 꺼짐";
+        case SGFlagInt: return [NSString stringWithFormat:@"기본 %ld · 범위 %ld~%ld", flag->value, flag->lower, flag->upper];
+        case SGFlagEnum: return @"텍스트 값";
+        default: return @"알 수 없는 형식";
     }
 }
 
@@ -27,7 +27,7 @@ static NSString *flagState(const SGFlagDef *flag, id value) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStylePlain])) return nil;
-    self.title = @"Flags";
+    self.title = @"플래그";
     return self;
 }
 
@@ -37,10 +37,10 @@ static NSString *flagState(const SGFlagDef *flag, id value) {
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     _search = [UISearchBar new];
-    _search.placeholder = [NSString stringWithFormat:@"Search %lu flags", (unsigned long)SGFlagCount];
+    _search.placeholder = [NSString stringWithFormat:@"플래그 %lu개 검색", (unsigned long)SGFlagCount];
     _search.searchBarStyle = UISearchBarStyleMinimal;
     _search.delegate = self;
-    _header = SGNote(@"Auto keeps Spotify's value. Changes apply after you restart Spotify.");
+    _header = SGNote(@"자동은 Spotify의 값을 유지합니다. 변경 사항은 Spotify 재시작 후 적용됩니다.");
     [_header addSubview:_search];
     self.tableView.tableHeaderView = _header;
     [self reload];
@@ -106,7 +106,7 @@ static NSString *flagState(const SGFlagDef *flag, id value) {
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
     if (flag->type == SGFlagBool) {
-        UISegmentedControl *control = [[UISegmentedControl alloc] initWithItems:@[@"Auto", @"Off", @"On"]];
+        UISegmentedControl *control = [[UISegmentedControl alloc] initWithItems:@[@"Auto", @"꺼짐", @"켜짐"]];
         control.selectedSegmentIndex = value ? ([value boolValue] ? 2 : 1) : 0;
         control.selectedSegmentTintColor = SGGreen();
         // Capped, so the segments leave the flag's name its room at the accessibility sizes.
@@ -142,13 +142,13 @@ static NSString *flagState(const SGFlagDef *flag, id value) {
     if (flag->type == SGFlagBool) return;
     NSString *key = @(flag->key);
     id value = _overrides[key];
-    NSString *hint = flag->type == SGFlagUnknown ? @"true or false, a number, or a text value" : flagState(flag, value);
+    NSString *hint = flag->type == SGFlagUnknown ? @"참/거짓, 숫자 또는 텍스트 값" : flagState(flag, value);
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[key substringFromIndex:[key rangeOfString:@"."].location + 1] message:hint preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.text = value ? [value description] : @"";
         field.keyboardType = flag->type == SGFlagInt ? UIKeyboardTypeNumbersAndPunctuation : UIKeyboardTypeDefault;
     }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Auto" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a) {
         [self store:nil forKey:key row:path.row];
     }]];

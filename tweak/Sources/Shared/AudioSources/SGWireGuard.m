@@ -20,7 +20,7 @@ static NSLock *lock(void) {
     dispatch_once(&once, ^{ l = [NSLock new]; });
     return l;
 }
-static NSString *sg_reason = @"Not started";
+static NSString *sg_reason = @"시작 전";
 static atomic_bool sg_appActive;
 BOOL SGWireGuardAppProxyActive(void) { return atomic_load(&sg_appActive); }
 void SGWireGuardSetAppProxyActive(BOOL active) { atomic_store(&sg_appActive, active); }
@@ -50,16 +50,16 @@ BOOL SGWireGuardHasProfile(void) { return SGSourceSecret(@"wireguard-profile").l
 BOOL SGWireGuardImport(NSString *text, NSString **reason) {
 #if SG_WIREGUARD
     NSDictionary *result = readJSON(YTMUWGInspect((char *)text.UTF8String));
-    if (![result[@"ok"] boolValue]) { *reason = @"Invalid or unsupported WireGuard profile."; return NO; }
-    if (![lock() tryLock]) { *reason = @"WireGuard is starting. Wait before replacing the profile."; return NO; }
+    if (![result[@"ok"] boolValue]) { *reason = @"유효하지 않거나 지원하지 않는 WireGuard 프로필입니다."; return NO; }
+    if (![lock() tryLock]) { *reason = @"WireGuard 시작 중입니다. 프로필을 교체하기 전에 기다리세요."; return NO; }
     BOOL running = sg_port > 0;
     BOOL ok = SGSaveSourceSecret(@"wireguard-profile", text);
-    if (ok && running) sg_reason = @"Profile updated; restart to apply the new configuration";
+    if (ok && running) sg_reason = @"프로필을 갱신했습니다. 새 구성을 적용하려면 재시작하세요";
     [lock() unlock];
-    if (!ok) *reason = @"Keychain could not save the profile.";
+    if (!ok) *reason = @"Keychain에 프로필을 저장하지 못했습니다.";
     return ok;
 #else
-    *reason = @"This build does not include WireGuard. Build with WIREGUARD=1.";
+    *reason = @"이 빌드에는 WireGuard가 없습니다. WIREGUARD=1로 빌드하세요.";
     return NO;
 #endif
 }
@@ -114,7 +114,7 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
     SEL setter = NSSelectorFromString(@"setProxyConfigurations:");
     SEL getter = NSSelectorFromString(@"proxyConfigurations");
     if (!create || !credentials || !failover || !getFailover || ![config respondsToSelector:setter] || ![config respondsToSelector:getter]) {
-        sg_reason = @"WireGuard requires iOS 17 or later";
+        sg_reason = @"WireGuard에는 iOS 17 이상이 필요합니다";
     } else {
         if (sg_port <= 0 && !sg_failed) {
             NSString *profile = SGSourceSecret(@"wireguard-profile");
@@ -134,7 +134,7 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
                     sg_password = NSUUID.UUID.UUIDString;
                     NSString *user = sg_user, *password = sg_password;
                     int expected = sg_port;
-                    sg_reason = @"Starting WireGuard";
+                    sg_reason = @"WireGuard 시작 중";
                     dispatch_async(engineQueue(), ^{
                         // YTMUWGStart consumes fd on success and on every error path.
                         int port = YTMUWGStart((char *)profile.UTF8String, (char *)user.UTF8String,
@@ -142,7 +142,7 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
                         [lock() lock];
                         sg_failed = port != expected;
                         sg_ready = !sg_failed;
-                        sg_reason = sg_failed ? @"WireGuard failed; restart after checking the profile" : @"Proxy ready; inspect handshake or test tunnel DNS";
+                        sg_reason = sg_failed ? @"WireGuard 실패 · 프로필을 확인한 후 재시작하세요" : @"프록시 준비됨 · 핸드셰이크를 확인하거나 터널 DNS를 검사하세요";
                         [lock() unlock];
                     });
                 } else {
@@ -167,10 +167,10 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
         }
     }
 #else
-    sg_reason = @"WireGuard not included in this build";
+    sg_reason = @"이 빌드에는 WireGuard가 없습니다";
 #endif
     } @catch (NSException *exception) {
-        sg_reason = @"This URLSession configuration could not use the proxy";
+        sg_reason = @"이 URLSession 구성에서 프록시를 사용하지 못했습니다";
         result = NO;
     } @finally {
         [lock() unlock];
@@ -178,7 +178,7 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
     return result;
 }
 NSDictionary *SGWireGuardStatus(void) {
-    if (![lock() tryLock]) return @{@"state": @"Starting or recovering"};
+    if (![lock() tryLock]) return @{@"state": @"시작 또는 복구 중"};
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"state"] = sg_reason;
     result[@"appActive"] = @(SGWireGuardAppProxyActive());
@@ -196,7 +196,7 @@ NSURLSessionConfiguration *SGSourceSessionConfiguration(NSString **reason) {
     config.timeoutIntervalForRequest = 20; config.timeoutIntervalForResource = 120;
     if (!SGFlag(SGKeySourceWireGuard, NO) && !SGWireGuardAppProxyActive()) return config;
     if (SGWireGuardApplyToConfiguration(config)) return config;
-    *reason = @"WireGuard unavailable. Addon requests blocked.";
+    *reason = @"WireGuard를 사용할 수 없어 애드온 요청을 차단했습니다.";
     return nil;
 }
 void SGWireGuardTestDNS(void (^completion)(NSString *)) {
@@ -218,7 +218,7 @@ void SGWireGuardTestDNS(void (^completion)(NSString *)) {
         (void)ready;
 #endif
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(ok ? @"Tunnel DNS succeeded. This verifies the peer/DNS path; request counters show URLSession routing." : @"Tunnel DNS failed. Check the profile, endpoint, DNS and network, then restart Spotify. No direct fallback was used.");
+            completion(ok ? @"터널 DNS 검사에 성공하여 피어 및 DNS 경로를 확인했습니다. URLSession 라우팅은 요청 카운터에서 확인하세요." : @"터널 DNS 검사에 실패했습니다. 프로필, 엔드포인트, DNS 및 네트워크를 확인한 후 Spotify를 재시작하세요. 직접 연결로 우회하지 않았습니다.");
         });
     });
 }
@@ -229,13 +229,13 @@ void SGWireGuardTestHTTPS(void (^completion)(NSString *)) {
         config.URLCache = nil; config.HTTPCookieStorage = nil;
         config.timeoutIntervalForRequest = 20; config.timeoutIntervalForResource = 30;
         if (!SGWireGuardApplyToConfiguration(config)) {
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(@"Tunnel unavailable. HTTPS diagnostic blocked; no direct fallback."); });
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(@"터널을 사용할 수 없어 HTTPS 검사를 차단했습니다. 직접 연결로 우회하지 않습니다."); });
             return;
         }
         NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
         // Explicit user action: the selected tunnel contacts Cloudflare's trace endpoint.
         [[session dataTaskWithURL:[NSURL URLWithString:@"https://www.cloudflare.com/cdn-cgi/trace"] completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            NSString *result = @"Tunnel HTTPS failed. No direct fallback was used.";
+            NSString *result = @"터널 HTTPS 검사에 실패했습니다. 직접 연결로 우회하지 않았습니다.";
             if (!error && [(NSHTTPURLResponse *)response statusCode] == 200 && data.length < 65536) {
                 NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
                 NSString *ip = nil, *country = nil;
@@ -244,7 +244,7 @@ void SGWireGuardTestHTTPS(void (^completion)(NSString *)) {
                     if ([line hasPrefix:@"loc="]) country = [line substringFromIndex:4];
                 }
                 if (ip.length && ip.length < 64 && country.length == 2)
-                    result = [NSString stringWithFormat:@"Tunnel HTTPS succeeded. Exit IP: %@ · Country: %@. This verifies URLSession over the tunnel, not actual Spotify music-loader coverage.", ip, country];
+                    result = [NSString stringWithFormat:@"터널 HTTPS 검사 성공. 출구 IP: %@ · 국가: %@. 터널의 URLSession 경로를 확인한 결과이며 Spotify 음악 로더 전체를 검증한 것은 아닙니다.", ip, country];
             }
             [session finishTasksAndInvalidate];
             dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });

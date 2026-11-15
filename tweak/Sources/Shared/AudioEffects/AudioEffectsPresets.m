@@ -42,13 +42,13 @@ typedef struct {
 } SGDSPPresetName;
 
 static const SGDSPPresetName kBuiltIn[] = {
-    {@"Bass boost", @"Bass boost at 8 dB"},
+    {@"베이스 부스트", @"Bass boost at 8 dB"},
     {@"Vocal clarity", @"Equalizer on voices, a light compander"},
     {@"Late night", @"Quiet and loud evened out, less bass"},
     {@"Concert hall", @"A large hall's reverb, a wider stage"},
     {@"Warm analog", @"Tube warmth, a warm equalizer"},
     {@"Headphone comfort", @"Crossfeed, a softer top"},
-    {@"Wide stereo", @"Stereo widening"},
+    {@"Wide stereo", @"스테레오 폭 조절"},
 };
 
 static NSArray<NSNumber *> *equalizer(NSString *preset) {

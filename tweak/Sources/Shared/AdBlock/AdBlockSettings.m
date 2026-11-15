@@ -3,35 +3,35 @@
 #import "AdBlock.h"
 #import "Shared/Privacy/Privacy.h"
 
-NSString *const SGFakePremiumWarning = @"This is the part of EeveeSpotify Spotify's takedown went after, and it has not been tested here. It can end in a forced logout or worse for the account. A Premium account gains nothing from it.";
+NSString *const SGFakePremiumWarning = @"Spotify가 삭제를 요청했던 EeveeSpotify 기능이며 여기서는 검증되지 않았습니다. 강제 로그아웃이나 더 심한 계정 문제가 발생할 수 있습니다. Premium 계정에는 이점이 없습니다.";
 
 // Every switch here forces a flag Spotify ships on to off, so the titles name the blocking: on stops
 // the thing, off is Spotify's own value. Hide ads and Hide upsells already force the first two
 // sections off, which locks those rows.
 static UIViewController *adFlagsPage(void) {
     return [[SGModPage alloc] initWithTitle:@"광고 및 업그레이드 권유 플래그" intro:SGRestartNote sections:@[
-        SGNotedSection(@"Ads", @[
-            SGKillRow(@"Block the ad when the app opens", @"ios-feature-adonappopen.enabled"),
-            SGKillRow(@"Block its CTA card", @"ios-feature-adonappopen.cta_card_enabled"),
-        ], @"Locked while Hide ads is on."),
-        SGNotedSection(@"Upsells", @[
-            SGKillRow(@"Hide the shuffle toggle upsell", @"ios-feature-shuffletoggleupsell.is_enabled_pt2"),
-            SGKillRow(@"Hide the shuffle upsell in the video player", @"ios-feature-nowplaying-modes.video_first_shuffle_upsell_enabled"),
-        ], @"Locked while Hide upsells is on."),
-        SGSection(@"Reduce interventions", @[
-            SGFlagRow(@"Reduce interventions", @"ios-messaging-reduceinterventions-impl.enabled"),
+        SGNotedSection(@"광고", @[
+            SGKillRow(@"앱 실행 시 광고 차단", @"ios-feature-adonappopen.enabled"),
+            SGKillRow(@"광고 유도 카드 차단", @"ios-feature-adonappopen.cta_card_enabled"),
+        ], @"광고 숨기기가 켜져 있어 잠겨 있습니다."),
+        SGNotedSection(@"업그레이드 권유", @[
+            SGKillRow(@"셔플 전환 업그레이드 권유 숨기기", @"ios-feature-shuffletoggleupsell.is_enabled_pt2"),
+            SGKillRow(@"동영상 플레이어의 셔플 업그레이드 권유 숨기기", @"ios-feature-nowplaying-modes.video_first_shuffle_upsell_enabled"),
+        ], @"업그레이드 권유 숨기기가 켜져 있어 잠겨 있습니다."),
+        SGSection(@"개입 줄이기", @[
+            SGFlagRow(@"개입 줄이기", @"ios-messaging-reduceinterventions-impl.enabled"),
         ]),
-        SGSection(@"Tooltips", @[
-            SGKillRow(@"Hide the smart shuffle helper", @"ios-messaging-reduceinterventions-impl.enable_message_smart_shuffle_helper_tooltip"),
-            SGKillRow(@"Hide the data saver tip", @"ios-feature-nowplayingbar.data_saver_tooltip"),
-            SGKillRow(@"Hide the player suggestions upsell", @"ios-messaging-reduceinterventions-impl.enable_message_reinvent_free_n_p_v_suggestions_upsell"),
-            SGKillRow(@"Hide the AI playlist creation tip", @"ios-messaging-reduceinterventions-impl.enable_message_your_library_ai_playlist_creation_tooltip"),
-            SGKillRow(@"Hide the watch feed explorer tip", @"ios-messaging-reduceinterventions-impl.enable_message_watch_feed_entity_explorer_tooltip"),
-            SGKillRow(@"Hide the account switching tip", @"ios-messaging-reduceinterventions-impl.enable_message_account_switching_tooltip"),
-            SGKillRow(@"Hide the concert notifications tip", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_concert_notifications_tooltip"),
-            SGKillRow(@"Hide the live event tip", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_event_entity_safe_tooltip"),
-            SGKillRow(@"Hide the live event venue tip", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_event_entity_venuename_header_tooltip"),
-            SGKillRow(@"Hide the Puffin nudge", @"ios-messaging-reduceinterventions-impl.enable_message_puffin_nudge_end_optimization"),
+        SGSection(@"도움말", @[
+            SGKillRow(@"스마트 셔플 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_smart_shuffle_helper_tooltip"),
+            SGKillRow(@"데이터 절약 도움말 숨기기", @"ios-feature-nowplayingbar.data_saver_tooltip"),
+            SGKillRow(@"플레이어 추천 업그레이드 권유 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_reinvent_free_n_p_v_suggestions_upsell"),
+            SGKillRow(@"AI 플레이리스트 생성 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_your_library_ai_playlist_creation_tooltip"),
+            SGKillRow(@"동영상 피드 둘러보기 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_watch_feed_entity_explorer_tooltip"),
+            SGKillRow(@"계정 전환 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_account_switching_tooltip"),
+            SGKillRow(@"공연 알림 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_concert_notifications_tooltip"),
+            SGKillRow(@"라이브 이벤트 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_event_entity_safe_tooltip"),
+            SGKillRow(@"라이브 이벤트 장소 도움말 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_live_events_event_entity_venuename_header_tooltip"),
+            SGKillRow(@"Puffin 안내 숨기기", @"ios-messaging-reduceinterventions-impl.enable_message_puffin_nudge_end_optimization"),
         ]),
     ] footer:nil];
 }
@@ -43,13 +43,13 @@ UIViewController *SGAdsSettingsPage(void) {
         [counts addObject:SGStatRow(label, ^NSString *{
             NSUInteger checked = SGAdBlockChecked(label);
             return checked == NSNotFound ? @(SGAdBlockCount(label)).stringValue
-                : [NSString stringWithFormat:@"%lu of %lu", (unsigned long)SGAdBlockCount(label), (unsigned long)checked];
+                : [NSString stringWithFormat:@"%lu개 / %lu개", (unsigned long)SGAdBlockCount(label), (unsigned long)checked];
         })];
     }
-    [counts addObject:SGStatRow(@"Total", ^NSString *{
+    [counts addObject:SGStatRow(@"합계", ^NSString *{
         return @(SGAdBlockCount(nil)).stringValue;
     })];
-    [counts addObject:SGActionRow(@"Reset the counters", nil, ^{ SGResetAdBlock(); })];
+    [counts addObject:SGActionRow(@"카운터 초기화", nil, ^{ SGResetAdBlock(); })];
 
     SGModRow *fakePremium = SGOptionRow(@"Spoof Premium", nil, SGKeyFakePremium);
     fakePremium.warning = SGFakePremiumWarning;
@@ -58,17 +58,17 @@ UIViewController *SGAdsSettingsPage(void) {
     NSMutableArray<SGModRow *> *ads = [NSMutableArray arrayWithObjects:
         SGWithSymbol(SGOptionRow(@"광고 숨기기", nil, SGKeyHideAds), @"speaker.slash"),
         SGWithSymbol(SGOptionRow(@"업그레이드 권유 숨기기", nil, SGKeyHideUpsells), @"hand.raised"), nil];
-    if (!SGRedesignedUIStored()) [ads addObject:SGWithSymbol(SGOptionRow(@"Hide the video carousel in Search", nil, SGKeyHideSearchVideos), @"play.rectangle.on.rectangle")];
+    if (!SGRedesignedUIStored()) [ads addObject:SGWithSymbol(SGOptionRow(@"검색의 동영상 목록 숨기기", nil, SGKeyHideSearchVideos), @"play.rectangle.on.rectangle")];
     [ads addObject:SGWithSymbol(SGPageRow(@"광고 및 업그레이드 권유 플래그", ^UIViewController *{ return adFlagsPage(); }), @"flag")];
 
     return [[SGModPage alloc] initWithTitle:@"Premium, 광고 및 개인정보" intro:SGRestartNote sections:@[
-        SGNotedSection(@"Ads", ads, @"Audio ads between songs need Spoof Premium."),
+        SGNotedSection(@"광고", ads, @"곡 사이 오디오 광고 차단에는 Spoof Premium이 필요합니다."),
         SGNotedSection(@"Premium", @[
             SGWithSymbol(fakePremium, @"crown"),
-        ], @"Free accounts only."),
+        ], @"무료 계정 전용입니다."),
         SGPrivacySection(),
-        SGNotedSection(@"Ads blocked so far", counts,
-                       @"\"3 of 214\" is 3 stopped of 214 checked. 0 of 0 means Spotify never asked, so that part does nothing on this version."),
+        SGNotedSection(@"차단한 광고 수", counts,
+                       @"\"214개 중 3개\"는 검사한 214개 중 3개를 차단했다는 뜻입니다. 0개 중 0개는 Spotify가 요청하지 않아 현재 버전에서 해당 차단이 작동하지 않는다는 뜻입니다."),
         SGPrivacyCountersSection(),
     ] footer:nil];
 }

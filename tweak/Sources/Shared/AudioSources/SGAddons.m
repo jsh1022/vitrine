@@ -9,7 +9,7 @@
 #import <stdatomic.h>
 
 static _Atomic uint64_t sg_generation;
-static NSString *sg_status = @"Idle";
+static NSString *sg_status = @"대기 중";
 static SGAddonPreparationState sg_preparation;
 static NSDictionary *sg_media;
 static NSString *sg_failure; // worker-owned, fixed diagnostics only
@@ -51,11 +51,11 @@ NSString *SGAddonStatus(void) { return sg_status; }
 NSString *SGAddonStatusSummary(void) {
     if (SGLosslessRendering()) return @"재생 중";
     switch (sg_preparation) {
-        case SGAddonPreparationSearching: return @"Preparing";
-        case SGAddonPreparationAligning: return @"Aligning";
-        case SGAddonPreparationAligned: return @"Aligned";
+        case SGAddonPreparationSearching: return @"준비 중";
+        case SGAddonPreparationAligning: return @"정렬 중";
+        case SGAddonPreparationAligned: return @"정렬됨";
         case SGAddonPreparationUnavailable: return @"사용 불가";
-        default: return @"Idle";
+        default: return @"대기 중";
     }
 }
 SGAddonPreparationState SGAddonPreparation(void) { return sg_preparation; }
@@ -68,7 +68,7 @@ NSDictionary *SGAddonMediaInfo(void) { return sg_media ?: @{}; }
 void SGAddonCancel(void) {
     atomic_fetch_add(&sg_generation, 1);
     sg_media = nil;
-    sg_status = @"Idle";
+    sg_status = @"대기 중";
     sg_preparation = SGAddonPreparationIdle;
 }
 void SGAddonRetryCurrentTrack(void) {
@@ -157,11 +157,11 @@ static BOOL networkAllowed(void) {
 }
 static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation) {
     if (generation != atomic_load(&sg_generation)) return nil;
-    if (!networkAllowed()) { sg_failure = @"Network policy: use unmetered Wi-Fi or allow cellular downloads"; return nil; }
-    if (!budget(identifier)) { sg_failure = @"Source request budget/cooldown reached; retry later"; return nil; }
+    if (!networkAllowed()) { sg_failure = @"네트워크 정책: 비과금 Wi-Fi를 사용하거나 셀룰러 다운로드를 허용하세요"; return nil; }
+    if (!budget(identifier)) { sg_failure = @"소스 요청 제한 또는 대기 시간에 도달했습니다. 나중에 다시 시도하세요"; return nil; }
     NSString *reason;
     NSURLSessionConfiguration *config = SGSourceSessionConfiguration(&reason);
-    if (!config) { sg_failure = @"WireGuard unavailable; addon request blocked"; return nil; } // enabled WireGuard never falls back to a direct session
+    if (!config) { sg_failure = @"WireGuard를 사용할 수 없어 애드온 요청을 차단했습니다"; return nil; } // enabled WireGuard never falls back to a direct session
     config.allowsCellularAccess = SGFlag(SGKeyAddonCellular, NO);
     config.allowsExpensiveNetworkAccess = SGFlag(SGKeyAddonCellular, NO);
     config.allowsConstrainedNetworkAccess = NO;
@@ -204,9 +204,9 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     }
     if (transfer.failed || !transfer.received) {
         if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 인증이 거부되었습니다(401/403). 서비스 설정 페이지에서 개인 manifest 링크를 갱신하세요";
-        else if (transfer.status == 429) sg_failure = @"Source rate limited (429); waiting for Retry-After";
-        else if (transfer.status) sg_failure = [NSString stringWithFormat:@"Source HTTP %ld or incomplete/oversized response", (long)transfer.status];
-        else sg_failure = @"Source connection failed or timed out";
+        else if (transfer.status == 429) sg_failure = @"소스 요청이 제한되었습니다(429). Retry-After 대기 중";
+        else if (transfer.status) sg_failure = [NSString stringWithFormat:@"소스 HTTP %ld 또는 불완전하거나 너무 큰 응답", (long)transfer.status];
+        else sg_failure = @"소스 연결 실패 또는 시간 초과";
     }
     return !transfer.failed && transfer.received && generation == atomic_load(&sg_generation) ? transfer : nil;
 }
@@ -286,7 +286,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
     if (!SGFlag(SGKeyAddons, NO) || !SGAddonSources().count) { completion(nil); return; }
     uint64_t generation = atomic_load(&sg_generation);
     NSArray *sources = SGAddonSources();
-    sg_status = @"Looking for a matching recording";
+    sg_status = @"일치하는 녹음 검색 중";
     sg_preparation = SGAddonPreparationSearching;
     dispatch_async(worker(), ^{
         NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-addons"];
@@ -312,7 +312,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
             if (![rows isKindOfClass:NSArray.class]) continue;
             NSDictionary *candidate = nil;
             for (id row in rows) if ([row isKindOfClass:NSDictionary.class] && SGAddonTrackMatches(row, title, artist, duration)) { candidate = row; break; }
-            if (!candidate) { sg_failure = @"Search answered but no recording matched title, artist and duration"; continue; }
+            if (!candidate) { sg_failure = @"검색에 응답했지만 제목, 아티스트, 길이가 일치하는 녹음이 없습니다"; continue; }
             NSDictionary *stream = nil;
             // BitChord resolves /stream first; a row URL is only a fallback.
             if ([candidate[@"id"] isKindOfClass:NSString.class] && [candidate[@"id"] length])
@@ -321,11 +321,11 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
                 NSMutableDictionary *fallback = [candidate mutableCopy];
                 fallback[@"url"] = candidate[@"streamURL"]; stream = fallback;
             }
-            if (!stream || !SGAddonDirectStream(stream)) { if (stream) sg_failure = @"Unsupported stream: need direct stereo FLAC/ALAC (DASH/HLS/Atmos/DRM are not connected to this engine)"; continue; }
+            if (!stream || !SGAddonDirectStream(stream)) { if (stream) sg_failure = @"지원하지 않는 스트림입니다. 직접 제공되는 스테레오 FLAC/ALAC가 필요합니다. DASH/HLS/Atmos/DRM은 이 엔진에 연결되지 않았습니다"; continue; }
             // As in BitChord, resolved rendition metadata wins over catalogue hints.
             id expiry = stream[@"expiresAt"];
             if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970) {
-                sg_failure = @"Resolved media URL expired; renew the source and retry"; continue;
+                sg_failure = @"음원 URL이 만료되었습니다. 소스를 갱신하고 다시 시도하세요"; continue;
             }
             if (fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation)) measured = SGMeasureLosslessFile(path, duration);
             if (measured) {
@@ -341,15 +341,15 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
                 }
                 info[@"declared"] = declared; measured = info; break;
             }
-            sg_failure = sg_failure ?: @"Downloaded media is not a matching stereo FLAC/ALAC file";
+            sg_failure = sg_failure ?: @"받은 음원이 일치하는 스테레오 FLAC/ALAC 파일이 아닙니다";
             [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
         }
         if (!measured || generation != atomic_load(&sg_generation)) { [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; path = nil; }
-        NSString *failure = sg_failure ?: @"No verified file; Spotify continues";
+        NSString *failure = sg_failure ?: @"검증된 파일이 없어 Spotify 오디오를 유지합니다";
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation == atomic_load(&sg_generation)) {
                 sg_media = measured;
-                sg_status = path ? @"Lossless header checked; waiting for decode and alignment" : failure;
+                sg_status = path ? @"무손실 헤더 확인됨 · 디코딩 및 정렬 대기 중" : failure;
                 sg_preparation = path ? SGAddonPreparationAligning : SGAddonPreparationUnavailable;
                 completion(path);
             } else { if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; completion(nil); }

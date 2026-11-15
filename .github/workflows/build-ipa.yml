@@ -15,6 +15,7 @@ on:
 
 env:
   THEOS: ${{ github.workspace }}/theos
+  SG_UNSIGNED: 1
 
 jobs:
   build:
@@ -65,7 +66,7 @@ jobs:
           BIN="vitrine-${{ github.run_id }}"
           echo "### filebin.net download" >> "$GITHUB_STEP_SUMMARY"
           for f in out/*.ipa; do
-            curl -fsS -X POST -H "Content-Type: application/octet-stream" --data-binary "@$f" "https://filebin.net/$BIN/$(basename "$f")" >/dev/null
+            bash scripts/upload-filebin.sh "$f" "$BIN"
             echo "- https://filebin.net/$BIN/$(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
           done
           echo "- _filebin deletes bins after a few days of inactivity, download promptly._" >> "$GITHUB_STEP_SUMMARY"

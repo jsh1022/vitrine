@@ -113,14 +113,14 @@ static NSArray<SGUpdateRelease *> *releasesToShow(void) {
 - (NSString *)introText {
     SGUpdateRelease *newest = SGUpdateNewestRelease();
     if (!newest) return SGUpdateChecked()
-        ? [NSString stringWithFormat:@"This build is %s. GitHub has no newer release.", SG_VERSION]
-        : [NSString stringWithFormat:@"This build is %s. Nothing has been asked of GitHub yet.", SG_VERSION];
+        ? [NSString stringWithFormat:@"현재 빌드는 %s입니다. GitHub에 더 최신 릴리스가 없습니다.", SG_VERSION]
+        : [NSString stringWithFormat:@"현재 빌드는 %s입니다. 아직 GitHub에서 확인하지 않았습니다.", SG_VERSION];
     NSString *date = longDate(newest.date);
-    NSString *when = date.length ? [@" came out on " stringByAppendingString:date] : @" is out";
+    NSString *when = date.length ? [@" 출시일: " stringByAppendingString:date] : @" 출시됨";
     if (SGUpdateVersion())
-        return [NSString stringWithFormat:@"%@%@, and this build is %s. Everything in between is below.",
+        return [NSString stringWithFormat:@"%@%@ · 현재 빌드 %s. 그 사이의 모든 변경 사항은 아래에 표시됩니다.",
                 newest.version, when, SG_VERSION];
-    return [NSString stringWithFormat:@"This build, %s, is GitHub's newest release; it%@. What went into it is below.",
+    return [NSString stringWithFormat:@"현재 빌드 %s는 GitHub의 최신 릴리스이며 %@. 변경 내용은 아래에 표시됩니다.",
             SG_VERSION, when];
 }
 
@@ -135,10 +135,10 @@ static NSArray<SGUpdateRelease *> *releasesToShow(void) {
     NSMutableArray<SGUpdateRow *> *top = [NSMutableArray arrayWithObject:check];
     SGUpdateRelease *newest = SGUpdateNewestRelease();
     if (SGUpdateVersion() && newest.url.length)
-        [top addObject:linkRow([@"Get " stringByAppendingString:newest.version],
-                               newest.prerelease ? @"A beta, on GitHub with its .deb" : @"The release on GitHub, where its .deb is",
+        [top addObject:linkRow([@"받기: " stringByAppendingString:newest.version],
+                               newest.prerelease ? @"GitHub에 .deb와 함께 제공되는 베타입니다" : @".deb를 제공하는 GitHub 릴리스입니다",
                                @"arrow.down.circle", newest.url)];
-    if (SGRepoURL) [top addObject:linkRow(@"모든 릴리스", @"Every version, this one and the ones before it",
+    if (SGRepoURL) [top addObject:linkRow(@"모든 릴리스", @"현재 및 이전의 모든 버전",
                            @"clock.arrow.circlepath", [SGRepoURL stringByAppendingString:@"/releases"])];
     [groups addObject:group(nil, top)];
 
@@ -166,8 +166,8 @@ static NSArray<SGUpdateRelease *> *releasesToShow(void) {
         NSString *date = shortDate(release.date);
         if (!kinds.count) {
             SGUpdateRow *empty = [SGUpdateRow new];
-            empty.title = @"Nothing written down";
-            empty.subtitle = release.url.length ? @"Tap to read the release on GitHub" : nil;
+            empty.title = @"기록 없음";
+            empty.subtitle = release.url.length ? @"탭하여 GitHub 릴리스 보기" : nil;
             if (release.url.length) empty.action = ^{ SGOpenURL(release.url); };
             [groups addObject:group([NSString stringWithFormat:@"%@%@", release.version,
                                      date.length ? [@" · " stringByAppendingString:date] : @""], @[empty])];

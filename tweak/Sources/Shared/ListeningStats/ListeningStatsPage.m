@@ -12,17 +12,17 @@ static const int64_t kDay = 86400;
 
 static NSString *duration(int64_t ms) {
     int64_t minutes = ms / 60000;
-    if (minutes < 60) return [NSString stringWithFormat:@"%lld min", minutes];
-    return [NSString stringWithFormat:@"%lld h %lld min", minutes / 60, minutes % 60];
+    if (minutes < 60) return [NSString stringWithFormat:@"%lld분", minutes];
+    return [NSString stringWithFormat:@"%lld시간 %lld분", minutes / 60, minutes % 60];
 }
 
 static NSString *playsText(NSUInteger plays) {
-    return [NSString stringWithFormat:plays == 1 ? @"%lu play" : @"%lu plays", (unsigned long)plays];
+    return [NSString stringWithFormat:plays == 1 ? @"%lu회 재생" : @"%lu회 재생", (unsigned long)plays];
 }
 
 static void showAlert(NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -34,7 +34,7 @@ static SGModSection *topSection(NSString *title, NSArray<SGStatEntry *> *entries
         row.subtitle = entry.detail;
         [rows addObject:row];
     }];
-    if (!rows.count) [rows addObject:SGStatRow(@"Nothing yet", nil)];
+    if (!rows.count) [rows addObject:SGStatRow(@"아직 없음", nil)];
     return SGSection(title, rows);
 }
 
@@ -44,12 +44,12 @@ static UIViewController *periodPage(NSString *title, int64_t since) {
     NSString *time = duration(stats.ms), *plays = playsText(stats.plays);
     return [[SGModPage alloc] initWithTitle:title intro:nil sections:@[
         SGSection(nil, @[
-            SGStatRow(@"Listening time", ^NSString *{ return time; }),
-            SGStatRow(@"Plays", ^NSString *{ return plays; }),
+            SGStatRow(@"감상 시간", ^NSString *{ return time; }),
+            SGStatRow(@"재생 횟수", ^NSString *{ return plays; }),
         ]),
-        topSection(@"Top tracks", stats.tracks),
-        topSection(@"Top artists", stats.artists),
-        topSection(@"Top albums", stats.albums),
+        topSection(@"많이 들은 곡", stats.tracks),
+        topSection(@"많이 들은 아티스트", stats.artists),
+        topSection(@"많이 들은 앨범", stats.albums),
     ] footer:nil];
 }
 
@@ -95,13 +95,13 @@ static BOOL sg_importing;
             sg_importing = NO;
             [page.tableView reloadData];
             if (!files) {
-                showAlert(@"No listening history found", @"Pick the StreamingHistory_music or Streaming_History_Audio files of Spotify's data export, or the zip they came in.");
+                showAlert(@"감상 기록을 찾지 못했습니다", @"Spotify 데이터의 StreamingHistory_music 또는 Streaming_History_Audio 파일이나 해당 ZIP을 선택하세요.");
                 return;
             }
             NSUInteger added = [SGListeningLog() merge:plays];
             SGLog(@"stats: %lu plays in %lu files, %lu new", (unsigned long)plays.count, (unsigned long)files, (unsigned long)added);
             [page.tableView reloadData];
-            showAlert(@"Imported", [NSString stringWithFormat:@"%@ added from %lu %@, %lu skipped as already here.", playsText(added),
+            showAlert(@"Imported", [NSString stringWithFormat:@"%@ 추가 · %lu %@ 중 기존 항목 %lu개 건너뜀", playsText(added),
                                    (unsigned long)files, files == 1 ? @"file" : @"files", (unsigned long)(plays.count - added)]);
         });
     });
@@ -121,14 +121,14 @@ static void pickExport(UITableViewController *page) {
 }
 
 static void confirmErase(UITableViewController *page) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Erase listening history?"
-                                                                  message:@"Every play recorded on this phone and every one imported is deleted. Spotify's own history is untouched."
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"감상 기록을 지울까요?"
+                                                                  message:@"이 휴대전화에 기록하거나 가져온 감상 기록을 모두 삭제합니다. Spotify 자체 기록은 유지됩니다."
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Erase" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         [SGListeningLog() erase];
         [page.tableView reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -136,7 +136,7 @@ static void confirmErase(UITableViewController *page) {
 
 UIViewController *SGListeningStatsPage(void) {
     NSMutableArray<SGModRow *> *periods = [NSMutableArray array];
-    NSArray *names = @[@"Past week", @"Past month", @"Past year", @"All time"];
+    NSArray *names = @[@"최근 일주일", @"최근 한 달", @"최근 일 년", @"전체 기간"];
     NSArray *days = @[@7, @30, @365, @0];
     for (NSUInteger i = 0; i < names.count; i++) {
         NSString *name = names[i];
@@ -147,18 +147,18 @@ UIViewController *SGListeningStatsPage(void) {
         [periods addObject:row];
     }
 
-    SGModRow *import = SGWithSymbol(SGStatActionRow(@"Import Spotify's data export", nil,
+    SGModRow *import = SGWithSymbol(SGStatActionRow(@"Spotify 데이터 내보내기 가져오기", nil,
                                                     ^NSString *{ return sg_importing ? @"Importing…" : nil; }, nil), @"square.and.arrow.down");
-    SGModRow *erase = SGWithSymbol(SGActionRow(@"Erase listening history", nil, nil), @"trash");
+    SGModRow *erase = SGWithSymbol(SGActionRow(@"감상 기록 지우기", nil, nil), @"trash");
     erase.color = SGRed();
-    SGModPage *page = [[SGModPage alloc] initWithTitle:@"Listening stats" intro:nil sections:@[
-        SGNotedSection(nil, @[SGSwitchRow(@"Record plays", nil, SGKeyListeningStats)],
-                       @"A play counts once it has run 30 seconds, or half of a shorter track. Everything stays on this phone."),
+    SGModPage *page = [[SGModPage alloc] initWithTitle:@"감상 통계" intro:nil sections:@[
+        SGNotedSection(nil, @[SGSwitchRow(@"재생 기록 저장", nil, SGKeyListeningStats)],
+                       @"30초 또는 더 짧은 곡의 절반을 재생하면 한 번으로 기록합니다. 모든 기록은 이 휴대전화에만 저장됩니다."),
         SGSection(nil, periods),
         SGNotedSection(nil, @[
-            SGStatRow(@"Plays", ^NSString *{ return [NSString stringWithFormat:@"%lu", (unsigned long)SGListeningLog().plays.count]; }),
+            SGStatRow(@"재생 횟수", ^NSString *{ return [NSString stringWithFormat:@"%lu", (unsigned long)SGListeningLog().plays.count]; }),
             import,
-        ], @"In Spotify's account privacy settings, ask for your data: the account data's StreamingHistory_music files, or the extended streaming history's Streaming_History_Audio files. Pick the JSON files or the zip they came in. Plays already here are skipped."),
+        ], @"Spotify 계정 개인정보 설정에서 데이터를 요청하세요. 계정 데이터의 StreamingHistory_music 또는 확장 감상 기록의 Streaming_History_Audio JSON 파일이나 ZIP을 선택하면 됩니다. 이미 있는 기록은 건너뜁니다."),
         SGSection(nil, @[erase]),
     ] footer:nil];
     __weak SGModPage *weakPage = page;
