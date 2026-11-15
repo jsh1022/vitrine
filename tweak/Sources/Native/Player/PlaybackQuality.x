@@ -19,8 +19,8 @@
     [super layoutSubviews];
     CGFloat textWidth = MIN(MAX(0, self.bounds.size.width - 20), ceil([self.currentTitle sizeWithAttributes:@{NSFontAttributeName:self.titleLabel.font}].width));
     CGFloat left = (self.bounds.size.width - textWidth - 19) / 2;
-    self.imageView.frame = CGRectMake(left, (self.bounds.size.height - 14) / 2, 14, 14);
-    self.titleLabel.frame = CGRectMake(left + 19, 0, textWidth, self.bounds.size.height);
+    self.imageView.frame = CGRectMake(left, (self.bounds.size.height - 14) / 2 - 4, 14, 14);
+    self.titleLabel.frame = CGRectMake(left + 19, 0, textWidth, self.bounds.size.height - 8);
     if (!self.highlightText) {
         self.highlightText = [UILabel new]; self.highlightText.userInteractionEnabled = NO;
         self.highlightText.textColor = UIColor.whiteColor; self.highlightText.textAlignment = NSTextAlignmentCenter;
@@ -126,6 +126,8 @@
     CGFloat centre = CGRectGetMidX([host convertRect:host.bounds toView:overlay]);
     CGFloat x = MAX(CGRectGetMaxX(left) + 8, MIN(centre - width / 2, CGRectGetMinX(right) - 8 - width));
     CGFloat centreY = MAX(CGRectGetMidY(left), CGRectGetMaxY(track) + 24);
+    CGRect sliderTouch = [slider convertRect:slider.bounds toView:overlay];
+    centreY = MAX(centreY, CGRectGetMaxY(sliderTouch) + height / 2 + 2);
     self.button.frame = CGRectMake(x, centreY - height / 2, width, height);
     self.button.hidden = NO;
     self.button.shines = [info[@"shines"] boolValue] && !UIAccessibilityIsReduceMotionEnabled()

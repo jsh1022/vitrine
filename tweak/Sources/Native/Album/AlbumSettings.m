@@ -17,7 +17,7 @@ UIViewController *SGAlbumSettingsPage(void) {
             SGHideRow(@"More by the artist", nil, SGHideAlbumMoreBy),
             SGHideRow(@"Related music videos", nil, SGHideAlbumVideos),
             SGHideRow(@"Concerts", nil, SGHideAlbumConcerts),
-            SGHideRow(@"Merch", nil, SGHideAlbumMerch),
+            SGHideRow(@"상품", nil, SGHideAlbumMerch),
             SGHideRow(@"You might also like", nil, SGHideAlbumYouMightLike),
         ], @"Works only with Spotify in English."),
     ];

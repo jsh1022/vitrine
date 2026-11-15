@@ -326,9 +326,9 @@ static SGModRow *fluidSlider(NSString *title, SGRFluidSetting setting, NSString 
 }
 
 SGModRow *SGRLyricsHideRow(void) {
-    SGModRow *row = SGChoiceRow(@"컨트롤 숨기기", @"A few seconds after the last touch, the lyrics take the room",
+    SGModRow *row = SGChoiceRow(@"컨트롤 숨기기", @"마지막 터치 후 몇 초가 지나면 가사가 화면을 채웁니다",
                                 SGRKeyLyricsAutoHide, @[@"꺼짐", @"모두", @"제목 유지"], SGRLyricsHideMode());
-    row.choiceNotes = @[@"The controls stay", @"The lyrics take the whole player", @"The cover, the title and the top row stay; in landscape, the title"];
+    row.choiceNotes = @[@"컨트롤 유지", @"가사가 플레이어 전체를 채웁니다", @"커버, 제목, 상단 행을 유지합니다. 가로 화면에서는 제목을 유지합니다"];
     return row;
 }
 
@@ -336,10 +336,10 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     SGRPlayerShowcase *showcase = [[SGRPlayerShowcase alloc] initWithFrame:CGRectMake(0, 0, 320, kCardMinHeight)];
     UISegmentedControl *backgrounds = [[UISegmentedControl alloc] initWithItems:SGRPlayerBackgroundNames()];
     backgrounds.selectedSegmentIndex = SGRPlayerBackground();
-    backgrounds.accessibilityLabel = @"Background";
+    backgrounds.accessibilityLabel = @"배경";
     backgrounds.apportionsSegmentWidthsByContent = YES;
 
-    SGModRow *lowData = SGOptionRow(@"저데이터 모드에서 다운로드", @"Up to about 7 MB a song", SGKeyMotionLowData);
+    SGModRow *lowData = SGOptionRow(@"저데이터 모드에서 다운로드", @"곡당 최대 약 7 MB", SGKeyMotionLowData);
     lowData.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundAnimated; };
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;
@@ -359,23 +359,23 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:
         SGSection(nil, @[sources, lowData]),
         SGNotedSection(@"아트워크 배치", @[
-            SGOptionRow(@"정지 커버 대체", @"Use a full-screen album cover when motion artwork is unavailable", SGRKeyPlayerStaticCover),
-            SGOptionRow(@"하단까지 아트워크 채우기", @"Crop motion artwork to cover the full screen behind the controls", SGRKeyPlayerFillArtwork),
-        ], @"Album covers keep their proportions and may be cropped at the sides. A dark gradient keeps the controls readable."),
+            SGOptionRow(@"정지 커버 대체", @"움직이는 아트워크가 없으면 전체 화면 앨범 커버를 사용합니다", SGRKeyPlayerStaticCover),
+            SGOptionRow(@"하단까지 아트워크 채우기", @"컨트롤 뒤 전체 화면을 채우도록 움직이는 아트워크를 잘라 표시합니다", SGRKeyPlayerFillArtwork),
+        ], @"앨범 커버의 비율을 유지하며 양옆이 잘릴 수 있습니다. 어두운 그라데이션으로 컨트롤의 가독성을 유지합니다."),
         SGNotedSection(nil, fluid, @"Brightness above 100% can make white text harder to read. A paused song holds the "
                                    @"background still. Animated and Visualizer use these where they show Fluid."),
-        SGNotedSection(@"컨트롤", @[SGSwitchRow(@"Volume", nil, SGRKeyPlayerVolume),
+        SGNotedSection(@"컨트롤", @[SGSwitchRow(@"음량", nil, SGRKeyPlayerVolume),
                                       SGOptionRow(@"커버 색상 따르기", nil, SGRKeyPlayerFollowsCover),
-                                      SGOptionRow(@"Spotify's icons", @"Lyrics, device, queue and the AI DJ's button", SGRKeyPlayerSpotifyIcons)],
+                                      SGOptionRow(@"Spotify 아이콘", @"가사, 기기, 대기열 및 AI DJ 버튼", SGRKeyPlayerSpotifyIcons)],
                        @"Volume puts a slider under the controls for this iPhone, or the speaker's while Spotify plays on another device. "
                        @"Follow the cover paints the like, shuffle, repeat, device and queue buttons, and the mini player's device and like, in the color of the song playing. "
                        @"Spotify's icons keeps Spotify's own glyphs in the row under the controls instead of the Music app's."),
         SGNotedSection(@"미니플레이어", SGRNowPlayingBarRows(),
-                       @"Apple Music style moves the now playing bar in between two tabs as you scroll down."), nil];
+                       @"Apple Music 스타일은 아래로 스크롤할 때 미니플레이어를 두 탭 사이로 이동합니다."), nil];
     [sections addObjectsFromArray:more];
     // Fluid, Animated and Visualizer share the field (PlayerMotion.x reads the choice on every track, PlayerVisualiser.m
     // on the field's layout); Still and Colors are a field of another kind, made once a launch (PlayerField.x).
-    NSString *footer = @"Fluid, Animated and Visualizer change with the next song. Still, Colors, Hide on the player and Spotify's icons apply after you restart Spotify.";
+    NSString *footer = @"유동 배경, 애니메이션, 시각화는 다음 곡부터 바뀝니다. 정지, 색상, 플레이어 숨김 및 Spotify 아이콘은 Spotify 재시작 후 적용됩니다.";
     SGRPlayerPage *page = [[SGRPlayerPage alloc] initWithTitle:@"플레이어" intro:nil sections:sections footer:footer];
     weakPage = page;
     page.showcase = showcase;

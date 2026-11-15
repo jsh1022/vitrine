@@ -21,6 +21,7 @@
     }
     NSString *track = SGKaraokePlayingTrack();
     NSArray<SGKaraokeLine *> *lines = track.length ? SGKaraokeLinesForTrack(track) : nil;
+    if (!lines.count) return;
     NSInteger position = SGKaraokePositionMs();
     NSInteger index = position < 0 ? -1 : SGKaraokeLeadLine(lines, position - SGKaraokeDelayMs());
     NSString *text = index >= 0 && index < (NSInteger)lines.count ? SGKaraokeLineText(lines[index]) : @"";

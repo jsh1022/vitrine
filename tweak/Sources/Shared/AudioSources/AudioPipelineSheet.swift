@@ -38,7 +38,7 @@ private struct SGPipelineView: View {
             let stages = (snapshot["stages"] as? [[String: Any]] ?? []).map(SGPipelineStage.init)
             VStack(spacing: 0) {
                 VStack(spacing: 4) {
-                    Text("Audio Pipeline").font(.headline).foregroundStyle(.white)
+                    Text("오디오 경로").font(.headline).foregroundStyle(.white)
                     Text(snapshot["statsLine"] as? String ?? "—").font(.footnote).foregroundStyle(.white.opacity(0.7))
                 }.multilineTextAlignment(.center).padding(.horizontal, 16).padding(.vertical, 19)
                 Divider().overlay(Color.white.opacity(0.12))
@@ -53,7 +53,7 @@ private struct SGPipelineView: View {
                 }
                 Divider().overlay(Color.white.opacity(0.12))
                 Button(action: close) {
-                    Text("Done").font(.body.weight(.semibold)).foregroundStyle(.white)
+                    Text("완료").font(.body.weight(.semibold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 52).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("pipeline.done")
             }.background(Color.black)

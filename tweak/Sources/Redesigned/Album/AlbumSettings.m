@@ -18,7 +18,7 @@ UIViewController *SGRAlbumSettingsPage(void) {
             SGSwitchRow(@"More by the artist", nil, SGRKeyAlbumHideMoreBy),
             SGSwitchRow(@"Related music videos", nil, SGRKeyAlbumHideVideos),
             SGSwitchRow(@"Concerts", nil, SGRKeyAlbumHideConcerts),
-            SGSwitchRow(@"Merch", nil, SGRKeyAlbumHideMerch),
+            SGSwitchRow(@"상품", nil, SGRKeyAlbumHideMerch),
             SGSwitchRow(@"You might also like", nil, SGRKeyAlbumHideYouMightLike),
             SGSwitchRow(@"그 외 모두", @"Any other section Spotify sends", SGRKeyAlbumHideOther),
         ], @"Sections are told apart by their English names. With Spotify in another language, Everything else "

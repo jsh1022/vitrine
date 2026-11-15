@@ -16,7 +16,7 @@ UIViewController *SGPlaylistSettingsPage(void) {
             SGHideRow(@"Video", nil, SGHidePlaylistVideo),
             SGHideRow(@"Add to library", nil, SGHidePlaylistAddTo),
             SGHideRow(@"다운로드", nil, SGHidePlaylistDownload),
-            SGHideRow(@"Share", nil, SGHidePlaylistShare),
+            SGHideRow(@"공유", nil, SGHidePlaylistShare),
             SGHideRow(@"더 보기", nil, SGHidePlaylistMore),
         ]),
         SGSection(@"곡 목록 위에서 숨기기", @[

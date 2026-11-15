@@ -37,6 +37,7 @@ extern UIImage *SGPresentationArtwork;
 - (void)viewDidLoad {
     [super viewDidLoad];
     _slider = [UISlider new];
+    _slider.accessibilityIdentifier = @"fixture.seek-slider";
     _elapsed = [UILabel new]; _remaining = [UILabel new];
     _elapsed.text = @"0:26"; _remaining.text = @"-2:25";
     _elapsed.accessibilityIdentifier = @"now-playing-time-take-label-internal";
@@ -237,6 +238,9 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             UIView *elapsed = identified(unit.view, @"now-playing-time-take-label-internal");
             UIView *remaining = identified(unit.view, @"now-playing-time-remaning-label-internal");
             CGRect left = [elapsed convertRect:elapsed.bounds toView:list], right = [remaining convertRect:remaining.bounds toView:list];
+            UIView *slider = identified(unit.view, @"fixture.seek-slider");
+            CGRect seek = [slider convertRect:slider.bounds toView:list];
+            if (CGRectIntersectsRect(badge.frame, seek)) { fail(@"quality hit target overlaps the seek slider"); return; }
             if (badge.hidden || ![badge.currentTitle isEqualToString:@"고해상도 무손실"] ||
                 CGRectIntersectsRect(badge.frame, left) || CGRectIntersectsRect(badge.frame, right)) {
                 fail(@"quality badge hidden, incorrect, or overlapping timestamps"); return;

@@ -61,6 +61,6 @@ NSDictionary *SGAudioPipelineSnapshot(void) {
           row(@"속도",[NSString stringWithFormat:@"%.2f× / %+.1f st",SGPlayerSpeed(),SGPlayerPitch()]),row(@"Buffers",nil),row(@"Output API",local ? @"AudioUnit RemoteIO" : nil),row(@"Bit-exact",verdict)]),
         stage(@"Output Device",@"speaker.wave.2",@[
           row(@"기기 이름",routes.count ? [routes componentsJoinedByString:@", "] : nil),row(@"Route",session.currentRoute.outputs.firstObject.portType),
-          row(@"Sample Rate",hardware>0 ? number(@(hardware),@"Hz") : nil),row(@"Channels",number(@(session.outputNumberOfChannels),@"ch")),row(@"System",system),row(@"Wired source output",SGWiredOutputStatus()[@"state"]),row(@"Latency",[NSString stringWithFormat:@"%.0f ms",session.outputLatency*1000])])
+          row(@"Sample Rate",hardware>0 ? number(@(hardware),@"Hz") : nil),row(@"Channels",number(@(session.outputNumberOfChannels),@"ch")),row(@"System",system),row(@"유선 원본 출력",SGWiredOutputStatus()[@"state"]),row(@"Latency",[NSString stringWithFormat:@"%.0f ms",session.outputLatency*1000])])
       ]};
 }

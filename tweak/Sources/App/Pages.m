@@ -169,7 +169,7 @@ UIViewController *SGPlayerSettingsPage(void) {
 
     [sections addObject:SGNotedSection(@"무손실", @[
         SGOptionRow(@"무손실 파일", @"Your own FLACs in place of Spotify's stream", SGKeyLossless),
-        SGPageRow(@"Lossless sources", ^UIViewController *{ return SGAudioSourcesPage(); }),
+        SGPageRow(@"무손실 소스", ^UIViewController *{ return SGAudioSourcesPage(); }),
         SGPageRow(@"상세 재생 정보", ^UIViewController *{ return SGPlaybackDetailsPage(); }),
     ], @"Put FLAC or ALAC files in Files › Spotify › Lossless. A file plays when its title and length match the song "
        @"and its sound matches what Spotify plays, from about 4 s after the song starts or you seek. Spotify still "
