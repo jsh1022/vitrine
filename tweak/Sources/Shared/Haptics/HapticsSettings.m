@@ -36,7 +36,7 @@ static NSString *sg_status;
 static BOOL sg_systemOff;
 
 NSString *SGMusicHapticsStatus(void) {
-    return sg_status ?: @"Waiting";
+    return sg_status ?: @"대기 중";
 }
 
 void SGSetMusicHapticsStatus(NSString *status) {
@@ -83,7 +83,7 @@ void SGMigrateMusicHaptics(void) {
 }
 
 static NSArray<NSString *> *followsNames(void) {
-    return @[@"Everything", @"Beat", @"Bass"];
+    return @[@"모두", @"Beat", @"Bass"];
 }
 
 static NSArray<NSString *> *followsNotes(void) {
@@ -113,7 +113,7 @@ SGMusicFollows SGMusicHapticsFollows(void) {
 static SGModRow *strengthRow(NSString *key, void (^changed)(void)) {
     NSInteger minimum, maximum;
     strengthRange(key, &minimum, &maximum);
-    return SGSliderRow(@"Strength", nil, minimum, maximum, SGStrengthStep,
+    return SGSliderRow(@"강도", nil, minimum, maximum, SGStrengthStep,
         ^double { return SGHapticsStrength(key) * 100; },
         ^(double value) {
             SGSetInt(key, lround(value));
@@ -127,7 +127,7 @@ static SGModRow *strengthRow(NSString *key, void (^changed)(void)) {
 static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^explain)(void)) {
     SGMigrateMusicHaptics();
     __weak SGVibrationsPreview *weakPreview = preview;
-    SGModRow *controls = SGSwitchRow(@"Controls", nil, SGKeyControlHaptics);
+    SGModRow *controls = SGSwitchRow(@"컨트롤", nil, SGKeyControlHaptics);
     controls.changed = ^(BOOL on) { [weakPreview reload]; };
     SGModRow *controlStrength = strengthRow(SGKeyControlStrength, ^{
         // Felt as it is set, and seen: a tap at the new strength with each step, and its ripple.
@@ -140,7 +140,7 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
         [NSNotificationCenter.defaultCenter postNotificationName:SGMusicHapticsSwitchesChangedNotification object:nil];
         [weakPreview reload];
     };
-    SGModRow *music = SGOptionRow(@"Music Haptics", nil, SGKeyMusicHaptics);
+    SGModRow *music = SGOptionRow(@"음악 햅틱", nil, SGKeyMusicHaptics);
     music.info = kMusicInfo;
     music.changed = switched;
     SGModRow *musicStrength = strengthRow(SGKeyMusicStrength, ^{
@@ -175,12 +175,12 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     SGModRow *addonUpdate = SGActionRow(@"Update Vitrine Addon", @"A newer add-on comes with this Vitrine", ^{ shareAddon(); });
     addonUpdate.visible = ^BOOL { return SGHapticAddonOutdated(); };
 
-    SGModRow *background = SGOptionRow(@"In the Background", nil, SGKeyMusicHapticsBackground);
+    SGModRow *background = SGOptionRow(@"백그라운드에서", nil, SGKeyMusicHapticsBackground);
     background.info = kBackgroundInfo;
     background.changed = switched;
     background.visible = ^BOOL { return backgroundAvailable(); };
     // What iOS's own is doing, or, while it is off in Accessibility, a row saying where to turn it on.
-    SGModRow *status = SGStatRow(@"Status", ^NSString *{ return SGMusicHapticsStatus(); });
+    SGModRow *status = SGStatRow(@"상태", ^NSString *{ return SGMusicHapticsStatus(); });
     status.visible = ^BOOL { return SGMusicHapticsInBackground() && SGSystemMusicHapticsOn(); };
     // Under In the Background while the install lacks the key iOS lists apps for Music Haptics by.
     SGModRow *unlisted = SGWarningRow(@"In the Background is missing from this install", @"Tap for why", ^{
@@ -188,7 +188,7 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
             message:@"iOS plays Music Haptics only for apps that say they support it, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both."
             preferredStyle:UIAlertControllerStyleAlert];
         alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
     });
     unlisted.visible = ^BOOL { return backgroundAvailable() && !SGMusicHapticsListedByInstall(); };
@@ -271,7 +271,7 @@ UIViewController *SGVibrationsSettingsPage(void) {
     SGVibrationsPreview *preview = [SGVibrationsPreview new];
     __block __weak SGVibrationsPage *weakPage;
     NSArray<SGModSection *> *cards = sections(preview, ^{ [weakPage explainBackground]; });
-    SGVibrationsPage *page = [[SGVibrationsPage alloc] initWithTitle:@"Vibrations" intro:nil sections:cards footer:nil];
+    SGVibrationsPage *page = [[SGVibrationsPage alloc] initWithTitle:@"진동" intro:nil sections:cards footer:nil];
     page.preview = preview;
     weakPage = page;
     return page;

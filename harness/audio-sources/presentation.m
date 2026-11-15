@@ -192,7 +192,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     if (index == 6) {
         // Also prove the helper accepts a request arriving from a worker thread.
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Worker request" message:nil preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGShowAudioController(alert); });
     } else if (index == 5) {
         UIButton *details = (UIButton *)identified(self.nav.presentedViewController.view, @"vitrine.audio-quality.details");
@@ -205,7 +205,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             fail(@"prepared provider metadata must not create a lossless badge"); return;
         }
         SGPresentationPreparation = SGAddonPreparationSearching;
-        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"음원 찾는 중"]) { fail(@"searching label missing"); return; }
+        if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"기본"]) { fail(@"searching must retain the default visible label"); return; }
         SGPresentationPreparation = SGAddonPreparationUnavailable;
         if (![SGPlaybackQualityInfo()[@"label"] isEqualToString:@"기본"]) { fail(@"unavailable source must show the default label"); return; }
         SGPresentationExternal = YES;
@@ -258,7 +258,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         // Do not replace the navigation stack during the previous modal's dismissal.
         // The WireGuard page only supplies the actual action rows for these two steps.
         if (index == 1) (void)SGWireGuardSettingsPage();
-        NSString *title = @[@"Add source", @"Import .conf file", @"Delete saved profile"][index];
+        NSString *title = @[@"소스 추가", @".conf 파일 가져오기", @"저장된 프로필 삭제"][index];
         SGModRow *found = nil;
         for (SGModRow *row in SGPresentationRows) if ([row.title isEqualToString:title]) found = row;
         if (!found.action) { fail(@"missing production row action"); return; }
@@ -269,20 +269,20 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         if (!shown.viewIfLoaded.window || shown.isBeingPresented || shown.isBeingDismissed || shown.transitionCoordinator) return NO;
         // A just-dismissed controller can remain attached until the next run-loop turn.
         // Wait for this step's expected controller, not the previous step's modal.
-        if (index == 0) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"Add lossless source"];
+        if (index == 0) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"무손실 소스 추가"];
         if (index == 1) return [shown isKindOfClass:UIDocumentPickerViewController.class];
         if (index == 2) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"WireGuard"];
-        if (index == 3) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"Playback details"];
+        if (index == 3) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"상세 재생 정보"];
         if (index == 4) return [shown.view.accessibilityIdentifier isEqualToString:@"vitrine.audio-quality.popover"];
-        if (index == 5) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"Playback details"];
+        if (index == 5) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"상세 재생 정보"];
         return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"Worker request"];
     }, ^{
         UIViewController *shown = self.nav.presentedViewController;
         if (shown.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) fail(@"missing dark style");
-        if (index == 0 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"Add lossless source"] || [(UIAlertController *)shown textFields].count != 1)) fail(@"add-source editor missing");
+        if (index == 0 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"무손실 소스 추가"] || [(UIAlertController *)shown textFields].count != 1)) fail(@"add-source editor missing");
         if (index == 1 && ![shown isKindOfClass:UIDocumentPickerViewController.class]) fail(@"document picker missing");
         if (index == 2 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"WireGuard"])) fail(@"result message missing");
-        if (index == 3 && (![shown isKindOfClass:UINavigationController.class] || ![((UINavigationController *)shown).topViewController.title isEqualToString:@"Playback details"])) fail(@"playback details missing");
+        if (index == 3 && (![shown isKindOfClass:UINavigationController.class] || ![((UINavigationController *)shown).topViewController.title isEqualToString:@"상세 재생 정보"])) fail(@"playback details missing");
         if (index == 4) { [self step:5]; return; }
         if (index == 5) {
             SGPresentationExternal = NO; SGPresentationSourceInfo = nil; SGPresentationPreparedInfo = nil;

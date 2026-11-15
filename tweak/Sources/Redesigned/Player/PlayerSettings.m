@@ -326,8 +326,8 @@ static SGModRow *fluidSlider(NSString *title, SGRFluidSetting setting, NSString 
 }
 
 SGModRow *SGRLyricsHideRow(void) {
-    SGModRow *row = SGChoiceRow(@"Hide the controls", @"A few seconds after the last touch, the lyrics take the room",
-                                SGRKeyLyricsAutoHide, @[@"Off", @"Everything", @"Keep the title"], SGRLyricsHideMode());
+    SGModRow *row = SGChoiceRow(@"컨트롤 숨기기", @"A few seconds after the last touch, the lyrics take the room",
+                                SGRKeyLyricsAutoHide, @[@"꺼짐", @"모두", @"제목 유지"], SGRLyricsHideMode());
     row.choiceNotes = @[@"The controls stay", @"The lyrics take the whole player", @"The cover, the title and the top row stay; in landscape, the title"];
     return row;
 }
@@ -339,44 +339,44 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     backgrounds.accessibilityLabel = @"Background";
     backgrounds.apportionsSegmentWidthsByContent = YES;
 
-    SGModRow *lowData = SGOptionRow(@"Download in Low Data Mode", @"Up to about 7 MB a song", SGKeyMotionLowData);
+    SGModRow *lowData = SGOptionRow(@"저데이터 모드에서 다운로드", @"Up to about 7 MB a song", SGKeyMotionLowData);
     lowData.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundAnimated; };
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;
 
     __block __weak UITableViewController *weakPage;
-    SGModRow *reset = SGActionRow(@"Reset", nil, ^{
+    SGModRow *reset = SGActionRow(@"초기화", nil, ^{
         SGRResetFluidSettings();
         [weakPage.tableView reloadData];   // the sliders at once, rather than at the page's next tick
     });
     reset.color = SGRed();
     NSArray<SGModRow *> *fluid = @[
-        fluidSlider(@"Speed", SGRFluidSpeed, @"%"), fluidSlider(@"Warp", SGRFluidWarp, @"%"), fluidSlider(@"Blur", SGRFluidBlur, @""),
-        fluidSlider(@"Saturation", SGRFluidSaturation, @"%"), fluidSlider(@"Brightness", SGRFluidBrightness, @"%"), reset,
+        fluidSlider(@"속도", SGRFluidSpeed, @"%"), fluidSlider(@"왜곡", SGRFluidWarp, @"%"), fluidSlider(@"흐림", SGRFluidBlur, @""),
+        fluidSlider(@"채도", SGRFluidSaturation, @"%"), fluidSlider(@"밝기", SGRFluidBrightness, @"%"), reset,
     ];
     for (SGModRow *row in fluid) row.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundFluid; };
 
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:
         SGSection(nil, @[sources, lowData]),
-        SGNotedSection(@"Artwork layout", @[
-            SGOptionRow(@"Static cover fallback", @"Use a full-screen album cover when motion artwork is unavailable", SGRKeyPlayerStaticCover),
-            SGOptionRow(@"Fill artwork to bottom", @"Crop motion artwork to cover the full screen behind the controls", SGRKeyPlayerFillArtwork),
+        SGNotedSection(@"아트워크 배치", @[
+            SGOptionRow(@"정지 커버 대체", @"Use a full-screen album cover when motion artwork is unavailable", SGRKeyPlayerStaticCover),
+            SGOptionRow(@"하단까지 아트워크 채우기", @"Crop motion artwork to cover the full screen behind the controls", SGRKeyPlayerFillArtwork),
         ], @"Album covers keep their proportions and may be cropped at the sides. A dark gradient keeps the controls readable."),
         SGNotedSection(nil, fluid, @"Brightness above 100% can make white text harder to read. A paused song holds the "
                                    @"background still. Animated and Visualizer use these where they show Fluid."),
-        SGNotedSection(@"Controls", @[SGSwitchRow(@"Volume", nil, SGRKeyPlayerVolume),
-                                      SGOptionRow(@"Follow the cover", nil, SGRKeyPlayerFollowsCover),
+        SGNotedSection(@"컨트롤", @[SGSwitchRow(@"Volume", nil, SGRKeyPlayerVolume),
+                                      SGOptionRow(@"커버 색상 따르기", nil, SGRKeyPlayerFollowsCover),
                                       SGOptionRow(@"Spotify's icons", @"Lyrics, device, queue and the AI DJ's button", SGRKeyPlayerSpotifyIcons)],
                        @"Volume puts a slider under the controls for this iPhone, or the speaker's while Spotify plays on another device. "
                        @"Follow the cover paints the like, shuffle, repeat, device and queue buttons, and the mini player's device and like, in the color of the song playing. "
                        @"Spotify's icons keeps Spotify's own glyphs in the row under the controls instead of the Music app's."),
-        SGNotedSection(@"Mini player", SGRNowPlayingBarRows(),
+        SGNotedSection(@"미니플레이어", SGRNowPlayingBarRows(),
                        @"Apple Music style moves the now playing bar in between two tabs as you scroll down."), nil];
     [sections addObjectsFromArray:more];
     // Fluid, Animated and Visualizer share the field (PlayerMotion.x reads the choice on every track, PlayerVisualiser.m
     // on the field's layout); Still and Colors are a field of another kind, made once a launch (PlayerField.x).
     NSString *footer = @"Fluid, Animated and Visualizer change with the next song. Still, Colors, Hide on the player and Spotify's icons apply after you restart Spotify.";
-    SGRPlayerPage *page = [[SGRPlayerPage alloc] initWithTitle:@"Player" intro:nil sections:sections footer:footer];
+    SGRPlayerPage *page = [[SGRPlayerPage alloc] initWithTitle:@"플레이어" intro:nil sections:sections footer:footer];
     weakPage = page;
     page.showcase = showcase;
     page.backgrounds = backgrounds;

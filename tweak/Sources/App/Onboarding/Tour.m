@@ -413,15 +413,15 @@ static BOOL adFree(void) {
 
 // What people miss in Mod Settings, as pointers only: the tour has no way into a page but holding Home.
 - (UIView *)tipsView {
-    UIStackView *split = cardRow(@"rectangle.split.2x1", @"Split Tabs",
+    UIStackView *split = cardRow(@"rectangle.split.2x1", @"탭 분리",
                                  @"Any tab, Queue for one, on a bar of its own at the trailing end.\nMod Settings > Tab bar > Split Tabs", nil);
     _splitTip = split;
-    UIStackView *lyrics = cardRow(@"quote.bubble", @"Lyrics", @"", nil);
+    UIStackView *lyrics = cardRow(@"quote.bubble", @"가사", @"", nil);
     // The row's text stack is its last arranged view, the gray line that stack's; updateNote writes the look's.
     _lyricsTip = (UILabel *)((UIStackView *)lyrics.arrangedSubviews.lastObject).arrangedSubviews.lastObject;
     BOOL liveActivity = NO;
     if (@available(iOS 17.0, *)) liveActivity = YES;
-    UIStackView *airPods = cardRow(@"airpods.pro", liveActivity ? @"AirPods gestures, Live Activity" : @"AirPods gestures",
+    UIStackView *airPods = cardRow(@"airpods.pro", liveActivity ? @"AirPods gestures, Live Activity" : @"AirPods 제스처",
                                    liveActivity ? @"Nod twice or shake your head to control the music, with a chime; and the track on the "
                                                   @"lock screen. Either look.\nMod Settings > AirPods gestures, Live Activity"
                                                 : @"Nod twice or shake your head to control the music, with a chime. Either look."
@@ -469,7 +469,7 @@ static BOOL adFree(void) {
     _adsCard.isAccessibilityElement = YES;
     _adsCard.accessibilityLabel = @"No ads";
     _adsCard.accessibilityHint = @"No ads, no Premium upsells, and Premium spoofed.";
-    _adsCard.accessibilityValue = _ads.on ? @"On" : @"Off";
+    _adsCard.accessibilityValue = _ads.on ? @"켜짐" : @"꺼짐";
     if (@available(iOS 17.0, *)) _adsCard.accessibilityTraits = UIAccessibilityTraitToggleButton;
     else _adsCard.accessibilityTraits = UIAccessibilityTraitButton;
     UILabel *adsText = [UILabel new];
@@ -583,7 +583,7 @@ static BOOL adFree(void) {
 
 - (void)toggleAds {
     [_ads setOn:!_ads.on animated:YES];
-    _adsCard.accessibilityValue = _ads.on ? @"On" : @"Off";
+    _adsCard.accessibilityValue = _ads.on ? @"켜짐" : @"꺼짐";
     [self refresh];
 }
 
@@ -595,7 +595,7 @@ static BOOL adFree(void) {
 
 - (void)refresh {
     UIButtonConfiguration *config = _primary.configuration;
-    NSString *title = self.needsRestart ? @"Restart Spotify" : @"Start listening";
+    NSString *title = self.needsRestart ? @"Spotify 재시작" : @"Start listening";
     config.attributedTitle = [[NSAttributedString alloc] initWithString:title attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]}];
     _primary.configuration = config;
 }

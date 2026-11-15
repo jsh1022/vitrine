@@ -125,7 +125,7 @@
     CGFloat height = 36;
     CGFloat centre = CGRectGetMidX([host convertRect:host.bounds toView:overlay]);
     CGFloat x = MAX(CGRectGetMaxX(left) + 8, MIN(centre - width / 2, CGRectGetMinX(right) - 8 - width));
-    CGFloat centreY = MAX(CGRectGetMidY(left) + 6, CGRectGetMaxY(track) + 28);
+    CGFloat centreY = MAX(CGRectGetMidY(left), CGRectGetMaxY(track) + 24);
     self.button.frame = CGRectMake(x, centreY - height / 2, width, height);
     self.button.hidden = NO;
     self.button.shines = [info[@"shines"] boolValue] && !UIAccessibilityIsReduceMotionEnabled()

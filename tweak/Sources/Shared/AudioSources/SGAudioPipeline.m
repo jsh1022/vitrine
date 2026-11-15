@@ -42,25 +42,25 @@ NSDictionary *SGAudioPipelineSnapshot(void) {
     else if (rendered>0 && hardware>0 && fabs(rendered-hardware)>1) verdict=@"No — iOS sample rate conversion";
     NSMutableArray *routes=[NSMutableArray array];
     for (AVAudioSessionPortDescription *p in session.currentRoute.outputs) [routes addObject:p.portName];
-    NSString *system=rendered>0 && hardware>0 ? (fabs(rendered-hardware)<1 ? @"Passthrough rate" : @"Converted by iOS") : @"—";
+    NSString *system=rendered>0 && hardware>0 ? (fabs(rendered-hardware)<1 ? @"Passthrough rate" : @"iOS에서 변환됨") : @"—";
     return @{@"statsLine":line.count ? [line componentsJoinedByString:@" · "] : @"No decoder measurement for the selected source",
       @"playing":@(SGPlayerState().isPlaying && !SGPlayerState().isPaused),
       @"diagnostic":SGAddonStatus(), @"stages":@[
         stage(@"Track Info",@"doc",@[
-          row(@"Source",measured.count ? prepared[@"sourceName"] ?: @"Local Storage" : @"Spotify · format not exposed"),
-          row(@"Format",measured[@"codec"]),row(@"Bit Depth",number(bits,@"bit")),row(@"Sample Rate",number(rate,@"Hz")),
+          row(@"소스",measured.count ? prepared[@"sourceName"] ?: @"Local Storage" : @"Spotify · format not exposed"),
+          row(@"Format",measured[@"codec"]),row(@"비트 깊이",number(bits,@"bit")),row(@"Sample Rate",number(rate,@"Hz")),
           row(@"Bitrate",bitrate>0 ? [NSString stringWithFormat:@"%.0f kbps",bitrate] : @"—"),row(@"Channels",channels.intValue==2 ? @"Stereo" : number(channels,@"ch")),
           row(@"Source claim",[NSString stringWithFormat:@"%@ · %@",number(claimed[@"bitDepth"],@"bit"),number(claimed[@"sampleRate"],@"Hz")])]),
         stage(@"Decoder",@"cpu",@[
-          row(@"Decoder Name",measured.count ? @"Apple ExtAudioFile / AudioConverter" : @"Spotify decoder · not exposed"),row(@"Format",measured.count ? pcm : nil)]),
+          row(@"디코더 이름",measured.count ? @"Apple ExtAudioFile / AudioConverter" : @"Spotify decoder · not exposed"),row(@"Format",measured.count ? pcm : nil)]),
         stage(@"Resampler",@"slider.horizontal.3",@[
-          row(@"I/O Rate",io),row(@"Type",rate.doubleValue>0 && rendered>0 ? (resampled ? @"Resampler" : @"None") : @"—"),row(@"Cutoff",nil),row(@"Quality",rate.doubleValue>0 && rendered>0 ? (resampled ? @"Resampled" : @"Passthrough") : @"—")]),
+          row(@"I/O Rate",io),row(@"Type",rate.doubleValue>0 && rendered>0 ? (resampled ? @"Resampler" : @"없음") : @"—"),row(@"Cutoff",nil),row(@"음질",rate.doubleValue>0 && rendered>0 ? (resampled ? @"Resampled" : @"Passthrough") : @"—")]),
         stage(@"DSP",@"waveform",@[
           row(@"PCM Format",pcm),row(@"Sample Rate",rendered>0 ? number(@(rendered),@"Hz") : nil),
           row(@"Gain",gain>0 ? [NSString stringWithFormat:@"%+.2f dB",20*log10(gain)] : nil),row(@"Measured",nil),row(@"EQ Preset",@"Not measured"),row(@"Stereo Expand",@"Not measured"),
-          row(@"Speed",[NSString stringWithFormat:@"%.2f× / %+.1f st",SGPlayerSpeed(),SGPlayerPitch()]),row(@"Buffers",nil),row(@"Output API",local ? @"AudioUnit RemoteIO" : nil),row(@"Bit-exact",verdict)]),
+          row(@"속도",[NSString stringWithFormat:@"%.2f× / %+.1f st",SGPlayerSpeed(),SGPlayerPitch()]),row(@"Buffers",nil),row(@"Output API",local ? @"AudioUnit RemoteIO" : nil),row(@"Bit-exact",verdict)]),
         stage(@"Output Device",@"speaker.wave.2",@[
-          row(@"Device Name",routes.count ? [routes componentsJoinedByString:@", "] : nil),row(@"Route",session.currentRoute.outputs.firstObject.portType),
+          row(@"기기 이름",routes.count ? [routes componentsJoinedByString:@", "] : nil),row(@"Route",session.currentRoute.outputs.firstObject.portType),
           row(@"Sample Rate",hardware>0 ? number(@(hardware),@"Hz") : nil),row(@"Channels",number(@(session.outputNumberOfChannels),@"ch")),row(@"System",system),row(@"Wired source output",SGWiredOutputStatus()[@"state"]),row(@"Latency",[NSString stringWithFormat:@"%.0f ms",session.outputLatency*1000])])
       ]};
 }

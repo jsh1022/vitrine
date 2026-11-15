@@ -11,21 +11,21 @@ SGModSection *SGLyricsSourcesSection(BOOL namingSource) {
     sources.value = ^NSString *{
         // The first one asked and how many follow it, short enough to sit beside the title.
         NSArray<NSString *> *order = SGLyricsOrder();
-        if (!order.count) return @"Off";
+        if (!order.count) return @"꺼짐";
         NSString *first = SGLyricsProviderFor(order.firstObject).name;
         return order.count == 1 ? first : [NSString stringWithFormat:@"%@ +%lu", first, (unsigned long)order.count - 1];
     };
     SGModRow *imported = SGPageRow(@"Imported LRC files", ^UIViewController *{ return SGImportedLRCPage(); });
     imported.value = ^NSString *{
         NSUInteger count = SGImportedLRCFiles().count;
-        return count ? @(count).stringValue : @"None";
+        return count ? @(count).stringValue : @"없음";
     };
     SGModRow *words = SGOptionRow(@"Prefer word-by-word timing", @"Asks down the order past lines timed by the line", SGKeyLyricsPreferWordTiming);
     NSMutableArray<SGModRow *> *rows = [NSMutableArray arrayWithObjects:sources, words, imported,
         SGSwitchRow(@"Lyrics for every track", @"Even where Spotify has none", SGKeyLyricsAllTracks), SGSpicyLyricsKeyRow(), nil];
     // Spicy Lyrics' terms ask for its credit wherever its lines show (Shared/LyricsSources/SpicyLyrics.m), so the switch
     // says so, or its credit under the lyrics reads as the switch not working (issue #20).
-    if (namingSource) [rows addObject:SGOptionRow(@"Show source", @"Spicy Lyrics is always credited after the last line: its terms ask for it", SGKeyLyricsCredit)];
+    if (namingSource) [rows addObject:SGOptionRow(@"소스 표시", @"Spicy Lyrics is always credited after the last line: its terms ask for it", SGKeyLyricsCredit)];
     if (SGEeveeLyricsOn()) {
         [rows addObject:SGOptionRow(@"Use these sources anyway", @"Only if EeveeSpotify's lyrics are really off", SGKeyLyricsBesideEevee)];
         return SGNotedSection(@"Sources", rows, @"EeveeSpotify's lyrics are on, so it answers Spotify's lyrics and these sources stay "
@@ -56,7 +56,7 @@ SGModRow *SGLyricsTranslationLanguageRow(void) {
 
 // Only the redesign's lyrics view draws it, and every one there is redrawn as the switch flips.
 SGModRow *SGLyricsRomanisedRow(void) {
-    SGModRow *row = SGOptionRow(@"Romanized lyrics", @"Lines in other alphabets, again in Latin letters", SGKeyLyricsRomanised);
+    SGModRow *row = SGOptionRow(@"로마자 가사", @"Lines in other alphabets, again in Latin letters", SGKeyLyricsRomanised);
     row.changed = ^(BOOL on) {
         [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsRomanisedDidChangeNotification object:nil];
     };
@@ -79,7 +79,7 @@ SGModRow *SGLyricsWordTimingRow(void) {
 
 // Read wherever lines are timed, so it applies as the thumb moves.
 SGModRow *SGLyricsDelayRow(void) {
-    return SGSliderRow(@"Delay", nil, 0, 1000, 25, ^double { return SGKaraokeDelayMs(); },
+    return SGSliderRow(@"지연", nil, 0, 1000, 25, ^double { return SGKaraokeDelayMs(); },
                        ^(double value) { SGSetInt(SGKeyLyricsDelay, lround(value)); },
                        ^NSString *(double value) { return [NSString stringWithFormat:@"%ld ms", lround(value)]; });
 }

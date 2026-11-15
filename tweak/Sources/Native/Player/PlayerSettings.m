@@ -7,17 +7,17 @@
 NSArray<SGModSection *> *SGNativePlayerScreenSections(void) {
     return @[
         SGSection(@"Player screen", @[
-            SGPageRow(@"Artwork background", ^UIViewController *{ return SGNativeArtworkSettingsPage(); }),
-            SGOptionRow(@"Glass header buttons", nil, SGKeyPlayer),
+            SGPageRow(@"아트워크 배경", ^UIViewController *{ return SGNativeArtworkSettingsPage(); }),
+            SGOptionRow(@"글래스 헤더 버튼", nil, SGKeyPlayer),
             SGKillRow(@"Disable Canvas", @"ios-feature-canvas.canvas_enabled"),
             SGFlagRow(@"Sheet style player", @"ios-feature-nowplaying.sheet_style_npv"),
             SGFlagRow(@"Redesigned header", @"ios-feature-nowplaying.new_redesign_header_with_context_menu_enabled"),
             SGFlagRow(@"New progress slider", @"ios-feature-encoreexperiments.new_npv_slider_enabled"),
             SGFlagRow(@"Expand the sticky header on tap", @"ios-feature-nowplaying.expand_sticky_header_on_tap"),
         ]),
-        SGSection(@"Hide cards below the player", @[
-            SGHideRow(@"Lyrics", nil, SGHideLyricsCard),
-            SGHideRow(@"About the artist", nil, SGHideAboutArtist),
+        SGSection(@"플레이어 아래 카드 숨기기", @[
+            SGHideRow(@"가사", nil, SGHideLyricsCard),
+            SGHideRow(@"아티스트 정보", nil, SGHideAboutArtist),
             SGHideRow(@"Related videos", nil, SGHideRelatedVideos),
             SGHideRow(@"SongDNA", nil, SGHideSongDNA),
             SGHideRow(@"Live events", nil, SGHideLiveEvents),
@@ -26,12 +26,12 @@ NSArray<SGModSection *> *SGNativePlayerScreenSections(void) {
             SGHideRow(@"Merch", nil, SGHideMerch),
             SGHideRow(@"Recommendations", nil, SGHideRecommendations),
         ]),
-        SGSection(@"Hide on the player", @[
-            SGHideRow(@"Lyrics preview", nil, SGHideLyricsInline),
-            SGHideRow(@"Shuffle", nil, SGHideShuffle),
-            SGHideRow(@"Repeat", nil, SGHideRepeat),
+        SGSection(@"플레이어에서 숨기기", @[
+            SGHideRow(@"한 줄 가사", nil, SGHideLyricsInline),
+            SGHideRow(@"셔플", nil, SGHideShuffle),
+            SGHideRow(@"반복", nil, SGHideRepeat),
             SGHideRow(@"Add to playlist", nil, SGHideAddTo),
-            SGHideRow(@"Queue", nil, SGHideQueue),
+            SGHideRow(@"대기열", nil, SGHideQueue),
             SGHideRow(@"Share", nil, SGHideShare),
             SGHideRow(@"Connect to a device", nil, SGHideConnect),
         ]),
@@ -43,13 +43,13 @@ SGModRow *SGGlassLyricsRow(void) {
 }
 
 UIViewController *SGQueueSettingsPage(void) {
-    return [[SGModPage alloc] initWithTitle:@"Queue & devices" intro:SGRestartNote sections:@[
+    return [[SGModPage alloc] initWithTitle:@"대기열 및 기기" intro:SGRestartNote sections:@[
         SGSection(@"Bottom sheets", @[
             SGFlagRow(@"Queue as a bottom sheet", @"ios-feature-nowplaying.bottom_sheet_queue_enabled"),
             SGFlagRow(@"Connect as a bottom sheet", @"ios-feature-nowplaying-elements.enable_connect_bottom_sheet"),
             SGFlagRow(@"Connect sheet from the video switcher", @"ios-playbackcontrol-audiovideoswitcher-impl.enable_connect_bottom_sheet"),
         ]),
-        SGSection(@"Queue", @[
+        SGSection(@"대기열", @[
             SGFlagRow(@"Queue flip transition", @"ios-feature-nowplaying.queue_flip_transition_enabled"),
             SGFlagRow(@"Play next in the context menu", @"ios-feature-queue.is_play_next_context_menu_enabled"),
         ]),

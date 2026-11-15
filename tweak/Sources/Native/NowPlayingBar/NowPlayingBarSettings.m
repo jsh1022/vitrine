@@ -3,9 +3,9 @@
 #import "NowPlayingBar.h"
 
 UIViewController *SGNowPlayingBarSettingsPage(void) {
-    return [[SGModPage alloc] initWithTitle:@"Now playing bar" intro:SGRestartNote sections:@[
+    return [[SGModPage alloc] initWithTitle:@"미니플레이어" intro:SGRestartNote sections:@[
         SGSection(nil, @[
-            SGHideRow(@"Hide the device button", nil, SGHideBarConnect),
+            SGHideRow(@"기기 버튼 숨기기", nil, SGHideBarConnect),
         ]),
         SGSection(@"Spotify's flags", @[
             SGFlagRow(@"Two lines of track info", @"ios-feature-nowplayingbar.two_lines_information_unit"),

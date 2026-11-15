@@ -5,12 +5,12 @@
 UIViewController *SGAlbumSettingsPage(void) {
     NSArray<SGModSection *> *sections = @[
         SGSection(@"Header", @[
-            SGOptionRow(@"Artwork background", nil, SGKeyAlbumBackdrop),
+            SGOptionRow(@"아트워크 배경", nil, SGKeyAlbumBackdrop),
         ]),
         SGSection(@"Hide in the header", @[
             SGHideRow(@"Explore (video deck)", nil, SGHideAlbumExplore),
             SGHideRow(@"Add to library", nil, SGHideAlbumAddTo),
-            SGHideRow(@"Download", nil, SGHideAlbumDownload),
+            SGHideRow(@"다운로드", nil, SGHideAlbumDownload),
             SGHideRow(@"More options", nil, SGHideAlbumMore),
         ]),
         SGNotedSection(@"Hide on the page", @[

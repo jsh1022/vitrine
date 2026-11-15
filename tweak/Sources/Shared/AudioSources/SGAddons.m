@@ -49,12 +49,12 @@ BOOL SGAddonRemoveSource(NSString *identifier) {
 }
 NSString *SGAddonStatus(void) { return sg_status; }
 NSString *SGAddonStatusSummary(void) {
-    if (SGLosslessRendering()) return @"Playing";
+    if (SGLosslessRendering()) return @"재생 중";
     switch (sg_preparation) {
         case SGAddonPreparationSearching: return @"Preparing";
         case SGAddonPreparationAligning: return @"Aligning";
         case SGAddonPreparationAligned: return @"Aligned";
-        case SGAddonPreparationUnavailable: return @"Unavailable";
+        case SGAddonPreparationUnavailable: return @"사용 불가";
         default: return @"Idle";
     }
 }
@@ -203,7 +203,7 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
         sg_quiet[identifier] = @(NSDate.date.timeIntervalSince1970 + MAX(60, delay));
     }
     if (transfer.failed || !transfer.received) {
-        if (transfer.status == 401 || transfer.status == 403) sg_failure = @"Source authentication refused (401/403). Renew the personal manifest URL on its setup page";
+        if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 인증이 거부되었습니다(401/403). 서비스 설정 페이지에서 개인 manifest 링크를 갱신하세요";
         else if (transfer.status == 429) sg_failure = @"Source rate limited (429); waiting for Retry-After";
         else if (transfer.status) sg_failure = [NSString stringWithFormat:@"Source HTTP %ld or incomplete/oversized response", (long)transfer.status];
         else sg_failure = @"Source connection failed or timed out";
@@ -221,7 +221,13 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     NSDictionary *cached = sg_manifests[identifier];
     if ([cached[@"until"] doubleValue] > NSDate.date.timeIntervalSince1970) return cached[@"value"];
     NSDictionary *value = json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"manifest.json"], @{}), identifier, generation);
-    if (!value || !SGAddonManifestSupported(value)) return nil;
+    if (!value) return nil;
+    if (!SGAddonManifestSupported(value)) {
+        sg_failure = [value[@"bitchordAuth"] isEqual:@YES]
+            ? @"공식 BitChord 앱 인증이 필요합니다. Vitrine용으로 허용된 인증 방법이 없어 연결할 수 없습니다."
+            : @"지원하지 않는 manifest입니다.";
+        return nil;
+    }
     sg_manifests[identifier] = @{@"value": value, @"until": @(NSDate.date.timeIntervalSince1970 + 600)};
     return value;
 }
@@ -242,8 +248,8 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
             }
             break;
         }
-        NSString *failure = sg_failure ?: @"Unsupported manifest or search response";
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"Manifest and authenticated search work. Playback matching, media decoding and alignment still need to succeed." : failure); });
+        NSString *failure = sg_failure ?: @"지원하지 않는 manifest 또는 검색 응답";
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"manifest 및 인증 검색에 성공했습니다. 실제 재생에는 음원 매칭, 디코딩, 정렬도 성공해야 합니다." : failure); });
     });
 }
 NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {

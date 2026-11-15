@@ -5,16 +5,16 @@
 #import "Artist.h"
 
 UIViewController *SGRArtistSettingsPage(void) {
-    return [[SGModPage alloc] initWithTitle:@"Artists" intro:SGRestartNote sections:@[
+    return [[SGModPage alloc] initWithTitle:@"아티스트" intro:SGRestartNote sections:@[
         SGNotedSection(@"Apple Music", @[
             SGSwitchRow(@"Artist logos", @"In place of the name on an artist's page", SGRKeyArtistLogo),
         ], @"Only the artist's name is sent to Apple Music."),
-        SGSection(@"Hide on an artist's page", @[
+        SGSection(@"아티스트 페이지에서 숨기기", @[
             SGSwitchRow(@"Videos", @"In the Music list, and in the Video tab", SGRKeyArtistHideVideos),
             SGSwitchRow(@"Music, Video and Merch tabs", @"Without them the Music list is the page", SGRKeyArtistHideTabs),
-            SGHideRow(@"Artist pick", nil, SGRKeyArtistHidePick),
+            SGHideRow(@"아티스트 추천", nil, SGRKeyArtistHidePick),
             SGHideRow(@"Release countdown", @"The pre-save of an upcoming release", SGRKeyArtistHideCountdown),
-            SGHideRow(@"About", nil, SGRKeyArtistHideAbout),
+            SGHideRow(@"정보", nil, SGRKeyArtistHideAbout),
         ]),
     ] footer:nil];
 }

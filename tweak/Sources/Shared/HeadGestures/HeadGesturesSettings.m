@@ -11,13 +11,13 @@ static const double kTrySeconds = 6;
 
 // SGHeadAction's names, in its order.
 static NSArray<NSString *> *actionNames(void) {
-    return @[@"Nothing", @"Back 15 seconds", @"Forward 15 seconds", @"Play or pause", @"Next track", @"Previous track",
-             @"Shuffle", @"Repeat", @"Like"];
+    return @[@"Nothing", @"15초 뒤로", @"15초 앞으로", @"Play or pause", @"Next track", @"Previous track",
+             @"셔플", @"반복", @"Like"];
 }
 
 static void say(NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -38,7 +38,7 @@ static BOOL anythingLearned(void) {
 
 // Both learned sizes back to the defaults, asked first; `done` runs once they are.
 static void forget(void (^done)(void)) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Forget your nod and shake?"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"끄덕임과 고개 젓기 학습을 삭제할까요?"
         message:@"Both go back to the default sizes. You can teach them again." preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Forget" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGSetInt(SGKeyHeadNod, 0);
@@ -46,7 +46,7 @@ static void forget(void (^done)(void)) {
         SGHeadGesturesSettingsChanged();
         done();
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -61,7 +61,7 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
 
     SGModRow *nodAction = SGWithSymbol(actionRow(@"Nod twice", SGHeadGestureDoubleNod), @"arrow.up.and.down");
     SGModRow *shakeAction = SGWithSymbol(actionRow(@"Shake your head", SGHeadGestureShake), @"arrow.left.and.right");
-    SGModRow *chime = SGWithSymbol(SGSwitchRow(@"Chime on activation", nil, SGKeyHeadChime), @"bell");
+    SGModRow *chime = SGWithSymbol(SGSwitchRow(@"작동 시 알림음", nil, SGKeyHeadChime), @"bell");
 
     __block __weak SGModPage *page;
     SGModRow *teach = SGStatActionRow(@"Teach your gestures", @"Five of each, one after each tone", ^NSString *{ return learnedValue(); }, ^{
@@ -89,7 +89,7 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
         SGHeadGesturesCue(SGHeadCueReady);
         SGHeadGesturesTry(kTrySeconds, ^(SGHeadGesture gesture, BOOL heard) {
             trying = NO;
-            tried = gesture == SGHeadGestureDoubleNod ? @"Nod twice" : gesture == SGHeadGestureShake ? @"Head shake" : heard ? @"Nothing" : @"No motion";
+            tried = gesture == SGHeadGestureDoubleNod ? @"Nod twice" : gesture == SGHeadGestureShake ? @"고개 젓기" : heard ? @"Nothing" : @"No motion";
             SGHeadGesturesCue(gesture != SGHeadGestureNone ? SGHeadCueWorked : SGHeadCueFailed);
             NSString *spoken = gesture != SGHeadGestureNone ? [@"Picked up: " stringByAppendingString:tried]
                              : heard ? @"Picked up nothing. Try a bigger move, or raise Sensitivity."
@@ -99,19 +99,19 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
         });
     });
 
-    SGModRow *forgetRow = SGActionRow(@"Forget what it learned", nil, ^{ forget(^{ [page refreshVisibility]; }); });
+    SGModRow *forgetRow = SGActionRow(@"학습 내용 삭제", nil, ^{ forget(^{ [page refreshVisibility]; }); });
     forgetRow.color = SGRed();
     forgetRow.visible = ^BOOL { return anythingLearned(); };
     for (SGModRow *row in @[nodAction, shakeAction, chime, teach, sensitivity, tryRow, forgetRow]) row.waitsOn = SGKeyHeadGestures;
 
-    SGModPage *shown = [[SGModPage alloc] initWithTitle:@"AirPods gestures" intro:nil sections:@[
+    SGModPage *shown = [[SGModPage alloc] initWithTitle:@"AirPods 제스처" intro:nil sections:@[
         SGSection(nil, @[SGWithSymbol(toggle, @"airpods.pro")]),
-        SGNotedSection(@"Gestures", @[nodAction, shakeAction, chime],
+        SGNotedSection(@"제스처", @[nodAction, shakeAction, chime],
             @"They work while Spotify plays through headphones that track head motion: AirPods Pro, AirPods (3rd "
             "generation and later), AirPods Max and some Beats. Set to Play or pause, they listen with a song paused too. With the chime on, a "
             "tone in the music confirms each, a rising pair when it worked and a low one when it did not, with the "
             "iPhone on silent too. iOS asks once for Motion & Fitness access, which is how Spotify reads the movement."),
-        SGNotedSection(@"Fit to you", @[teach, sensitivity, tryRow, forgetRow],
+        SGNotedSection(@"사용자에게 맞추기", @[teach, sensitivity, tryRow, forgetRow],
             @"Teaching sets how big a move counts from five of your own. Sensitivity scales that for both. Try it does "
             "nothing to the music, so you can tune it while a song plays."),
     ] footer:nil];

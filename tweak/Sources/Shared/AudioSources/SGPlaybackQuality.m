@@ -22,12 +22,10 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
     BOOL known = external && rate > 0 && knownClient && output > 0;
     BOOL converted = known && (fabs(rate - client.mSampleRate) > 0.5 || fabs(client.mSampleRate - output) > 0.5);
     NSString *source = external ? (SGAddonMediaInfo()[@"sourceName"] ?: @"로컬 파일") : @"Spotify";
-    SGAddonPreparationState preparation = SGAddonPreparation();
-    BOOL searching = preparation == SGAddonPreparationSearching || preparation == SGAddonPreparationAligning;
-    NSString *label = external && info.count ? quality : searching ? @"음원 찾는 중" : @"기본";
+    NSString *label = external && info.count ? quality : @"기본";
     return @{@"label": label,
              @"shines": external && info.count ? @"1" : @"0",
-             @"symbol": external && info.count ? @"headphones" : searching ? @"magnifyingglass" : @"waveform",
+             @"symbol": @"waveform",
              @"quality": external && info.count ? [quality stringByAppendingString:depth] : label,
              @"sourceRate": rateText(rate), @"outputRate": rateText(output),
              @"resampling": known ? (converted ? @"예" : @"아니요") : @"확인 불가", @"source": source};

@@ -69,7 +69,7 @@ NSDictionary *SGAddonMediaInfo(void) { return SGPresentationPreparedInfo ?: @{};
 BOOL SGWireGuardImport(NSString *text, NSString **reason) { return YES; }
 BOOL SGWireGuardDelete(void) { return YES; }
 BOOL SGWireGuardHasProfile(void) { return NO; }
-NSDictionary *SGWireGuardStatus(void) { return @{@"state": @"Off"}; }
+NSDictionary *SGWireGuardStatus(void) { return @{@"state": @"꺼짐"}; }
 static BOOL sg_appProxy;
 BOOL SGWireGuardAppProxyActive(void) { return sg_appProxy; }
 void SGWireGuardSetAppProxyActive(BOOL active) { sg_appProxy = active; }
@@ -98,7 +98,7 @@ BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) {
 double SGPlayerSpeed(void) { return 1; }
 float SGPlayerPitch(void) { return 0; }
 float SGPlayerReverb(void) { return 0; }
-NSDictionary *SGWiredOutputStatus(void) { return @{@"state": @"Off", @"detail": @"Wired source output is off"}; }
+NSDictionary *SGWiredOutputStatus(void) { return @{@"state": @"꺼짐", @"detail": @"Wired source output is off"}; }
 void SGWiredOutputSettingsChanged(void) {}
 BOOL SGSingOn(void) { return NO; }
 BOOL SGRedesignedUI(void) { return getenv("SG_QUALITY_REDESIGNED") != NULL; }

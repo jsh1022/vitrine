@@ -26,25 +26,25 @@ static void resetAll(void) {
 }
 
 static void confirmReset(void) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Reset all settings?"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"모든 설정을 초기화할까요?"
                                                                   message:@"Every switch goes off, flag overrides and the tab bar layout are cleared, and Spotify restarts as it came, with the mod doing nothing until asked. Spotify's own settings are untouched."
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Reset and restart" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { resetAll(); }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
 // Reset all leaves the Keychain alone, so a key outlives a reset; this takes every item Vitrine keeps there.
 static void confirmClearKeychain(void) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Clear Keychain?"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Keychain을 지울까요?"
                                                                   message:@"The Gemini, OpenAI-compatible and Anthropic API keys, the OpenAI-compatible server and the Spicy Lyrics key are removed from this iPhone. Settings stay as they are."
                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Clear Keychain" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"Keychain 지우기" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGAIForgetKeys();
         SGSpicyLyricsForgetKey();
         SGLog(@"reset: keychain cleared");
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -56,28 +56,28 @@ static SGModRow *withSymbol(SGModRow *row, NSString *symbol) {
 // Which build this is, whether GitHub has a newer release, and where to reach the mod: without these
 // rows a build that is already installed has no way of telling its user that anything moved on.
 UIViewController *SGAboutPage(void) {
-    SGModRow *reset = withSymbol(SGActionRow(@"Reset all settings", nil, ^{ confirmReset(); }), @"trash");
+    SGModRow *reset = withSymbol(SGActionRow(@"모든 설정 초기화", nil, ^{ confirmReset(); }), @"trash");
     reset.color = SGRed();
-    SGModRow *clearKeys = withSymbol(SGActionRow(@"Clear Keychain", nil, ^{ confirmClearKeychain(); }), @"key");
+    SGModRow *clearKeys = withSymbol(SGActionRow(@"Keychain 지우기", nil, ^{ confirmClearKeychain(); }), @"key");
     clearKeys.color = SGRed();
     NSString *spotify = SGSpotifyVersion();
     if ([SGSpotifyLikelyWorksVersions containsObject:spotify]) spotify = [spotify stringByAppendingString:@", likely works"];
     else if (![SGSpotifySupportedVersions containsObject:spotify]) spotify = [NSString stringWithFormat:@"%@, made for %@", spotify, SGSpotifyMadeFor];
     // The row reads out where the build stands and opens the changelog of everything newer than it.
-    SGModRow *updates = SGPageRow(@"Updates", ^UIViewController *{ return SGUpdatePage(); });
+    SGModRow *updates = SGPageRow(@"업데이트", ^UIViewController *{ return SGUpdatePage(); });
     updates.value = ^NSString *{ return SGUpdateStatus(); };
     // A release build can opt into betas; a beta build starts opted in. Either way a check follows at
     // once, since the stored list only holds what counted at the last one.
-    SGModRow *betas = SGSwitchRow(@"Include betas", @"Offer test builds ahead of each release", SGKeyUpdateBetas);
+    SGModRow *betas = SGSwitchRow(@"베타 버전 포함", @"Offer test builds ahead of each release", SGKeyUpdateBetas);
     betas.defaultOn = SGBuildIsBeta();
     betas.changed = ^(BOOL on) { SGCheckForUpdate(YES); };
     NSMutableArray<SGModRow *> *links = [NSMutableArray array];
     if (SGRepoURL) [links addObject:withSymbol(SGLinkRow(@"GitHub", nil, SGRepoURL), @"chevron.left.forwardslash.chevron.right")];
     [links addObjectsFromArray:@[
         withSymbol(SGPageRow(@"Licenses", ^UIViewController *{ return SGLicensesPage(); }), @"doc.text"),
-        withSymbol(SGActionRow(@"Welcome tour", nil, ^{ SGShowOnboarding(); }), @"map"),
+        withSymbol(SGActionRow(@"시작 안내", nil, ^{ SGShowOnboarding(); }), @"map"),
     ]];
-    if (SGWhatsNewChanges().count) [links insertObject:withSymbol(SGActionRow(@"What's New", nil, ^{ SGShowWhatsNew(); }), @"sparkles") atIndex:links.count - 1];
+    if (SGWhatsNewChanges().count) [links insertObject:withSymbol(SGActionRow(@"새로운 기능", nil, ^{ SGShowWhatsNew(); }), @"sparkles") atIndex:links.count - 1];
     NSMutableArray<SGModRow *> *build = [NSMutableArray arrayWithObjects:updates, betas,
         SGStatRow(@"Version", ^NSString *{ return @(SG_VERSION); }),
         SGStatRow(@"Spotify", ^NSString *{ return spotify; }), nil];
@@ -87,8 +87,8 @@ UIViewController *SGAboutPage(void) {
         SGSection(nil, build),
         SGSection(nil, links),
         SGSection(nil, @[
-            withSymbol(SGActionRow(@"Export settings", nil, ^{ SGExportSettings(); }), @"square.and.arrow.up"),
-            withSymbol(SGActionRow(@"Import settings", nil, ^{ SGImportSettings(); }), @"square.and.arrow.down"),
+            withSymbol(SGActionRow(@"설정 내보내기", nil, ^{ SGExportSettings(); }), @"square.and.arrow.up"),
+            withSymbol(SGActionRow(@"설정 가져오기", nil, ^{ SGImportSettings(); }), @"square.and.arrow.down"),
             withSymbol(SGActionRow(@"Share diagnostics", @"For a bug report: versions, ad counts, this launch's log and Spotify's config. Song names can show.",
                                    ^{ SGShareDiagnostics(); }), @"stethoscope"),
         ]),

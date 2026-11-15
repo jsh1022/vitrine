@@ -9,7 +9,7 @@
 
 static void message(NSString *title, NSString *text) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:text preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     SGShowAudioController(alert);
 }
 @interface SGWGImporter : NSObject <UIDocumentPickerDelegate>
@@ -44,7 +44,7 @@ static SGWGImporter *sg_importer;
             NSString *reason;
             BOOL ok = text.length && SGWireGuardImport(text, &reason);
             if (ok) SGAddonRetryCurrentTrack();
-            message(@"WireGuard", ok ? @"Profile saved in Keychain. Enable Spotify app proxy and restart." : reason ?: @"Choose a downloaded UTF-8 .conf file no larger than 64 KiB.");
+            message(@"WireGuard", ok ? @"Profile saved in Keychain. Enable Spotify app proxy and restart." : reason ?: @"다운로드한 64 KiB 이하의 UTF-8 .conf 파일을 선택하세요.");
             sg_importer = nil;
         });
     });
@@ -59,26 +59,26 @@ UIViewController *SGAudioSourcesPage(void) {
     SGModRow *wired = SGOptionRow(@"Wired source output", @"Experimental · match source rate and preserve source level", SGKeyWiredSourceOutput);
     wired.changed = ^(BOOL on) { SGWiredOutputSettingsChanged(); };
     __block __weak SGModPage *weakPage;
-    SGModRow *enabled = SGOptionRow(@"HTTP lossless addons", @"Prepare a matching file while Spotify plays", SGKeyAddons);
+    SGModRow *enabled = SGOptionRow(@"HTTP 무손실 애드온", @"Prepare a matching file while Spotify plays", SGKeyAddons);
     enabled.changed = ^(BOOL on) {
         if (on && !SGFlag(SGKeyLossless, NO)) {
             SGSetEnabled(SGKeyLossless, YES);
-            message(@"Restart Spotify", @"Lossless playback hooks have been enabled. Fully close and reopen Spotify once before playing an addon source.");
+            message(@"Spotify 재시작", @"Lossless playback hooks have been enabled. Fully close and reopen Spotify once before playing an addon source.");
         }
         SGAddonRetryCurrentTrack();
     };
-    SGModRow *cellular = SGOptionRow(@"Allow cellular downloads", @"Off: only unmetered networks; files can be up to 128 MiB", SGKeyAddonCellular);
+    SGModRow *cellular = SGOptionRow(@"셀룰러 다운로드 허용", @"Off: only unmetered networks; files can be up to 128 MiB", SGKeyAddonCellular);
     cellular.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
-    SGModRow *tunnel = SGOptionRow(@"WireGuard for addons", @"Addon JSON and audio only · iOS 17+", SGKeySourceWireGuard);
+    SGModRow *tunnel = SGOptionRow(@"애드온용 WireGuard", @"Addon JSON and audio only · iOS 17+", SGKeySourceWireGuard);
     tunnel.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
-    SGModRow *add = SGActionRow(@"Add source", @"Paste a generated HTTPS root or manifest URL", ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Add lossless source" message:@"Use a server you can access. Setup webpages are not addon URLs. Sources are tried in the order added (up to eight)." preferredStyle:UIAlertControllerStyleAlert];
+    SGModRow *add = SGActionRow(@"소스 추가", @"Paste a generated HTTPS root or manifest URL", ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"무손실 소스 추가" message:@"Use a server you can access. Setup webpages are not addon URLs. Sources are tried in the order added (up to eight)." preferredStyle:UIAlertControllerStyleAlert];
         [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
             field.placeholder = @"https://server/secret/manifest.json";
             field.keyboardType = UIKeyboardTypeURL; field.secureTextEntry = YES;
             field.autocapitalizationType = UITextAutocapitalizationTypeNone; field.autocorrectionType = UITextAutocorrectionTypeNo;
         }];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
         [alert addAction:[UIAlertAction actionWithTitle:@"Add" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             if (!SGAddonAddSource(alert.textFields.firstObject.text)) message(@"Source not saved", @"Use an HTTPS root or manifest URL, with no username or password. A maximum of eight sources is supported. Keychain must be available.");
             [weakPage refreshVisibility];
@@ -91,14 +91,14 @@ UIViewController *SGAudioSourcesPage(void) {
             NSDictionary *source = sourceAt(i);
             if (!source) return;
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Lossless source" message:@"Source URLs are credentials and are kept in Keychain. A manifest test uses the same network and WireGuard settings as playback." preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Test source" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [alert addAction:[UIAlertAction actionWithTitle:@"소스 검사" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
                 SGAddonTestSource(source[@"id"], ^(NSString *status) { message(@"Source test", status); });
             }]];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-                if (!SGAddonRemoveSource(source[@"id"])) message(@"Could not remove source", @"Keychain is unavailable. Try again after unlocking the device.");
+            [alert addAction:[UIAlertAction actionWithTitle:@"제거" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+                if (!SGAddonRemoveSource(source[@"id"])) message(@"소스를 제거하지 못했습니다", @"Keychain is unavailable. Try again after unlocking the device.");
                 [weakPage refreshVisibility];
             }]];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
             SGShowAudioController(alert);
         });
         row.visible = ^BOOL { return sourceAt(i) != nil; };
@@ -106,7 +106,7 @@ UIViewController *SGAudioSourcesPage(void) {
     }
     SGModPage *page = [[SGModPage alloc] initWithTitle:@"Lossless sources" intro:@"Enable Lossless files on the Player page and restart Spotify once to install the playback hooks. Source and network settings below apply to new requests."
         sections:@[
-            SGNotedSection(@"Playback", @[enabled, cellular, SGActionRow(@"Retry current track", @"Respects each source's request budget", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"Preparation", @"Tap for details", ^NSString *{ return SGAddonStatusSummary(); }, ^{ message(@"Preparation", SGAddonStatus()); })], @"Direct stereo FLAC/ALAC files only. Each file is checked by the native decoder and aligned against Spotify's sound. HLS, DASH, DRM and official-app-only sources are unsupported. Karaoke and speeds other than 1× retain Spotify audio."),
+            SGNotedSection(@"Playback", @[enabled, cellular, SGActionRow(@"현재 곡 다시 시도", @"Respects each source's request budget", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"Preparation", @"Tap for details", ^NSString *{ return SGAddonStatusSummary(); }, ^{ message(@"Preparation", SGAddonStatus()); })], @"Direct stereo FLAC/ALAC files only. Each file is checked by the native decoder and aligned against Spotify's sound. HLS, DASH, DRM and official-app-only sources are unsupported. Karaoke and speeds other than 1× retain Spotify audio."),
             SGSection(@"Sources (in priority order)", rows),
             SGNotedSection(@"Wired output", @[wired,
                 SGStatActionRow(@"Output status", @"Tap for details", ^NSString *{ return SGWiredOutputStatus()[@"state"]; }, ^{
@@ -124,7 +124,7 @@ UIViewController *SGAudioSourcesPage(void) {
 UIViewController *SGWireGuardSettingsPage(void) {
     __block BOOL testing = NO;
     __block NSString *testState = @"Not run";
-    SGModRow *app = SGOptionRow(@"Spotify app proxy", @"Route URLSession through WireGuard · restart required", SGKeyAppWireGuard);
+    SGModRow *app = SGOptionRow(@"Spotify 앱 프록시", @"Route URLSession through WireGuard · restart required", SGKeyAppWireGuard);
     app.changed = ^(BOOL on) {
         if (on) {
             BOOL supported = NO;
@@ -133,17 +133,17 @@ UIViewController *SGWireGuardSettingsPage(void) {
 #endif
             if (!supported || !SGWireGuardHasProfile()) {
                 SGSetEnabled(SGKeyAppWireGuard, NO);
-                message(@"WireGuard not enabled", supported ? @"Import a valid .conf profile first, then enable the app proxy." : @"This feature requires iOS 17+ and a build with WireGuard included.");
+                message(@"WireGuard not enabled", supported ? @"올바른 .conf 프로필을 먼저 가져온 후 앱 프록시를 켜세요." : @"This feature requires iOS 17+ and a build with WireGuard included.");
                 return;
             }
         }
-        message(@"Restart Spotify", @"The app-wide URLSession proxy is selected at launch. Fully close and reopen Spotify to apply this change. Import your profile before enabling. Lossless addons can stay off.");
+        message(@"Spotify 재시작", @"The app-wide URLSession proxy is selected at launch. Fully close and reopen Spotify to apply this change. Import your profile before enabling. Lossless addons can stay off.");
     };
     return [[SGModPage alloc] initWithTitle:@"WireGuard proxy" intro:@"Import your own .conf, optionally test tunnel DNS, then enable Spotify app proxy and restart Spotify. Requires iOS 17+."
         sections:@[
             SGNotedSection(@"App-local WireGuard", @[
                 app,
-                SGStatRow(@"App proxy this launch", ^NSString *{ return SGWireGuardAppProxyActive() ? @"On · disable requires restart" : @"Off · enable requires restart"; }),
+                SGStatRow(@"이번 실행의 앱 프록시", ^NSString *{ return SGWireGuardAppProxyActive() ? @"On · disable requires restart" : @"Off · enable requires restart"; }),
                 SGStatRow(@"Routed configurations", ^NSString *{ return [SGWireGuardProxyCounters()[@"configurations"] stringValue]; }),
                 SGStatRow(@"Blocked configurations", ^NSString *{ return [SGWireGuardProxyCounters()[@"blockedConfigurations"] stringValue]; }),
                 SGStatRow(@"Proxy TCP connections", ^NSString *{
@@ -171,7 +171,7 @@ UIViewController *SGWireGuardSettingsPage(void) {
                     testing = YES; testState = @"Testing HTTPS…";
                     SGWireGuardTestHTTPS(^(NSString *result) { testing = NO; testState = result; message(@"WireGuard HTTPS", result); });
                 }),
-                SGActionRow(@"Import .conf file", @"Single-peer profile · numeric DNS · default routes", ^{
+                SGActionRow(@".conf 파일 가져오기", @"Single-peer profile · numeric DNS · default routes", ^{
                     sg_importer = [SGWGImporter new];
                     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
                         initForOpeningContentTypes:@[UTTypeData, UTTypeText, UTTypeItem] asCopy:YES];
@@ -179,14 +179,14 @@ UIViewController *SGWireGuardSettingsPage(void) {
                     picker.allowsMultipleSelection = NO;
                     SGShowAudioController(picker);
                 }),
-                SGActionRow(@"Import from clipboard", @"Paste a copied WireGuard configuration", ^{
+                SGActionRow(@"클립보드에서 가져오기", @"Paste a copied WireGuard configuration", ^{
                     NSString *text = UIPasteboard.generalPasteboard.string;
                     NSString *reason;
                     BOOL ok = text.length && SGWireGuardImport(text, &reason);
                     if (ok) { UIPasteboard.generalPasteboard.string = @""; SGAddonRetryCurrentTrack(); }
-                    message(@"WireGuard", ok ? @"Profile saved. Configuration text removed from the clipboard." : reason ?: @"Copy the complete UTF-8 .conf text first.");
+                    message(@"WireGuard", ok ? @"Profile saved. Configuration text removed from the clipboard." : reason ?: @"먼저 UTF-8 .conf 전체 내용을 복사하세요.");
                 }),
-                SGActionRow(@"Delete saved profile", @"Disable WireGuard and restart to stop the running engine", ^{
+                SGActionRow(@"저장된 프로필 삭제", @"실행 중인 엔진을 중지하려면 WireGuard를 끄고 재시작하세요", ^{
                     SGSetEnabled(SGKeyAppWireGuard, NO); SGSetEnabled(SGKeySourceWireGuard, NO); SGAddonRetryCurrentTrack();
                     message(@"WireGuard", SGWireGuardDelete() ? @"Saved profile deleted. Restart Spotify to release an engine already running in memory." : @"Keychain could not delete the profile.");
                 }),

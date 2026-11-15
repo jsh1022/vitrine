@@ -15,7 +15,7 @@ UIViewController *SGRHomeSettingsPage(void) {
         else [NSUserDefaults.standardUserDefaults setObject:sources[(NSUInteger)index] forKey:SGRKeyHomeTopPicksFrom];
         SGPrefsChanged();
     });
-    SGModRow *look = SGSwitchRow(@"Home look", @"Top picks, the tinted shortcut pills and the title's glass pill; off, Home as the redesign had it", SGRKeyHomeLook);
+    SGModRow *look = SGSwitchRow(@"홈 모양", @"Top picks, the tinted shortcut pills and the title's glass pill; off, Home as the redesign had it", SGRKeyHomeLook);
     SGModRow *topPicks = SGRHomeTopPicksRow();
     topPicks.waitsOn = SGRKeyHomeLook;
     from.waitsOn = SGRKeyHomeTopPicks;
@@ -34,7 +34,7 @@ UIViewController *SGRHomeSettingsPage(void) {
         SGSection(@"On Home", @[
             SGShownRow(@"Shortcuts", nil, SGRKeyHomeHideShortcuts),
             SGShownRow(@"DJ", nil, SGRKeyHomeHideDJ),
-            SGOptionRow(@"Title stays on scroll", @"The title, the avatar and the pill stay at the top as Home scrolls under them", SGRKeyHomeKeepTitle),
+            SGOptionRow(@"스크롤해도 제목 유지", @"The title, the avatar and the pill stay at the top as Home scrolls under them", SGRKeyHomeKeepTitle),
             SGOptionRow(@"Song suggestions", @"Spotify's carousel of songs to try, when Home offers one", SGRKeyHomeSongSuggestions),
             SGOptionRow(@"Video and playlist previews", @"The cards that play as Home scrolls", SGRKeyHomePreviews),
         ]),

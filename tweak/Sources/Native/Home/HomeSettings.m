@@ -17,7 +17,7 @@ UIViewController *SGHomeGradientPage(void) {
         SGSection(@"Gradient", @[
             SGOptionRow(@"Show", nil, SGKeyHomeGradient),
             choiceRow(@"Color", nil, SGHomeChoiceTint),
-            choiceRow(@"Strength", nil, SGHomeChoiceStrength),
+            choiceRow(@"강도", nil, SGHomeChoiceStrength),
             choiceRow(@"Height", nil, SGHomeChoiceHeight),
         ]),
     ] footer:nil];
@@ -41,7 +41,7 @@ UIViewController *SGHomeSettingsPage(void) {
     // The row reads its own state out, so the section says which color is set without being opened.
     SGModRow *gradient = SGPageRow(@"Gradient", ^UIViewController *{ return SGHomeGradientPage(); });
     gradient.value = ^NSString *{
-        if (!SGFlag(SGKeyHomeGradient, NO)) return @"Off";
+        if (!SGFlag(SGKeyHomeGradient, NO)) return @"꺼짐";
         return SGHomeChoiceNames(SGHomeChoiceTint)[(NSUInteger)SGHomeChoiceValue(SGHomeChoiceTint)];
     };
 
@@ -56,8 +56,8 @@ UIViewController *SGHomeSettingsPage(void) {
             SGWithSymbol(gradient, @"rectangle.tophalf.inset.filled"),
             SGFlagRow(@"Pull to refresh", @"ios-home-evopage-impl.pull_to_refresh_enabled"),
         ]),
-        SGSection(@"Hide on Home", @[
-            SGHideRow(@"Filter pills", nil, SGHideHomePills),
+        SGSection(@"홈에서 숨기기", @[
+            SGHideRow(@"필터 버튼", nil, SGHideHomePills),
             SGHideRow(@"Shortcuts grid", nil, SGHideHomeShortcuts),
             SGHideRow(@"Promo cards", nil, SGHideHomePromo),
             SGHideRow(@"Preview cards", nil, SGHideHomePreviews),
@@ -66,5 +66,5 @@ UIViewController *SGHomeSettingsPage(void) {
             SGKillRow(@"DJ beta badge", @"ios-home-evopage-impl.dj_mdc_beta_badge_enabled"),
         ]),
     ];
-    return [[SGModPage alloc] initWithTitle:@"Home & Library" intro:nil sections:sections footer:nil];
+    return [[SGModPage alloc] initWithTitle:@"홈 및 보관함" intro:nil sections:sections footer:nil];
 }

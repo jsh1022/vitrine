@@ -107,7 +107,7 @@ static UILabel *label(NSString *text, UIFontTextStyle style, UIFontWeight weight
     [scroll addSubview:column];
     [self.view addSubview:scroll];
 
-    UIButton *done = SGOnboardingButton(@"Continue");
+    UIButton *done = SGOnboardingButton(@"계속");
     [done addAction:[UIAction actionWithHandler:^(UIAction *action) {
         [self dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];

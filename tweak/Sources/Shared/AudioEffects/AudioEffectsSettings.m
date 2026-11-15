@@ -147,7 +147,7 @@ void SGDSPResetAll(void) {
 #pragma mark - lists
 
 NSArray<NSString *> *SGDSPConvolverModeNames(void) {
-    return @[@"Original", @"Trimmed", @"Minimum phase"];
+    return @[@"원본", @"Trimmed", @"Minimum phase"];
 }
 
 NSArray<NSString *> *SGDSPCrossfeedModeNames(void) {

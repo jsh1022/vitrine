@@ -21,7 +21,7 @@ for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy; do
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
     -include Foundation/Foundation.h -I"$SRC" -I"$SRC/Shared/$part" "$OUT/$name.m"
 done
-for relative in Native/Player/PlaybackQuality.x Native/Player/FullArtwork.x Native/Player/Player.x \
+for relative in Native/Player/InlineLyrics.x Redesigned/Player/InlineLyrics.x Redesigned/Player/PlayerMorph.x Native/Player/PlaybackQuality.x Native/Player/FullArtwork.x Native/Player/Player.x \
                 Redesigned/Player/PlaybackQuality.x Redesigned/Player/PlayerField.x Redesigned/Player/PlayerMotion.x; do
   generated="$OUT/${relative//\//_}.m"
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$relative" > "$generated"

@@ -9,7 +9,7 @@ NSString *const SGFakePremiumWarning = @"This is the part of EeveeSpotify Spotif
 // the thing, off is Spotify's own value. Hide ads and Hide upsells already force the first two
 // sections off, which locks those rows.
 static UIViewController *adFlagsPage(void) {
-    return [[SGModPage alloc] initWithTitle:@"Ad and upsell flags" intro:SGRestartNote sections:@[
+    return [[SGModPage alloc] initWithTitle:@"광고 및 업그레이드 권유 플래그" intro:SGRestartNote sections:@[
         SGNotedSection(@"Ads", @[
             SGKillRow(@"Block the ad when the app opens", @"ios-feature-adonappopen.enabled"),
             SGKillRow(@"Block its CTA card", @"ios-feature-adonappopen.cta_card_enabled"),
@@ -56,12 +56,12 @@ UIViewController *SGAdsSettingsPage(void) {
 
     // The redesign's Search keeps only its category cards, so the video carousel switch is the native look's.
     NSMutableArray<SGModRow *> *ads = [NSMutableArray arrayWithObjects:
-        SGWithSymbol(SGOptionRow(@"Hide ads", nil, SGKeyHideAds), @"speaker.slash"),
-        SGWithSymbol(SGOptionRow(@"Hide upsells", nil, SGKeyHideUpsells), @"hand.raised"), nil];
+        SGWithSymbol(SGOptionRow(@"광고 숨기기", nil, SGKeyHideAds), @"speaker.slash"),
+        SGWithSymbol(SGOptionRow(@"업그레이드 권유 숨기기", nil, SGKeyHideUpsells), @"hand.raised"), nil];
     if (!SGRedesignedUIStored()) [ads addObject:SGWithSymbol(SGOptionRow(@"Hide the video carousel in Search", nil, SGKeyHideSearchVideos), @"play.rectangle.on.rectangle")];
-    [ads addObject:SGWithSymbol(SGPageRow(@"Ad and upsell flags", ^UIViewController *{ return adFlagsPage(); }), @"flag")];
+    [ads addObject:SGWithSymbol(SGPageRow(@"광고 및 업그레이드 권유 플래그", ^UIViewController *{ return adFlagsPage(); }), @"flag")];
 
-    return [[SGModPage alloc] initWithTitle:@"Premium, ads & privacy" intro:SGRestartNote sections:@[
+    return [[SGModPage alloc] initWithTitle:@"Premium, 광고 및 개인정보" intro:SGRestartNote sections:@[
         SGNotedSection(@"Ads", ads, @"Audio ads between songs need Spoof Premium."),
         SGNotedSection(@"Premium", @[
             SGWithSymbol(fakePremium, @"crown"),

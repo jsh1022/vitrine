@@ -12,13 +12,13 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
         if (!on) SGRSetTabBarMinimized(NO, NO);
         SGRRefreshTabBar();
     };
-    SGModRow *inlineConnect = SGOptionRow(@"Device button", @"Kept on the bar between the tabs", SGRKeyBarInlineConnect);
+    SGModRow *inlineConnect = SGOptionRow(@"기기 버튼", @"Kept on the bar between the tabs", SGRKeyBarInlineConnect);
     inlineConnect.waitsOn = SGRKeyNavbarMinimize;
     return @[
         minimize,
         inlineConnect,
-        SGHideRow(@"Hide the device button", @"On the full now playing bar", SGRHideBarConnect),
+        SGHideRow(@"기기 버튼 숨기기", @"On the full now playing bar", SGRHideBarConnect),
         // Spotify's own flag for the bar's save button, forced off: Spotify leaves the button out.
-        SGKillRow(@"Hide the like button", @"ios-feature-nowplayingbar.add_button"),
+        SGKillRow(@"좋아요 버튼 숨기기", @"ios-feature-nowplayingbar.add_button"),
     ];
 }

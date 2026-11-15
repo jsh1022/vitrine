@@ -148,9 +148,9 @@ BOOL SGWireGuardApplyToConfiguration(NSURLSessionConfiguration *config) {
                 } else {
                     if (fd >= 0) close(fd);
                     sg_failed = YES;
-                    sg_reason = @"Could not reserve the local proxy";
+                    sg_reason = @"로컬 프록시를 확보하지 못했습니다";
                 }
-            } else sg_reason = @"Import a profile first, then restart Spotify";
+            } else sg_reason = @"먼저 프로필을 가져온 후 Spotify를 재시작하세요";
         }
         if (sg_port > 0 && !sg_failed) {
             nw_endpoint_t endpoint = nw_endpoint_create_host("127.0.0.1", @(sg_port).stringValue.UTF8String);

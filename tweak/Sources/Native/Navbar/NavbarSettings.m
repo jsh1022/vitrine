@@ -9,12 +9,12 @@
 static NSArray<NSDictionary *> *tabPresets(void) {
     return @[
         @{SGTabTitle: @"Home", SGTabURI: @"spotify:home", SGTabIcon: @"home"},
-        @{SGTabTitle: @"Search", SGTabURI: @"spotify:search", SGTabIcon: @"search"},
+        @{SGTabTitle: @"검색", SGTabURI: @"spotify:search", SGTabIcon: @"search"},
         @{SGTabTitle: @"Your Library", SGTabURI: @"spotify:collection", SGTabIcon: @"collection"},
         @{SGTabTitle: @"Liked Songs", SGTabURI: @"spotify:collection:tracks", SGTabIcon: @"heart"},
         @{SGTabTitle: @"Playlists", SGTabURI: @"spotify:playlists", SGTabIcon: @"playlist"},
-        @{SGTabTitle: @"Albums", SGTabURI: @"spotify:collection:albums", SGTabIcon: @"album"},
-        @{SGTabTitle: @"Artists", SGTabURI: @"spotify:collection:artists", SGTabIcon: @"artist"},
+        @{SGTabTitle: @"앨범", SGTabURI: @"spotify:collection:albums", SGTabIcon: @"album"},
+        @{SGTabTitle: @"아티스트", SGTabURI: @"spotify:collection:artists", SGTabIcon: @"artist"},
         @{SGTabTitle: @"Podcasts", SGTabURI: @"spotify:collection:podcasts", SGTabIcon: @"podcasts"},
         @{SGTabTitle: @"Audiobooks", SGTabURI: @"spotify:collection:audiobooks", SGTabIcon: @"audiobook"},
         @{SGTabTitle: @"Downloads", SGTabURI: @"spotify:collection:downloads", SGTabIcon: @"downloaded"},
@@ -23,7 +23,7 @@ static NSArray<NSDictionary *> *tabPresets(void) {
         @{SGTabTitle: @"New Releases", SGTabURI: @"spotify:new-releases", SGTabIcon: @"star"},
         @{SGTabTitle: @"Made For You", SGTabURI: @"spotify:made-for-you", SGTabIcon: @"user"},
         @{SGTabTitle: @"Concerts", SGTabURI: @"spotify:concerts", SGTabIcon: @"events"},
-        @{SGTabTitle: @"Queue", SGTabURI: @"spotify:now-playing:queue", SGTabIcon: @"queue"},
+        @{SGTabTitle: @"대기열", SGTabURI: @"spotify:now-playing:queue", SGTabIcon: @"queue"},
         @{SGTabTitle: @"Create", SGTabURI: @"spotify:create-menu", SGTabIcon: @"plus"},
     ];
 }
@@ -70,7 +70,7 @@ static void appendTab(NSDictionary *tab) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Split Tabs";
+    self.title = @"탭 분리";
     return self;
 }
 
@@ -157,7 +157,7 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Tab bar";
+    self.title = @"탭 막대";
     return self;
 }
 
@@ -240,11 +240,11 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
             break;
         }
         case SGNavbarSectionAdd:
-            SGFillCell(cell, @"Add a tab…", nil, nil, @"plus");
+            SGFillCell(cell, @"탭 추가…", nil, nil, @"plus");
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         case SGNavbarSectionSplit:
-            SGFillCell(cell, @"Split tabs", @"Place chosen tabs apart on the right", nil, @"rectangle.split.2x1");
+            SGFillCell(cell, @"탭 분리", @"Place chosen tabs apart on the right", nil, @"rectangle.split.2x1");
             cell.accessoryView = SGSymbolView(@"chevron.right", 13, UIImageSymbolWeightSemibold, 16);
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
@@ -317,8 +317,8 @@ typedef NS_ENUM(NSInteger, SGNavbarSection) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Use Spotify's order"
                                                                   message:@"Every tab of Spotify's comes back where Spotify put it, the tabs you added go, and no tab is split apart."
                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"초기화" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGSetNavbarLayout(@[]);
         SGSetNavbarSplit(@[]);
         SGRefreshTabBar();

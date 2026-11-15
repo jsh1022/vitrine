@@ -13,12 +13,12 @@
 static NSArray<NSDictionary *> *tabPresets(void) {
     return @[
         @{SGTabTitle: @"Home", SGTabURI: @"spotify:home", SGTabIcon: @"home"},
-        @{SGTabTitle: @"Search", SGTabURI: @"spotify:search", SGTabIcon: @"search"},
+        @{SGTabTitle: @"검색", SGTabURI: @"spotify:search", SGTabIcon: @"search"},
         @{SGTabTitle: @"Your Library", SGTabURI: @"spotify:collection", SGTabIcon: @"collection"},
         @{SGTabTitle: @"Liked Songs", SGTabURI: @"spotify:collection:tracks", SGTabIcon: @"heart"},
         @{SGTabTitle: @"Playlists", SGTabURI: @"spotify:playlists", SGTabIcon: @"playlist"},
-        @{SGTabTitle: @"Albums", SGTabURI: @"spotify:collection:albums", SGTabIcon: @"album"},
-        @{SGTabTitle: @"Artists", SGTabURI: @"spotify:collection:artists", SGTabIcon: @"artist"},
+        @{SGTabTitle: @"앨범", SGTabURI: @"spotify:collection:albums", SGTabIcon: @"album"},
+        @{SGTabTitle: @"아티스트", SGTabURI: @"spotify:collection:artists", SGTabIcon: @"artist"},
         @{SGTabTitle: @"Podcasts", SGTabURI: @"spotify:collection:podcasts", SGTabIcon: @"podcasts"},
         @{SGTabTitle: @"Audiobooks", SGTabURI: @"spotify:collection:audiobooks", SGTabIcon: @"audiobook"},
         @{SGTabTitle: @"Downloads", SGTabURI: @"spotify:collection:downloads", SGTabIcon: @"downloaded"},
@@ -27,7 +27,7 @@ static NSArray<NSDictionary *> *tabPresets(void) {
         @{SGTabTitle: @"New Releases", SGTabURI: @"spotify:new-releases", SGTabIcon: @"star"},
         @{SGTabTitle: @"Made For You", SGTabURI: @"spotify:made-for-you", SGTabIcon: @"user"},
         @{SGTabTitle: @"Concerts", SGTabURI: @"spotify:concerts", SGTabIcon: @"events"},
-        @{SGTabTitle: @"Queue", SGTabURI: @"spotify:now-playing:queue", SGTabIcon: @"queue"},
+        @{SGTabTitle: @"대기열", SGTabURI: @"spotify:now-playing:queue", SGTabIcon: @"queue"},
         @{SGTabTitle: @"Create", SGTabURI: @"spotify:create-menu", SGTabIcon: @"plus"},
     ];
 }
@@ -137,7 +137,7 @@ typedef NS_ENUM(NSInteger, SGRSplitSection) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Split Tabs";
+    self.title = @"탭 분리";
     return self;
 }
 
@@ -207,7 +207,7 @@ typedef NS_ENUM(NSInteger, SGRSplitSection) {
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = SGDequeueCell(table, @"split");
     if (path.section == SGRSplitSectionAdd) {
-        SGFillCell(cell, @"Add a tab", nil, SGRAccent(), nil);
+        SGFillCell(cell, @"탭 추가", nil, SGRAccent(), nil);
         cell.accessibilityTraits = UIAccessibilityTraitButton;
     } else if (path.section == SGRSplitSectionApart) {
         NSDictionary *entry = _split[(NSUInteger)path.row];
@@ -580,7 +580,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Tab bar";
+    self.title = @"탭 막대";
     return self;
 }
 
@@ -592,8 +592,8 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     _header = [UIView new];
     [_header addSubview:_preview];
     self.tableView.tableHeaderView = _header;
-    _withNames = [[SGRLabelCard alloc] initWithTitle:@"Icons and names" names:YES];
-    _iconsOnly = [[SGRLabelCard alloc] initWithTitle:@"Icons only" names:NO];
+    _withNames = [[SGRLabelCard alloc] initWithTitle:@"아이콘 및 이름" names:YES];
+    _iconsOnly = [[SGRLabelCard alloc] initWithTitle:@"아이콘만" names:NO];
     for (SGRLabelCard *card in @[_withNames, _iconsOnly]) [card addTarget:self action:@selector(labelsPicked:) forControlEvents:UIControlEventTouchUpInside];
     _entries = navbarEntries();
     [self showChoices];
@@ -742,7 +742,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     [cell.check setImage:[UIImage systemImageNamed:hidden ? @"circle" : @"checkmark.circle.fill" withConfiguration:size] forState:UIControlStateNormal];
     cell.check.tintColor = hidden ? SGGrey() : SGRAccent();
     cell.check.accessibilityLabel = [NSString stringWithFormat:@"Show %@ on the bar", entry[SGRNavbarTitle]];
-    cell.check.accessibilityValue = hidden ? @"Off" : @"On";
+    cell.check.accessibilityValue = hidden ? @"꺼짐" : @"켜짐";
     return cell;
 }
 
@@ -752,7 +752,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     UITableViewCell *cell = SGDequeueCell(table, @"navbar");
     switch (path.section) {
         case SGRNavbarSectionSwitch: {
-            SGFillCell(cell, @"Custom tab bar", @"Your order, hidden tabs and tabs you add", nil, nil);
+            SGFillCell(cell, @"사용자 설정 탭 막대", @"Your order, hidden tabs and tabs you add", nil, nil);
             UISwitch *toggle = [UISwitch new];
             toggle.onTintColor = SGGreen();
             toggle.on = SGEnabled(SGRKeyNavbar);
@@ -762,12 +762,12 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
         }
         case SGRNavbarSectionLinks:
             // Links in the accent color, as the system's own actions in a list are.
-            SGFillCell(cell, path.row == 0 ? @"Add a tab" : @"Use Spotify's tabs", nil, SGRAccent(), nil);
+            SGFillCell(cell, path.row == 0 ? @"탭 추가" : @"Spotify 탭 사용", nil, SGRAccent(), nil);
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             cell.accessibilityTraits = UIAccessibilityTraitButton;
             break;
         default:
-            SGFillCell(cell, @"Split tabs", @"Place chosen tabs apart on the right", nil, @"rectangle.split.2x1");
+            SGFillCell(cell, @"탭 분리", @"Place chosen tabs apart on the right", nil, @"rectangle.split.2x1");
             cell.accessoryView = SGSymbolView(@"chevron.right", 13, UIImageSymbolWeightSemibold, 16);
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
@@ -892,11 +892,11 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 }
 
 - (void)reset {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Use Spotify's tabs"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Spotify 탭 사용"
                                                                   message:@"Every tab of Spotify's comes back where Spotify put it, the tabs you added go, and no tab is split apart."
                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"취소" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"초기화" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         SGRSetNavbarLayout(@[]);
         SGRSetNavbarSplit(@[]);
         SGRRefreshTabBar();

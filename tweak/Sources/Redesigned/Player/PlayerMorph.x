@@ -276,7 +276,7 @@ static CGFloat screenRadius(void) {
             CGRect from = CGRectOffset(self->_barArtwork, -self->_card.origin.x, -self->_card.origin.y);
             // The player's cover is held hidden from the first frame, laid out or not: the first open lays it out
             // between two frames of the morph, and it is hidden in that layout pass (PlayerArtwork.x).
-            if (!self->_coverHidden) {
+            if (!CGRectIsNull(coverInPlayer) && !self->_coverHidden) {
                 SGRPlayerSetCoverHidden(YES);
                 self->_coverHidden = YES;
             }
@@ -301,6 +301,7 @@ static CGFloat screenRadius(void) {
 }
 
 - (void)tearDown {
+    if (_tornDown) return;
     _tornDown = YES;
     UIView *overlay = _overlay;
     [CATransaction begin];
@@ -320,8 +321,8 @@ static CGFloat screenRadius(void) {
     _overlayColor = NULL;
     [_sheet removeFromSuperview];
     [_cover removeFromSuperview];
-    [CATransaction commit];
     if (_coverHidden) SGRPlayerSetCoverHidden(NO);
+    [CATransaction commit];
     _coverHidden = NO;
     _cover = nil;
 }

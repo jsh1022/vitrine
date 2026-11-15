@@ -4,7 +4,7 @@
 #import "SGGlowSwitch.h"
 #import "Core/SGCore.h"
 
-NSString *const SGRestartNote = @"Changes apply after you restart Spotify.";
+NSString *const SGRestartNote = @"Spotify를 재시작하면 변경 사항이 적용됩니다.";
 
 @implementation SGModRow
 @end
@@ -256,7 +256,7 @@ void SGPickColor(NSString *title, NSInteger initial, void (^picked)(NSInteger rg
     sheet.picker = picker;
     sheet.picked = picked;
     UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"] style:UIBarButtonItemStyleDone target:sheet action:@selector(confirm)];
-    done.accessibilityLabel = @"Done";
+    done.accessibilityLabel = @"완료";
     picker.navigationItem.rightBarButtonItem = done;
     // Inside a navigation controller the picker drops its own close button, so the bar carries one.
     picker.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:sheet action:@selector(cancel)];
@@ -1033,7 +1033,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     if (!path) return;
     SGModRow *row = [self rowAt:path];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:row.title message:row.info preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1069,7 +1069,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         alertControllerWithTitle:@"Overridden by another setting"
                          message:@"Another switch is forcing this flag, so the row shows what it forces instead of taking a value of its own."
                   preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1080,7 +1080,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     if (SGRepoURL) [alert addAction:[UIAlertAction actionWithTitle:@"Open GitHub" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         SGOpenURL(SGRepoURL);
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
