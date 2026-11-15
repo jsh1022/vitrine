@@ -8,7 +8,7 @@
 - (void)apply:(CGFloat)t;
 - (void)tearDown;
 @end
-static BOOL coverHidden, coverReady;
+static BOOL coverHidden, coverReady, staticArtwork, motionArtwork;
 BOOL SGRedesignedUI(void) { return YES; }
 BOOL SGRReduceMotion(void) { return NO; }
 const CGFloat SGRRadiusArtwork = 12;
@@ -22,7 +22,8 @@ CGFloat SGRNowPlayingStripHeight(void) { return 0; }
 CGRect SGRPlayerCoverFrameIn(UIView *host) { return coverReady ? CGRectMake(24,100,342,342) : CGRectNull; }
 CGFloat SGRPlayerCoverScale(void) { return 1; }
 void SGRPlayerSetCoverHidden(BOOL hidden) { coverHidden=hidden; }
-BOOL SGRPlayerMotionShowing(void) { return NO; }
+BOOL SGRPlayerMotionShowing(void) { return motionArtwork; }
+BOOL SGRPlayerStaticCoverShowing(void) { return staticArtwork; }
 @interface MorphDelegate : UIResponder <UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window;
 @end
@@ -48,6 +49,24 @@ BOOL SGRPlayerMotionShowing(void) { return NO; }
    NSCAssert(!coverHidden && overlay.layer.mask==mask && CATransform3DEqualToTransform(overlay.layer.sublayerTransform,original), @"cancel/finish did not restore original state");
    NSCAssert(container.subviews.count==2, @"transition stand-ins leaked");
   }
+  for (NSInteger mode=0; mode<2; mode++) {
+   staticArtwork=mode==0; motionArtwork=mode==1;
+   for (NSInteger pass=0; pass<20; pass++) {
+    coverReady=YES; coverHidden=NO;
+    SGRPlayerMorph *m=[[SGRPlayerMorph alloc] initWithContainer:container overlay:overlay bar:bar barRest:CGRectZero];
+    [m followFrom:bar opening:pass%2==0];
+    // The backdrop lives in overlay. Only the sheet may be added outside it;
+    // a third image sibling here is the square popping into a fullscreen drag.
+    NSCAssert(container.subviews.count==3, @"fullscreen transition created a separate square cover");
+    for (NSNumber *t in @[@1,@0.95,@0.8,@0.5,@0.2,@0.7,@1,@0]) {
+     [m apply:t.doubleValue];
+     NSCAssert(!coverHidden && container.subviews.count==3, @"fullscreen ownership changed during a drag");
+    }
+    [m tearDown];
+    NSCAssert(container.subviews.count==2 && overlay.layer.mask==mask, @"fullscreen cleanup failed");
+   }
+  }
+  fprintf(stderr,"PASS fullscreen morph: static/video, 40 drags and reversals without a square stand-in\n");
   fprintf(stderr,"PASS morph: 20 open/close/reversal cycles, delayed layout, mask/transform restore, idempotent teardown, no stand-ins\n"); exit(0);
  }); return YES;
 }

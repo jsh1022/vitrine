@@ -457,9 +457,10 @@ static NSURL *sg_motionFile;
 static UIImage *sg_motionPoster;
 // The clip is in and opaque, so the field under it is covered.
 static BOOL sg_covering;
-// The list the mask went on, so it comes off even while the player is closed and the list cannot be found,
-// and the mask, told from any other.
-static __weak CALayer *sg_maskedCovers, *sg_coverMask;
+// Only the artwork surfaces are masked; keep weak owners so a closed player can
+// restore them without retaining its view hierarchy. Inline lyrics are siblings.
+static NSHashTable<UIView *> *sg_maskedArtwork;
+static char kArtworkMaskKey;
 
 // The clip from the top of the field, as wide as it is, its foot down to the bottom of the field's bleed.
 static void layOut(void) {
@@ -517,33 +518,37 @@ static void fadeCoverMask(CALayer *covers, CALayer *mask, float opacity, BOOL an
     if (!animated && done) done();
 }
 
-// A mask rather than alpha: the covers still take the swipe that changes track, and the lyrics, which fade
-// the list by its alpha as they come and go, cannot bring the cover back. Asked again for where it is going,
-// it does nothing, so the field's layout passes do not cut a fade short.
+// Conceal artwork surfaces only. The collection also owns LyricsContainerView;
+// masking it makes the inline lyric disappear with both video and static fallback.
 static void setCoverShown(BOOL shown, BOOL animated) {
     if (shown && SGRPlayerStaticCoverShowing()) shown = NO;
-    CALayer *covers = shown ? sg_maskedCovers : SGRPlayerCoverList().layer;
-    if (!covers) return;
-    CALayer *mask = covers.mask;
-    BOOL ours = mask && mask == sg_coverMask;
-    if (shown) {
-        sg_maskedCovers = nil;
-        if (!ours) return;
-        // A newer fade ends this one early, and the mask stays for it.
-        fadeCoverMask(covers, mask, 1, animated, ^{
-            if (covers.mask == mask && sg_maskedCovers != covers) covers.mask = nil;
-        });
-        return;
+    if (!sg_maskedArtwork) sg_maskedArtwork = [NSHashTable weakObjectsHashTable];
+    NSArray<UIView *> *surfaces = shown ? sg_maskedArtwork.allObjects : SGRPlayerArtworkSurfaces();
+    for (UIView *surface in surfaces) {
+        CALayer *layer = surface.layer;
+        CALayer *mask = objc_getAssociatedObject(surface, &kArtworkMaskKey);
+        if (shown) {
+            if (!mask || layer.mask != mask || mask.opacity == 1) continue;
+            fadeCoverMask(layer, mask, 1, animated, ^{
+                // A reversal may already be fading the same mask back out.
+                if (layer.mask == mask && mask.opacity == 1) {
+                    layer.mask = nil;
+                    objc_setAssociatedObject(surface, &kArtworkMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    [sg_maskedArtwork removeObject:surface];
+                }
+            });
+        } else {
+            if (layer.mask && layer.mask != mask) continue;
+            if (mask && mask.opacity == 0) continue;
+            if (!mask) {
+                mask = [CALayer layer]; mask.backgroundColor = UIColor.blackColor.CGColor;
+                objc_setAssociatedObject(surface, &kArtworkMaskKey, mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                layer.mask = mask;
+            }
+            [sg_maskedArtwork addObject:surface];
+            fadeCoverMask(layer, mask, 0, animated, nil);
+        }
     }
-    if (covers == sg_maskedCovers || (mask && !ours)) return;
-    if (!mask) {
-        mask = [CALayer layer];
-        mask.backgroundColor = UIColor.blackColor.CGColor;
-        covers.mask = mask;
-        sg_coverMask = mask;
-    }
-    sg_maskedCovers = covers;
-    fadeCoverMask(covers, mask, 0, animated, nil);
 }
 
 void SGRPlayerMotionFieldLaidOut(void) {
@@ -652,9 +657,11 @@ static void clear(BOOL animated) {
     sg_motionPoster = nil;
     // Uncovered before the clip starts to fade, so the field is there under it.
     cover(NO);
-    holdField();
     animated = animated && seen(old);
+    // Establish the fade before holdField's static-cover/layout callbacks ask
+    // for this state again. Otherwise they remove the mask in a single frame.
     setCoverShown(YES, animated);
+    holdField();
     if (animated) [old disappear:^{ [old removeFromSuperview]; }];
     else [old removeFromSuperview];
 }

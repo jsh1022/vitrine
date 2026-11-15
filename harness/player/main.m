@@ -615,6 +615,7 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"motion"]) [self runMotionChecks];
     else if ([scenario() isEqualToString:@"catalog"]) [self runCatalogChecks];
     else if ([scenario() isEqualToString:@"badge"]) [self runBadgeChecks];
+    else if ([scenario() isEqualToString:@"inline-art"]) [self runInlineArtworkChecks];
     else if ([scenario() isEqualToString:@"cover"]) [self runCoverChecks];
     else if ([scenario() isEqualToString:@"immersive"]) [self runImmersiveChecks];
     else if ([scenario() isEqualToString:@"settings"]) [self runSettingsChecks];
@@ -920,11 +921,17 @@ static BOOL fieldCovered(void) {
         UIVisualEffectView *seam = [motion valueForKey:@"_seamBlur"];
         // The lyrics' blur is a filter on the clip, there only while the lyrics are up.
         BOOL lyricsBlurred = ((UIView *)[motion valueForKey:@"_picture"]).layer.filters.count > 0;
-        [self expect:motion != nil && self->_covers.layer.mask != nil step:@"the player opened"
-              detail:[NSString stringWithFormat:@"clip %@ the field, cover %@", motion ? @"on" : @"not on", self->_covers.layer.mask ? @"hidden" : @"shown"]];
+        [self expect:!self->_covers.layer.mask step:@"inline lyric collection stays visible under video" detail:@"only the artwork surface may be masked"];
+        [self expect:motion != nil && self->_tilt.layer.mask != nil step:@"the player opened"
+              detail:[NSString stringWithFormat:@"clip %@ the field, cover %@", motion ? @"on" : @"not on", self->_tilt.layer.mask ? @"hidden" : @"shown"]];
         CGFloat seamAt = round(clip.frame.size.height * 0.9);
         BOOL footDown = foot && fabs(foot.frame.origin.y - seamAt) < 1 && CGRectGetMaxY(foot.frame) >= self.window.bounds.size.height
-            && foot.contents && foot.contentsRect.size.height < 0.05 && CGRectGetMaxY(foot.contentsRect) > 0.999;
+            && foot.backgroundColor && CGColorGetAlpha(foot.backgroundColor) > 0.99;
+        if (getenv("HARNESS_BLACK_FOOT")) {
+            CGFloat r=1, g=1, b=1, a=0;
+            BOOL measured = foot.backgroundColor && [[UIColor colorWithCGColor:foot.backgroundColor] getRed:&r green:&g blue:&b alpha:&a];
+            footDown = footDown && measured && MAX(r, MAX(g, b)) < 0.03 && a > 0.99;
+        }
         [self expect:footDown step:@"the foot"
               detail:[NSString stringWithFormat:@"clip %@, foot %@ from rows %@", NSStringFromCGRect(clip.frame), NSStringFromCGRect(foot.frame), NSStringFromCGRect(foot.contentsRect)]];
         // The poster under the video, so the clip has a picture before its first frame is decoded; and the
@@ -998,7 +1005,7 @@ static BOOL fieldCovered(void) {
     after(12.5, ^{
         SGPlayerMenuSetAnimatedArtwork(NO);
         UIView *fading = motionView();
-        CALayer *picture = ((UIView *)[fading valueForKey:@"_picture"]).layer, *mask = self->_covers.layer.mask;
+        CALayer *picture = ((UIView *)[fading valueForKey:@"_picture"]).layer, *mask = self->_tilt.layer.mask;
         CAAnimation *out = [picture animationForKey:@"opacity"], *in = [mask animationForKey:@"opacity"];
         [self expect:!SGRPlayerMotionShowing() && fading && out && in && fabs(out.duration - in.duration) < 0.01 && picture.opacity == 0
                      && mask.opacity == 1 && !SGRPlayerField().motionHeld && !fieldCovered()
@@ -1008,20 +1015,20 @@ static BOOL fieldCovered(void) {
                       fieldCovered() ? @"hidden" : @"drawn"]];
     });
     after(13.2, ^{
-        [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_covers.layer.mask && !SGPlayerMenuAnimatedArtwork()
+        [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_tilt.layer.mask && !SGPlayerMenuAnimatedArtwork()
                 step:@"switched off from the menu" detail:[NSString stringWithFormat:@"clip %@, cover %@", motionView() ? @"still there" : @"gone",
-                                                                 self->_covers.layer.mask ? @"hidden" : @"back"]];
+                                                                 self->_tilt.layer.mask ? @"hidden" : @"back"]];
         SGPlayerMenuSetAnimatedArtwork(YES);
     });
     after(14.7, ^{
         // Faded in on screen this time, so the field is covered once the fade has finished.
-        [self expect:motionView() && self->_covers.layer.mask && fieldCovered() step:@"switched on again"
+        [self expect:motionView() && self->_tilt.layer.mask && fieldCovered() step:@"switched on again"
               detail:[NSString stringWithFormat:@"clip %@, cover %@, its Fluid copies %@", motionView() ? @"back" : @"missing",
-                      self->_covers.layer.mask ? @"hidden" : @"shown", fieldCovered() ? @"hidden" : @"drawn"]];
+                      self->_tilt.layer.mask ? @"hidden" : @"shown", fieldCovered() ? @"hidden" : @"drawn"]];
         // The player closed: the cover list cannot be found, and switching off must still bring its cover back.
         [self->_host removeFromSuperview];
         SGPlayerMenuSetAnimatedArtwork(NO);
-        [self expect:!self->_covers.layer.mask step:@"switched off with the player closed" detail:self->_covers.layer.mask ? @"cover still hidden" : @"cover back"];
+        [self expect:!self->_tilt.layer.mask step:@"switched off with the player closed" detail:self->_tilt.layer.mask ? @"cover still hidden" : @"cover back"];
         [self->_list addSubview:self->_host];
     });
     after(15.7, ^{ SGPlayerMenuSetAnimatedArtwork(YES); });
@@ -1049,7 +1056,7 @@ static BOOL fieldCovered(void) {
         [video videoSurfaceDidDetachVideo:nil];
     });
     after(19.5, ^{
-        [self expect:SGRPlayerMotionShowing() && self->_covers.layer.mask step:@"Spotify's video gone"
+        [self expect:SGRPlayerMotionShowing() && self->_tilt.layer.mask step:@"Spotify's video gone"
               detail:SGRPlayerMotionShowing() ? @"the clip back" : @"no clip"];
         // A track whose first state names no Canvas, as on a skip before Spotify's extended metadata.
         unsetenv("HARNESS_CANVAS");
@@ -1068,11 +1075,11 @@ static BOOL fieldCovered(void) {
         SGRHarnessSetTrack(@"spotify:track:harnessC", imageURI(@"cccc"), NO);
     });
     after(21.6, ^{
-        [self expect:SGRPlayerMotionShowing() && self->_covers.layer.mask step:@"skipped, the clip kept a moment"
+        [self expect:SGRPlayerMotionShowing() && self->_tilt.layer.mask step:@"skipped, the clip kept a moment"
               detail:SGRPlayerMotionShowing() ? @"a clip in" : @"the cover back"];
     });
     after(22.3, ^{
-        CALayer *mask = self->_covers.layer.mask;
+        CALayer *mask = self->_tilt.layer.mask;
         [self expect:SGRPlayerMotionShowing() && motionView() != before && mask && mask.opacity == 0 step:@"the next clip over the last"
               detail:[NSString stringWithFormat:@"%@, cover %@", motionView() != before ? @"a new clip" : @"the same clip", mask && mask.opacity == 0 ? @"still hidden" : @"back"]];
     });
@@ -1088,15 +1095,15 @@ static BOOL fieldCovered(void) {
         lowPower = YES;
         [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];    });
     after(23.5, ^{
-        [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_covers.layer.mask step:@"Low Power Mode"
-              detail:[NSString stringWithFormat:@"clip %@, cover %@", motionView() ? @"still there" : @"gone", self->_covers.layer.mask ? @"hidden" : @"back"]];
+        [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_tilt.layer.mask step:@"Low Power Mode"
+              detail:[NSString stringWithFormat:@"clip %@, cover %@", motionView() ? @"still there" : @"gone", self->_tilt.layer.mask ? @"hidden" : @"back"]];
         lowPower = NO;
         [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
     });
     // A track change with the app in the background: the last clip goes at once, with no fade to come back to.
     __block UIApplicationState state = UIApplicationStateActive;
     after(24.5, ^{
-        [self expect:SGRPlayerMotionShowing() && self->_covers.layer.mask step:@"Low Power Mode off"
+        [self expect:SGRPlayerMotionShowing() && self->_tilt.layer.mask step:@"Low Power Mode off"
               detail:SGRPlayerMotionShowing() ? @"the clip back" : @"no clip"];
         Method method = class_getInstanceMethod(UIApplication.class, @selector(applicationState));
         method_setImplementation(method, imp_implementationWithBlock(^UIApplicationState(id app) { return state; }));
@@ -1105,7 +1112,7 @@ static BOOL fieldCovered(void) {
         SGRHarnessSetTrack(@"spotify:track:harnessD", imageURI(@"dddd"), NO);
     });
     after(24.6, ^{
-        CALayer *mask = self->_covers.layer.mask;
+        CALayer *mask = self->_tilt.layer.mask;
         [self expect:!SGRPlayerMotionShowing() && !motionView() && !mask step:@"a track change in the background"
               detail:[NSString stringWithFormat:@"clip %@, cover %@", motionView() ? @"still there" : @"gone at once",
                       mask ? [NSString stringWithFormat:@"hidden, at %.2f", mask.opacity] : @"back at once"]];
@@ -1114,6 +1121,7 @@ static BOOL fieldCovered(void) {
     after(25, ^{
         NSLog(@"[harness] motion checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
               self->_failures ? @"FAIL" : @"PASS");
+        if (getenv("HARNESS_EXIT_AFTER_CHECKS")) exit(self->_failures ? 1 : 0);
     });
 }
 
@@ -1465,6 +1473,29 @@ static CGFloat hillHeight(UIView *view, NSString *ivar) {
 // Issue #77: Spotify keeps room for the lyric preview under the cover of a track with lyrics, so the cover
 // was smaller and higher with a blank band under it. Here the cover is untouched first (a track without
 // lyrics), then given Spotify's layout for one with lyrics, and must fill its room again.
+- (void)runInlineArtworkChecks {
+    UIView *room = _tilt.superview;
+    __block UIView *preview = nil;
+    for (UIView *view in room.subviews) if ([view isKindOfClass:_TtC22Lyrics_NPVContainerKit19LyricsContainerView.class]) preview = view;
+    NSCAssert(preview, @"missing production-shaped inline container");
+    preview.frame = CGRectMake(0, 360, room.bounds.size.width, 32);
+    UILabel *line = [[UILabel alloc] initWithFrame:preview.bounds]; line.text = @"전체 화면 커버 위 한 줄 가사";
+    line.textColor = UIColor.whiteColor; [preview addSubview:line];
+    after(2, ^{
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGRKeyPlayerStaticCover];
+        SGRPlayerStaticCoverUpdate(); SGRPlayerMotionFieldLaidOut();
+        NSCAssert(SGRPlayerStaticCoverShowing(), @"static artwork not shown; test did not reproduce the path");
+        NSCAssert(self->_tilt.layer.mask && self->_tilt.layer.mask.opacity==0, @"square cover not concealed");
+        for (UIView *v=line; v && v!=self.window; v=v.superview) {
+            NSCAssert(!v.hidden && v.alpha>0.01 && v.layer.mask==nil, @"inline lyric hidden by an artwork ancestor");
+        }
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:SGRKeyPlayerStaticCover];
+        SGRPlayerStaticCoverUpdate(); SGRPlayerMotionFieldLaidOut();
+        NSCAssert(!self->_tilt.layer.mask && !self->_covers.layer.mask, @"artwork concealment did not restore");
+        fprintf(stderr,"PASS inline artwork: static fallback hides only artwork; lyric ancestors stay visible; disabling restores cover\n"); exit(0);
+    });
+}
+
 - (void)runCoverChecks {
     __block NSUInteger right = 0, checks = 0;
     void (^check)(NSString *, BOOL, NSString *) = ^(NSString *step, BOOL ok, NSString *detail) {
@@ -1591,7 +1622,7 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
         check(@"woken", lowerShown() && !wake.enabled && linesSeek(lines()),
               [NSString stringWithFormat:@"controls %.0f, wake %d, lines seek %d", duration.alpha, wake.enabled, linesSeek(lines())]);
         // A scroll through the lines leaves them alone at once.
-        lines().browsingBegan();
+        lines().browsingBegan(YES);
         check(@"a scroll hides the controls", lowerHidden() && wake.enabled, [NSString stringWithFormat:@"controls %.0f", duration.alpha]);
     });
     after(9.5, ^{

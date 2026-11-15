@@ -81,6 +81,10 @@ static UIView *showingTilt(void) {
     return nil;
 }
 
+NSArray<UIView *> *SGRPlayerArtworkSurfaces(void) {
+    return sg_tilts.allObjects ?: @[];
+}
+
 UIView *SGRPlayerCoverList(void) {
     for (UIView *v = showingTilt(); v; v = v.superview) {
         if ([v isKindOfClass:UICollectionView.class]) return v;

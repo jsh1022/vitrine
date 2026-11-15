@@ -151,7 +151,8 @@ SGTranslationSource *SGAITranslatorSource(void) { return [SGTranslationSource by
 @implementation SGOnDeviceTranslation
 + (BOOL)translationAvailable { return NO; }
 + (BOOL)appleIntelligenceAvailable:(NSString *)languageTag { return NO; }
-+ (void)translate:(NSArray<NSString *> *)lines to:(NSString *)languageTag done:(void (^)(NSArray<NSString *> *, NSString *))done { done(nil, @"harness"); }
++ (void)openTranslateSettings {}
++ (void)translate:(NSArray<NSString *> *)lines to:(NSString *)languageTag from:(UIView *)view done:(void (^)(NSArray<NSString *> *, NSString *))done { done(nil, @"harness"); }
 + (void)translateWithAppleIntelligence:(NSArray<NSString *> *)lines to:(NSString *)languageTag song:(NSString *)song
                               progress:(void (^)(NSArray<NSString *> *))progress done:(void (^)(NSArray<NSString *> *, NSString *))done { done(nil, @"harness"); }
 @end
@@ -274,3 +275,6 @@ void MSHookMessageEx(Class _class, SEL message, IMP hook, IMP *old) {
     if (old) *old = method_getImplementation(method);
     if (!class_addMethod(_class, message, hook, method_getTypeEncoding(method))) method_setImplementation(method, hook);
 }
+
+BOOL SGKaraokeInAnotherLanguage(NSArray<SGKaraokeLine *> *lines, NSString *language) { return NO; }
+BOOL SGSingButtonShown(void) { return YES; }

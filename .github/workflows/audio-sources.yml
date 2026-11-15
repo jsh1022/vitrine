@@ -49,6 +49,10 @@ jobs:
           bash harness/lossless/handoff-check.sh
         env:
           THEOS: ${{ github.workspace }}/.check-tools/logos
+      - name: Fullscreen artwork and inline lyric visibility
+        run: bash harness/player/artwork-check.sh
+        env:
+          THEOS: ${{ github.workspace }}/.check-tools/logos
       - uses: actions/upload-artifact@v5
         if: always()
         with:

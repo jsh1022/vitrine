@@ -67,6 +67,8 @@ void SGRPlayerHoldField(void);
 
 // The sideways list of covers behind the player, nil until one has laid out.
 UIView *SGRPlayerCoverList(void);
+// Artwork-only surfaces: never the collection that also contains inline lyrics.
+NSArray<UIView *> *SGRPlayerArtworkSurfaces(void);
 // The cover on screen as it is drawn, its paused shrink included, in `host`'s coordinates; CGRectNull
 // when no cover has laid out.
 CGRect SGRPlayerCoverFrameIn(UIView *host);

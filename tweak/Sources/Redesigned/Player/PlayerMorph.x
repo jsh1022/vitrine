@@ -87,6 +87,7 @@ static CGFloat screenRadius(void) {
     CGFloat _cardRadius, _spotifyAlpha;
     CGColorRef _overlayColor;
     BOOL _coverHidden;
+    BOOL _fullScreenArtwork;
     BOOL _tornDown;
     BOOL _opening;
     CALayer *_originalMask;
@@ -201,8 +202,12 @@ static CGFloat screenRadius(void) {
 
     if (bar.superview == container) [container bringSubviewToFront:bar];
 
+    // BitChord latches banner/sleeve ownership for a whole dock trip. A banner
+    // stays in the shrinking player; it must not grow a separate square sleeve
+    // halfway through a drag (nor when a video frame arrives during that drag).
+    _fullScreenArtwork = SGRPlayerMotionShowing() || SGRPlayerStaticCoverShowing();
     UIImage *artwork = SGRNowPlayingArtwork(NULL, NULL);
-    if (artwork && !CGRectIsNull(_barArtwork)) {
+    if (!_fullScreenArtwork && artwork && !CGRectIsNull(_barArtwork)) {
         _cover = [[UIImageView alloc] initWithImage:artwork];
         _cover.userInteractionEnabled = NO;
         _cover.contentMode = UIViewContentModeScaleAspectFill;
