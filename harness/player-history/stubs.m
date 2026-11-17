@@ -6,10 +6,9 @@ static BOOL sg_enabled = YES;
 static SPTPlayerState *sg_state;
 static id sg_player;
 static id<SGPlayerStateObserver> sg_observer;
-static UIViewController *sg_presented;
 BOOL SGRedesignedUI(void) { return YES; }
 BOOL SGFlag(NSString *key, BOOL fallback) { return [key isEqual:SGRKeyPlayerHistory] ? sg_enabled : fallback; }
-void SGPresentDark(UIViewController *controller) { sg_presented = controller; }
+UIViewController *SGTopController(void) { UIWindow *window = [(id)UIApplication.sharedApplication.delegate valueForKey:@"window"]; UIViewController *top = window.rootViewController; while (top.presentedViewController) top = top.presentedViewController; return top; }
 BOOL SGOpenSpotifyURI(NSURL *uri) { return YES; }
 void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) { sg_observer = observer; }
 SPTPlayerState *SGPlayerState(void) { return sg_state; }
@@ -43,4 +42,3 @@ NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri 
 void SGRHarnessSetState(SPTPlayerState *state) { sg_state=state; if (sg_observer) [sg_observer playerStateDidReport:state]; }
 void SGRHarnessSetEnabled(BOOL enabled) { sg_enabled=enabled; }
 void SGRHarnessSetPlayer(id player) { sg_player=player; }
-UIViewController *SGRHarnessPresented(void) { return sg_presented; }

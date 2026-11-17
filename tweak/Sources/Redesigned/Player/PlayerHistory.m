@@ -2,6 +2,7 @@
 // section; replay is Spotify's targeted previous command, never a reconstructed context.
 #import "PlayerHistory.h"
 #import "Core/SGCore.h"
+#import "Settings/SGPageStyle.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Navigation/Links.h"
 #import <objc/message.h>
@@ -94,9 +95,16 @@ static NSArray *tracks(id value) {
 
 BOOL SGRPlayerShowHistory(void) {
     if (!SGRedesignedUI() || !SGFlag(SGRKeyPlayerHistory, NO)) return NO;
+    UIViewController *owner = SGTopController();
+    if ([owner isKindOfClass:SGRHistoryQueue.class]) return YES;
+    if ([owner isKindOfClass:UINavigationController.class] &&
+        [((UINavigationController *)owner).topViewController isKindOfClass:SGRHistoryQueue.class]) return YES;
+    if (!owner.viewIfLoaded.window || owner.isBeingPresented || owner.isBeingDismissed || owner.transitionCoordinator) return NO;
     SGRHistoryQueue *queue = [SGRHistoryQueue new];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:queue];
-    SGPresentDark(nav); return YES;
+    SGPresentDark(nav);
+    [owner presentViewController:nav animated:YES completion:nil];
+    return YES;
 }
 @interface SGRHistoryButton : UIButton
 @end

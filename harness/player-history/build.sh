@@ -11,6 +11,7 @@ xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" 
   -I"$SRC" -I"$SRC/Redesigned/Player" \
   "$ROOT/harness/player-history/main.m" "$ROOT/harness/player-history/stubs.m" "$ROOT/harness/scene.m" \
   "$SRC/Redesigned/Player/PlayerHistory.m" \
+  "$SRC/Core/SGGlass.m" \
   -framework UIKit -framework Foundation -framework QuartzCore -o "$APP/PlayerHistory"
 python3 - "$APP/Info.plist" <<'PY'
 import plistlib,sys
