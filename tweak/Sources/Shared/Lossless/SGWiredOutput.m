@@ -71,6 +71,13 @@ static BOOL undoPreference(double previous, double requested) {
     status(@"Restore pending", @"iOS did not release the requested rate. Resume playback to retry, or restart Spotify.");
     return NO;
 }
+void SGWiredOutputRouteDidChange(void) {
+    @synchronized (control()) {
+        // Our own rate negotiation may post a route-configuration notification too.
+        // Only a changed device owns this restore, after any negotiation has left the lock.
+        if (sg_requested > 0 && ![wiredRoute() isEqualToString:sg_savedRoute]) restore();
+    }
+}
 void SGWiredOutputPrepare(NSString *path) {
     @synchronized (control()) {
         NSString *route = wiredRoute();

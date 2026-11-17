@@ -82,7 +82,14 @@ BOOL SGFlag(NSString *key, BOOL fallback) {
     return [key isEqualToString:SGKeyAppWireGuard] || ([key hasSuffix:@".staticCoverFallback"] && SGPresentationStaticCover);
 }
 void SGSetEnabled(NSString *key, BOOL on) {}
-SPTPlayerState *SGPlayerState(void) { return nil; }
+BOOL SGPresentationNativePCM;
+@interface SGPresentationPlayingState : NSObject
+@end
+@implementation SGPresentationPlayingState
+- (BOOL)isPlaying { return YES; }
+- (BOOL)isPaused { return NO; }
+@end
+SPTPlayerState *SGPlayerState(void) { return SGPresentationNativePCM ? (id)[SGPresentationPlayingState new] : nil; }
 void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {}
 NSString *SGURIString(id uri) { return nil; }
 BOOL SGLosslessPlaying(void) { return NO; }
@@ -91,7 +98,7 @@ NSDictionary *SGPresentationSourceInfo;
 BOOL SGLosslessRendering(void) { return SGPresentationExternal; }
 NSDictionary *SGLosslessSourceInfo(void) { return SGPresentationSourceInfo ?: @{}; }
 BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) {
-    if (!SGPresentationExternal) return NO;
+    if (!SGPresentationExternal && !SGPresentationNativePCM) return NO;
     *format = (AudioStreamBasicDescription){44100,kAudioFormatLinearPCM,kAudioFormatFlagsNativeFloatPacked|kAudioFormatFlagIsNonInterleaved,4,1,4,2,32,0};
     return YES;
 }
@@ -130,3 +137,14 @@ NSString *SGKaraokePlayingTrack(void) { return SGPresentationLyricsTrack; }
 NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *track) { return SGPresentationLyrics; }
 NSInteger SGKaraokePositionMs(void) { return SGPresentationLyricsPosition; }
 NSInteger SGKaraokeDelayMs(void) { return SGPresentationLyricsDelay; }
+
+// New row factories are still fixture models; actual policy and pipeline remain production code.
+SGModRow *SGSwitchRow(NSString *title, NSString *subtitle, NSString *key) { return SGOptionRow(title, subtitle, key); }
+SGModRow *SGChoiceRow(NSString *title, NSString *subtitle, NSString *key, NSArray *choices, NSInteger fallback) { return SGOptionRow(title, subtitle, key); }
+SGModRow *SGSliderRow(NSString *title, NSString *subtitle, double minimum, double maximum, double step, double (^number)(void), void (^set)(double), NSString *(^format)(double)) {
+    SGModRow *row = SGOptionRow(title, subtitle, nil); row.number = number; row.setNumber = set; row.format = format; return row;
+}
+NSInteger SGInt(NSString *key, NSInteger fallback) { return fallback; }
+void SGSetInt(NSString *key, NSInteger value) {}
+BOOL SGRedesignedUIStored(void) { return SGRedesignedUI(); }
+BOOL SGStreamQuality(NSInteger *metered, NSInteger *nonMetered) { if (!SGPresentationNativePCM) return NO; *metered = 1; *nonMetered = 4; return YES; }

@@ -69,6 +69,34 @@ UIViewController *SGAudioSourcesPage(void) {
     };
     SGModRow *cellular = SGOptionRow(@"셀룰러 다운로드 허용", @"꺼짐: 비과금 네트워크만 사용합니다. 파일은 최대 128 MiB입니다", SGKeyAddonCellular);
     cellular.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
+
+    SGModRow *playbackMode = SGChoiceRow(@"애드온 재생 방식", nil, SGKeyAddonPlaybackMode,
+        @[@"빠른 재생", @"연속 재생 우선", @"애드온 우선 재생"], 1);
+    playbackMode.choiceNotes = @[
+        @"애드온을 조회하거나 기다리지 않고 Spotify 기본 스트림으로 바로 재생합니다.",
+        @"현재 곡은 Spotify로 바로 재생하고 다음 곡을 준비합니다. 다음 4곡까지 준비하며, 비과금 Wi-Fi에서는 바로 다음 곡 전체와 나머지 3곡의 앞부분을 최대 2 MiB씩 받습니다.",
+        @"설정한 시간만큼 재생을 기다린 뒤 Spotify 기본 스트림으로 재개합니다. 재개 후 Spotify 오디오와 파일의 4초 상관 분석으로 안전한 전환 여부를 확인합니다.",
+    ];
+    playbackMode.chosen = ^(NSInteger index) { SGAddonRetryCurrentTrack(); };
+    playbackMode.visible = ^BOOL { return SGRedesignedUIStored(); };
+
+    SGModRow *autoSwitch = SGSwitchRow(@"재생 중 자동 음원 전환", @"안전한 상관 정렬이 끝나면 현재 곡을 전환합니다. 꺼도 다음 곡은 준비합니다.", SGKeyAddonAutoSwitch);
+    autoSwitch.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
+    autoSwitch.visible = ^BOOL {
+        return SGRedesignedUIStored() && SGInt(SGKeyAddonPlaybackMode, SGAddonPlaybackContinuous) == SGAddonPlaybackContinuous;
+    };
+
+    SGModRow *cellularFull = SGOptionRow(@"모바일 데이터로 다음 곡 전체 준비", @"Wi-Fi에서는 다음 곡 전체를 받고, 나머지 3곡은 2 MiB 접두부만 준비합니다. 기존 셀룰러 다운로드 허용 설정도 켜야 합니다.", SGKeyAddonPrefetchCellular);
+    cellularFull.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
+    cellularFull.visible = ^BOOL {
+        return SGRedesignedUIStored() && SGInt(SGKeyAddonPlaybackMode, SGAddonPlaybackContinuous) == SGAddonPlaybackContinuous;
+    };
+
+    SGModRow *wait = SGSliderRow(@"애드온 대기 시간", @"대기 후 Spotify 기본 스트림으로 재개합니다. 재개 후 4초 상관 분석으로 안전한 전환 여부를 확인합니다.", 5, 30, 1,
+        ^double { return SGInt(SGKeyAddonWaitSeconds, 10); },
+        ^(double value) { SGSetInt(SGKeyAddonWaitSeconds, lround(value)); SGAddonRetryCurrentTrack(); },
+        ^NSString *(double value) { return [NSString stringWithFormat:@"%ld초", lround(value)]; });
+    wait.visible = ^BOOL { return SGRedesignedUIStored() && SGInt(SGKeyAddonPlaybackMode, SGAddonPlaybackContinuous) == SGAddonPlaybackPrefer; };
     SGModRow *tunnel = SGOptionRow(@"애드온용 WireGuard", @"애드온 JSON 및 오디오만 · iOS 17 이상", SGKeySourceWireGuard);
     tunnel.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
     SGModRow *add = SGActionRow(@"소스 추가", @"발급받은 HTTPS 루트 또는 manifest URL 붙여넣기", ^{
@@ -106,7 +134,8 @@ UIViewController *SGAudioSourcesPage(void) {
     }
     SGModPage *page = [[SGModPage alloc] initWithTitle:@"무손실 소스" intro:@"플레이어 페이지에서 무손실 파일을 켜고 Spotify를 한 번 재시작하여 재생 훅을 설치하세요. 아래 소스 및 네트워크 설정은 새 요청부터 적용됩니다."
         sections:@[
-            SGNotedSection(@"재생", @[enabled, cellular, SGActionRow(@"현재 곡 다시 시도", @"각 소스의 요청 제한 준수", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"준비 상태", @"탭하여 자세히 보기", ^NSString *{ return SGAddonStatusSummary(); }, ^{ message(@"준비 상태", SGAddonStatus()); })], @"직접 제공되는 스테레오 FLAC/ALAC 파일만 지원합니다. 기본 디코더로 확인한 뒤 Spotify 오디오와 정렬합니다. HLS, DASH, DRM 및 공식 앱 전용 소스는 지원하지 않습니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다."),
+            SGNotedSection(@"재생", @[enabled, cellular, playbackMode, autoSwitch, cellularFull, wait,
+                SGActionRow(@"현재 곡 다시 시도", @"각 소스의 요청 제한 준수", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"준비 상태", @"탭하여 자세히 보기", ^NSString *{ return SGAddonStatusSummary(); }, ^{ message(@"준비 상태", SGAddonStatus()); })], @"직접 제공되는 스테레오 FLAC/ALAC 파일만 지원합니다. 기본 디코더로 확인한 뒤 Spotify 오디오와 정렬합니다. HLS, DASH, DRM 및 공식 앱 전용 소스는 지원하지 않습니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다. 모바일 데이터로 전체 파일을 준비하려면 기존 셀룰러 다운로드 허용 설정도 켜야 합니다. 접두부는 완성된 파일로 재생하지 않으며, 안전한 전환에는 Spotify 오디오와 파일의 4초 상관 분석이 필요하므로 첫 샘플부터 애드온 음원으로 재생된다고 보장할 수 없습니다."),
             SGSection(@"소스 (우선순위 순)", rows),
             SGNotedSection(@"유선 출력", @[wired,
                 SGStatActionRow(@"출력 상태", @"탭하여 자세히 보기", ^NSString *{ return SGWiredOutputStatus()[@"state"]; }, ^{

@@ -1,6 +1,19 @@
 #import <UIKit/UIKit.h>
 #define SGKeyAddons @"spotifyglass.sources.addons"
 #define SGKeyAddonCellular @"spotifyglass.sources.cellular"
+#define SGKeyAddonPlaybackMode @"spotifyglass.redesign.sources.playbackMode"
+#define SGKeyAddonAutoSwitch @"spotifyglass.redesign.sources.autoSwitch"
+#define SGKeyAddonPrefetchCellular @"spotifyglass.redesign.sources.prefetchCellular"
+#define SGKeyAddonWaitSeconds @"spotifyglass.redesign.sources.waitSeconds"
+typedef NS_ENUM(NSInteger, SGAddonPlaybackStrategy) {
+    SGAddonPlaybackFast, SGAddonPlaybackContinuous, SGAddonPlaybackPrefer,
+};
+SGAddonPlaybackStrategy SGAddonPlaybackMode(void);
+BOOL SGAddonAllowsCurrentLookup(void);
+// Main thread. The entries contain uri/title/artist/duration, never provider credentials.
+void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks);
+void SGAddonBeginPlaybackWait(NSString *uri);
+void SGAddonFinishPlaybackWait(void);
 
 // Main thread. URLs and profile text live only in Keychain.
 NSArray<NSDictionary *> *SGAddonSources(void);
@@ -8,6 +21,8 @@ BOOL SGAddonAddSource(NSString *input);
 BOOL SGAddonRemoveSource(NSString *identifier);
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *status));
 void SGAddonCancel(void);
+// Any thread. Revoke in-flight I/O before a skip/stop is reported on main.
+void SGAddonInvalidateRequests(void);
 void SGAddonRetryCurrentTrack(void);
 #define SGAddonRetryNotification @"spotifyglass.addons.retry"
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration,

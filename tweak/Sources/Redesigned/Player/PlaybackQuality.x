@@ -2,6 +2,7 @@
 // Text-only quality control; the overlay is outside the seek unit's gesture/hit-test bounds.
 #import "Core/SGCore.h"
 #import "Shared/AudioSources/SGPlaybackQuality.h"
+#import "Redesigned/Player/SGRLosslessIcon.h"
 #import <objc/runtime.h>
 
 @interface SGRPlaybackQualityControl : UIButton
@@ -118,7 +119,10 @@
     NSDictionary *info = SGPlaybackQualityInfo();
     NSString *title = info[@"label"];
     [self.button setTitle:title forState:UIControlStateNormal];
-    [self.button setImage:[UIImage systemImageNamed:info[@"symbol"]] forState:UIControlStateNormal];
+    BOOL measuredLossless = [info[@"shines"] boolValue];
+    UIImage *qualityImage = measuredLossless ? SGRLosslessIconImage() : [UIImage systemImageNamed:info[@"symbol"]];
+    [self.button setImage:qualityImage forState:UIControlStateNormal];
+    self.button.imageView.contentMode = UIViewContentModeScaleAspectFit;
     self.button.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", title, info[@"sourceRate"]];
     CGFloat wanted = ceil([title sizeWithAttributes:@{NSFontAttributeName:self.button.titleLabel.font}].width) + 32;
     CGFloat width = MIN(available, MAX(96, wanted));

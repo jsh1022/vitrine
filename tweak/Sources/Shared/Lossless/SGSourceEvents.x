@@ -3,6 +3,7 @@
 #import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import "SGLossless.h"
+#import "SGWiredOutput.h"
 #import <AVFoundation/AVFoundation.h>
 #import <mach/mach_time.h>
 #import "Shared/Player/PlayerState.h"
@@ -99,6 +100,9 @@ static void event(NSString *kind, NSString *evidence) {
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:AVAudioSessionRouteChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
             event(@"route", [NSString stringWithFormat:@"reason_%lu", (unsigned long)[note.userInfo[AVAudioSessionRouteChangeReasonKey] unsignedIntegerValue]]);
+            // Release the old wired preference even while paused or with no replacement file.
+            // Never wait for Core Audio reconfiguration on the posting thread or main.
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGWiredOutputRouteDidChange(); });
         }];
     });
 }

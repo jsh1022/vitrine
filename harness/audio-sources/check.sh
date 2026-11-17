@@ -21,6 +21,10 @@ for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy; do
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
     -include Foundation/Foundation.h -I"$SRC" -I"$SRC/Shared/$part" "$OUT/$name.m"
 done
+perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/AudioSources/SGAddonPlaybackWait.x" > "$OUT/SGAddonPlaybackWait.m"
+xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+  -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
+  -include Foundation/Foundation.h -I"$SRC" -I"$SRC/Shared/AudioSources" "$OUT/SGAddonPlaybackWait.m"
 for relative in Native/Player/InlineLyrics.x Redesigned/Player/InlineLyrics.x Redesigned/Player/PlayerMorph.x Native/Player/PlaybackQuality.x Native/Player/FullArtwork.x Native/Player/Player.x \
                 Redesigned/Player/PlaybackQuality.x Redesigned/Player/PlayerField.x Redesigned/Player/PlayerMotion.x; do
   generated="$OUT/${relative//\//_}.m"
@@ -33,7 +37,7 @@ for enabled in 0 1; do
   for source in "$SRC"/Shared/AudioSources/*.m "$SRC/Shared/Lossless/SGLosslessEngine.m" \
                 "$SRC/Shared/Lossless/SGWiredOutput.m" \
                 "$SRC/Native/Player/PlayerSettings.m" "$SRC/Redesigned/Player/PlayerSettings.m" \
-                "$SRC/App/Pages.m" "$SRC/Redesigned/Player/PlayerMenu.m"; do
+                "$SRC/App/Pages.m" "$SRC/Redesigned/Player/PlayerMenu.m" "$SRC/Redesigned/Player/PlayerHistory.m"; do
     # Match the release's strict deprecation policy for the newly added code.
     deprecations=-Wno-deprecated-declarations
     case "$source" in */Shared/AudioSources/*) deprecations=-Werror=deprecated-declarations ;; esac

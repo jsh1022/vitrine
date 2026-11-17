@@ -50,6 +50,8 @@ void SGAddPlayerStateObserver(id observer) {
     [sg_observers addObject:observer];
 }
 SPTPlayerState *SGPlayerState(void) { return sg_state; }
+id SGPlayer(void) { return nil; }
+BOOL SGOpenSpotifyURI(NSURL *uri) { return NO; }
 
 // `imageURI` is the xlarge picture as Spotify's metadata has it, spotify:image:<40 hex digits>, or nil for
 // a track whose metadata names none.

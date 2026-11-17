@@ -32,6 +32,15 @@ static dispatch_queue_t sg_storeQueue;
     uint64_t _occurrence;
 }
 - (void)retryAddons:(NSNotification *)note {
+    if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"]) {
+        SGPlayerInvalidateSource();
+        SGLosslessStop(YES);
+        ++_occurrence;
+        [NSFileManager.defaultManager removeItemAtPath:_path error:NULL];
+        _path = nil;
+        _failures = 0; _gaveUpEpoch = 0; _retryAt = 0;
+        dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
+    }
     _addonAsked = NO;
     [self tick];
 }
@@ -122,18 +131,32 @@ static dispatch_queue_t sg_storeQueue;
 
     // An addon prepares a bounded complete file while Spotify continues. The existing sound
     // correlation, source epoch and normal-speed/Karaoke checks still own the actual handoff.
-    if (SGFlag(SGKeyAddons, NO) && !_path && _looked && !_addonAsked && track && state.isPlaying && !state.isPaused &&
+    if (SGFlag(SGKeyAddons, NO) && SGAddonPlaybackMode() != SGAddonPlaybackFast && !_path && _looked && !_addonAsked && track && state.isPlaying && !state.isPaused &&
         state.duration > 0 && state.track.trackTitle.length && state.track.artistName.length) {
         _addonAsked = YES;
         uint64_t occurrence = _occurrence;
+        SGAddonBeginPlaybackWait(track);
         SGAddonPrepare(track, state.track.trackTitle, state.track.artistName, state.duration, ^(NSString *path) {
             if (occurrence != self->_occurrence) {
                 if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
                 return;
             }
+            SGAddonFinishPlaybackWait();
             if (path) { self->_path = path; [self tick]; }
         });
     }
+    // Use Spotify's already shuffled/queued order; never infer a playlist order ourselves.
+    NSMutableArray *upcomingTracks = [NSMutableArray array];
+    for (id value in [future isKindOfClass:NSArray.class] ? future : @[]) {
+        if (![value isKindOfClass:objc_getClass("SPTPlayerTrack")]) continue;
+        SPTPlayerTrack *item = value;
+        NSString *uri = SGURIString(item.URI);
+        if (!uri.length || !item.trackTitle.length || !item.artistName.length) continue;
+        [upcomingTracks addObject:@{@"uri":uri, @"title":item.trackTitle, @"artist":item.artistName,
+                                    @"duration":@([item.metadata[@"duration"] doubleValue] / 1000)}];
+        if (upcomingTracks.count == 4) break;
+    }
+    SGAddonUpdateUpcoming(upcomingTracks);
     if (!_path || _busy || SGLosslessPlaying()) return;
     if (!state.isPlaying || state.isPaused || fabs(state.playbackSpeed - 1) > 0.001 || SGSingOn()) return;
     uint64_t epoch = SGPlayerSourceEpoch();
@@ -142,7 +165,7 @@ static dispatch_queue_t sg_storeQueue;
     if (now < _retryAt) return;
 
     _busy = YES;
-    SGAddonSetPlaybackStatus(@"Decoding and aligning the lossless recording", NO);
+    SGAddonSetPlaybackStatus(@"무손실 녹음 디코딩 및 정렬 중", NO);
     NSString *path = _path;
     uint64_t occurrence = _occurrence;
     double hint = state.position;
@@ -158,7 +181,7 @@ static dispatch_queue_t sg_storeQueue;
             self->_busy = NO;
             if (occurrence != self->_occurrence || ![track isEqualToString:self->_track]) return;
             if (anchored) {
-                SGAddonSetPlaybackStatus(@"Audio aligned; inspect recent external frames in Playback details", YES);
+                SGAddonSetPlaybackStatus(@"오디오 정렬 완료 · 상세 재생 정보에서 최근 외부 출력 프레임을 확인하세요", YES);
                 self->_failures = 0;
                 // Addon files are transient, not entries in Documents/Lossless's local index.
                 if ([path.stringByDeletingLastPathComponent isEqualToString:SGLosslessStoreDirectory()])
@@ -166,7 +189,7 @@ static dispatch_queue_t sg_storeQueue;
                 SGLog(@"lossless: playing %@ from %.2f s", path.lastPathComponent, [anchored[@"file_seconds"] doubleValue]);
                 return;
             }
-            SGAddonSetPlaybackStatus([NSString stringWithFormat:@"Audio alignment failed: %@", error ?: @"unknown mismatch"], NO);
+            SGAddonSetPlaybackStatus([NSString stringWithFormat:@"오디오 정렬 실패: %@", error ?: @"일치하지 않는 녹음"], NO);
             self->_retryAt = CFAbsoluteTimeGetCurrent() + kRetrySeconds;
             if (++self->_failures >= kTries) {
                 self->_failures = 0;

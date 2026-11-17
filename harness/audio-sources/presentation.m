@@ -7,7 +7,7 @@
 #import "Core/SGViewTree.h"
 
 extern NSArray<SGModRow *> *SGPresentationRows;
-extern BOOL SGPresentationExternal;
+extern BOOL SGPresentationExternal, SGPresentationNativePCM;
 extern NSDictionary *SGPresentationSourceInfo, *SGPresentationPreparedInfo;
 extern SGAddonPreparationState SGPresentationPreparation;
 extern BOOL SGPresentationStaticCover;
@@ -117,6 +117,20 @@ static void checkBlockedTransport(void) {
         ![pipeline[@"statsLine"] isEqual:@"선택한 소스의 디코더 측정값 없음"]) {
         fail(@"pipeline must contain five stages without inventing unknown source measurements"); return;
     }
+    SGPresentationNativePCM = YES;
+    NSDictionary *native = SGAudioPipelineSnapshot();
+    NSArray *nativeRows = native[@"stages"][0][@"rows"];
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+    for (NSDictionary *row in nativeRows) values[row[@"label"]] = row[@"value"];
+    if (![native[@"statsLine"] containsString:@"Spotify 출력 PCM"] ||
+        ![native[@"statsLine"] containsString:@"44.1 kHz"] ||
+        ![values[@"형식"] isEqual:@"—"] || ![values[@"비트 깊이"] isEqual:@"—"] ||
+        ![values[@"비트레이트"] isEqual:@"—"] || ![values[@"샘플레이트"] isEqual:@"—"] ||
+        ![values[@"Spotify 품질 설정"] containsString:@"실제 비트레이트 아님"]) {
+        fail(@"Spotify output PCM and configured levels must never become compressed-source measurements"); return;
+    }
+    SGPresentationNativePCM = NO;
+    passed(@"PASS Spotify PCM measurement and configured-quality separation without guessed codec or bitrate");
     if (!SGWireGuardAppProxyActive()) { fail(@"proxy hooks not installed"); return; }
     NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
     config.HTTPAdditionalHeaders = @{@"X-Fixture": @"preserved"};

@@ -19,6 +19,7 @@
 #import "Redesigned/Kit/SGRKit.h"
 #import "Shared/Navigation/Links.h"
 #import "Player.h"
+#import "PlayerHistory.h"
 
 static const CGFloat kSkipGlyphSize = 32, kFooterGlyphSize = 20;
 // Spotify's Encore queue glyph is drawn larger than the glyphs beside it; this much of its size looks theirs.
@@ -195,6 +196,7 @@ static void styleFooter(UIViewController *unit) {
     }
 
     SGRGlyphButton *queue = glyphButtonIn(host, &kQueueKey, @"list.bullet", @"Queue", SGRPrimary(), ^{
+        if (SGRPlayerShowHistory()) return;
         SGOpenSpotifyURI([NSURL URLWithString:@"spotify:now-playing:queue"]);
     });
     queue.bounds = CGRectMake(0, 0, 44, 44);
