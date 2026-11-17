@@ -14,7 +14,8 @@
 static NSArray *tracks(id value) {
     if (![value isKindOfClass:NSArray.class]) return @[];
     NSMutableArray *result = [NSMutableArray array];
-    for (id item in value) if ([item isKindOfClass:SPTPlayerTrack.class]) [result addObject:item];
+    Class trackClass = objc_getClass("SPTPlayerTrack");
+    for (id item in value) if (trackClass && [item isKindOfClass:trackClass]) [result addObject:item];
     return result;
 }
 @implementation SGRHistoryQueue
