@@ -45,7 +45,7 @@
 @property (nonatomic, readonly) double playbackSpeed;
 // The track's length, in the same unit as position.
 @property (nonatomic, readonly) double duration;
-// The tracks to come and the ones played, nearest first; SPTPlayerTrack each, read with a type check.
+// Future tracks are in up-next order; reverse tracks are chronological, oldest to newest (matching the live queue's previous list). SPTPlayerTrack each, read with a type check.
 @property (nonatomic, readonly) NSArray *future;
 @property (nonatomic, readonly) NSArray *reverse;
 @end

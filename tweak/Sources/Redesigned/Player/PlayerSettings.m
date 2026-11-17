@@ -369,8 +369,8 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                       SGOptionRow(@"Spotify 아이콘", @"가사, 기기, 대기열 및 AI DJ 버튼", SGRKeyPlayerSpotifyIcons)],
                        @"음량 슬라이더를 컨트롤 아래에 표시합니다. 이 iPhone 또는 Spotify가 재생 중인 다른 기기의 음량을 조절합니다. 커버 색상 따르기는 좋아요, 셔플, 반복, 기기, 대기열 버튼과 미니플레이어의 기기·좋아요 버튼에 현재 곡의 커버 색상을 적용합니다. Spotify 아이콘은 컨트롤 아래 행에 Music 앱 대신 Spotify의 아이콘을 사용합니다."),
         SGNotedSection(@"재생 대기 목록", @[
-            SGOptionRow(@"이전 재생 목록 표시", @"대기 목록에 이전 곡·현재 곡·다음 곡을 구분해 표시합니다", SGRKeyPlayerHistory),
-        ], @"이전 곡을 누르면 Spotify의 이전 곡 재생 명령으로 해당 곡을 다시 재생합니다. 끄면 기존 Spotify 대기 목록을 사용합니다."),
+            SGOptionRow(@"이전 재생 목록 표시", @"기존 대기열의 현재 곡 위에 이전에 재생한 곡을 표시합니다", SGRKeyPlayerHistory),
+        ], @"Spotify가 제공하는 이전 곡 중 최근 25곡까지 표시합니다. 이전 곡을 누르면 해당 곡을 다시 재생합니다. 끄면 원래 대기열로 돌아갑니다."),
         SGNotedSection(@"미니플레이어", SGRNowPlayingBarRows(),
                        @"Apple Music 스타일은 아래로 스크롤할 때 미니플레이어를 두 탭 사이로 이동합니다."), nil];
     [sections addObjectsFromArray:more];

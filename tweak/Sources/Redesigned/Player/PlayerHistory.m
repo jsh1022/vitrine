@@ -1,127 +1,370 @@
-// The queue remains Spotify owned. Like BitChord's QueueSections, history is a distinct
-// section; replay is Spotify's targeted previous command, never a reconstructed context.
+// History extends Spotify's existing queue. Its native current-track view moves
+// into the same scrolling header as native TrackRowQueue history rows; the title,
+// table data source, future cells, editing, shuffle/repeat and timer stay Spotify's.
 #import "PlayerHistory.h"
+#import "PlayerHistoryRows.h"
 #import "Core/SGCore.h"
-#import "Settings/SGPageStyle.h"
 #import "Shared/Player/PlayerState.h"
-#import "Shared/Navigation/Links.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <stdatomic.h>
 
-@interface SGRHistoryQueue : UITableViewController <SGPlayerStateObserver>
-@property(nonatomic, copy) NSArray<NSArray<SPTPlayerTrack *> *> *groups;
-@property(nonatomic, copy) NSArray *identity;
+static const NSUInteger kHistoryLimit = 25;
+static char kHistoryAdapter;
+static atomic_uint_fast64_t sgr_historyCommands;
+static _Thread_local BOOL sgr_historyOwnCommand;
+
+void SGRPlayerHistoryTransportCommand(void) {
+    if (!sgr_historyOwnCommand) atomic_fetch_add(&sgr_historyCommands, 1);
+}
+
+// Same SPTask callbacks used by Shared/AlbumQueue; supported in 9.1.90.
+@protocol SGRHistoryTask <NSObject>
+- (id)addCallback:(void (^)(id))callback on:(dispatch_queue_t)queue;
+- (id)addErrorCallback:(void (^)(NSError *))callback on:(dispatch_queue_t)queue;
 @end
-static NSArray *tracks(id value) {
-    if (![value isKindOfClass:NSArray.class]) return @[];
-    NSMutableArray *result = [NSMutableArray array];
+
+@interface SPTPlayerTrack (SGRHistoryQueueItem)
+- (NSString *)UID;
+- (instancetype)initWithURI:(NSURL *)uri albumURI:(NSURL *)album artistURI:(NSURL *)artist andUID:(NSString *)uid;
+@end
+@interface SGRHistoryQueueWrapper : NSObject
+- (instancetype)initWithPlayer:(id)player;
+- (id)queueTrackPlayNext:(SPTPlayerTrack *)track;
+@end
+
+static NSString *trackUID(SPTPlayerTrack *track) {
+    id uid = [track respondsToSelector:@selector(UID)] ? track.UID : nil;
+    return [uid isKindOfClass:NSString.class] ? uid : @"";
+}
+static NSArray *playbackIdentity(SPTPlayerState *state) {
+    return @[SGURIString(state.contextURI) ?: @"", SGURIString(state.track.URI) ?: @"", trackUID(state.track)];
+}
+
+static NSArray<SPTPlayerTrack *> *historyTracks(SPTPlayerState *state) {
+    if (![state.reverse isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray *tracks = [NSMutableArray array];
     Class trackClass = objc_getClass("SPTPlayerTrack");
-    for (id item in value) if (trackClass && [item isKindOfClass:trackClass]) [result addObject:item];
-    return result;
+    for (id track in state.reverse) {
+        if (trackClass && [track isKindOfClass:trackClass]) [tracks addObject:track];
+    }
+    // Native prevTracks/reverse are chronological: keep the newest suffix.
+    return tracks.count > kHistoryLimit ? [tracks subarrayWithRange:NSMakeRange(tracks.count - kHistoryLimit, kHistoryLimit)] : tracks;
 }
-@implementation SGRHistoryQueue
-- (instancetype)init {
-    if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"재생 대기 목록";
-    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    SGAddPlayerStateObserver(self);
-    [self playerStateDidReport:SGPlayerState()];
-    return self;
+static NSURL *artwork(SPTPlayerTrack *track) {
+    NSDictionary *metadata = [track.metadata isKindOfClass:NSDictionary.class] ? track.metadata : nil;
+    for (NSString *key in @[@"image_xlarge_url", @"image_large_url", @"image_url"]) {
+        NSString *url = metadata[key];
+        if ([url isKindOfClass:NSString.class] && url.length) return [NSURL URLWithString:url];
+    }
+    return nil;
 }
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.tableView.backgroundColor = UIColor.blackColor;
-    self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 64;
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(close)];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Spotify 대기열" style:UIBarButtonItemStylePlain target:self action:@selector(stockQueue)];
+static NSArray *historyIdentity(SPTPlayerState *state, NSArray<SPTPlayerTrack *> *tracks) {
+    NSMutableArray *identity = [NSMutableArray arrayWithArray:playbackIdentity(state)];
+    // A repeated recording still has its own native queue occurrence.
+    for (SPTPlayerTrack *track in tracks) {
+        [identity addObject:@[SGURIString(track.URI) ?: @"", trackUID(track), track.trackTitle ?: @"", track.artistName ?: @"", artwork(track).absoluteString ?: @""]];
+    }
+    return identity;
 }
-- (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
-- (void)stockQueue {
-    [self dismissViewControllerAnimated:YES completion:^{ SGOpenSpotifyURI([NSURL URLWithString:@"spotify:now-playing:queue"]); }];
+static UITableView *queueTable(UIView *view) {
+    if ([view isKindOfClass:UITableView.class]) return (UITableView *)view;
+    for (UIView *child in view.subviews) {
+        UITableView *table = queueTable(child);
+        if (table) return table;
+    }
+    return nil;
+}
+
+@interface SGRHistoryHeader : UIView
+@property(nonatomic, copy) NSArray<SGRNativeHistoryRow *> *rows;
+@property(nonatomic, strong) UIView *current;
+@property(nonatomic) CGFloat rowHeight;
+@property(nonatomic) CGFloat topGap;
+@end
+@implementation SGRHistoryHeader
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat y = self.topGap;
+    for (SGRNativeHistoryRow *row in self.rows) {
+        row.view.frame = CGRectMake(0, y, self.bounds.size.width, self.rowHeight);
+        y += self.rowHeight;
+    }
+    self.current.frame = CGRectMake(0, y, self.bounds.size.width, self.rowHeight);
+}
+@end
+
+@interface SGRQueueHistory : NSObject <SGPlayerStateObserver>
+@property(nonatomic, weak) UIViewController *controller;
+@property(nonatomic, strong) UITableView *table;
+@property(nonatomic, strong) UIStackView *originalStack;
+@property(nonatomic, strong) SGRHistoryHeader *header;
+@property(nonatomic) NSUInteger originalIndex;
+@property(nonatomic) BOOL originalTranslates;
+@property(nonatomic) UIViewAutoresizing originalMask;
+@property(nonatomic, copy) NSArray<SPTPlayerTrack *> *tracks;
+@property(nonatomic, copy) NSArray *identity;
+@property(nonatomic) BOOL changingLayout;
+@property(nonatomic) BOOL warned;
+@property(nonatomic, strong) id replayTask;
+@property(nonatomic, strong) id replayWrapper;
+@property(nonatomic, copy) NSString *replayTargetURI;
+@property(nonatomic, copy) NSArray *replayOriginIdentity;
+@property(nonatomic) NSUInteger replaySerial;
+@property(nonatomic) BOOL replayWaitingForState;
+@property(nonatomic) uint64_t replayCommandEpoch;
+- (void)finishReplay:(NSString *)error;
+- (void)replayTimedOut:(NSNumber *)serial;
+- (void)watchReplayTask:(id)task serial:(NSUInteger)serial done:(void (^)(void))done;
+- (void)refresh:(SPTPlayerState *)state;
+- (void)layout;
+- (void)restore;
+@end
+
+@implementation SGRQueueHistory
+- (void)unavailable {
+    if (self.warned) return;
+    self.warned = YES;
+    SGLog(@"queue history: native queue renderer/layout unavailable; original queue kept");
 }
 - (void)playerStateDidChange:(SPTPlayerState *)state {}
 - (void)playerStateDidReport:(SPTPlayerState *)state {
-    NSArray *groups = @[tracks(state.reverse), state.track ? @[state.track] : @[], tracks(state.future)];
-    NSMutableArray *identity = [NSMutableArray arrayWithObject:SGURIString(state.contextURI) ?: @""];
-    for (NSArray *group in groups) {
-        NSMutableArray *section = [NSMutableArray array];
-        for (SPTPlayerTrack *track in group) [section addObject:@[SGURIString(track.URI) ?: @"", track.trackTitle ?: @"", track.artistName ?: @"", track.provider ?: @""]];
-        [identity addObject:section];
+    if (self.replayTargetURI && self.replayCommandEpoch != atomic_load(&sgr_historyCommands)) {
+        [self finishReplay:nil];
+    } else if (self.replayTargetURI) {
+        NSArray *current = playbackIdentity(state);
+        BOOL newOccurrence = ![current[1] isEqual:self.replayOriginIdentity[1]] ||
+            ([current[2] length] && ![current[2] isEqual:self.replayOriginIdentity[2]]);
+        if (self.replayWaitingForState && [current[1] isEqual:self.replayTargetURI] && newOccurrence) {
+            SGLog(@"queue history: replay confirmed by player state");
+            [self finishReplay:nil];
+        } else if (![current isEqual:self.replayOriginIdentity]) {
+            // A user/remote track change supersedes a pending enqueue. Never skip
+            // the new song when that old request eventually completes.
+            [self finishReplay:nil];
+        }
     }
-    BOOL changed = ![identity isEqual:self.identity];
-    // Refresh native objects even if text/order stayed identical; command targets must be current.
-    self.groups = groups; self.identity = identity;
-    if (changed && self.isViewLoaded) [self.tableView reloadData];
+    // Rebind command targets on every report; redraw only when the history changes.
+    [self refresh:state];
 }
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 3; }
-- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return self.groups[section].count; }
-- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section { return @[@"이전 곡 · 최근 재생 순", @"현재 곡", @"다음 곡"][section]; }
-- (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
-    if (section == 0 && !self.groups[0].count) return @"Spotify가 제공한 이전 곡이 없습니다.";
-    if (section == 2) return @"Spotify의 셔플·반복·수동 대기열 순서를 사용합니다. 순서 편집과 삭제는 Spotify 대기열에서 할 수 있습니다.";
-    return nil;
+- (void)refresh:(SPTPlayerState *)state {
+    if (self.changingLayout) return;
+    if (!SGRedesignedUI() || !SGFlag(SGRKeyPlayerHistory, NO)) {
+        [self finishReplay:nil];
+        [self restore]; self.tracks = @[]; self.identity = nil; return;
+    }
+    NSArray *tracks = historyTracks(state);
+    NSArray *identity = historyIdentity(state, tracks);
+    self.tracks = tracks;
+    if (!tracks.count) {
+        [self restore]; self.identity = identity; return;
+    }
+    UIViewController *controller = self.controller;
+    if (!controller.isViewLoaded || !controller.view.window) return;
+    if (self.header && [identity isEqual:self.identity]) { [self layout]; return; }
+
+    UIView *current = self.header.current ?: [SGRNativeHistoryRenderer currentTrackContainerOf:controller];
+    UIStackView *stack = self.originalStack ?: ([current.superview isKindOfClass:UIStackView.class] ? (UIStackView *)current.superview : nil);
+    UITableView *table = self.table ?: queueTable(controller.view);
+    if (!current || !stack || !table || (table.tableHeaderView && table.tableHeaderView != self.header)) {
+        [self restore]; [self unavailable]; return;
+    }
+    if (!self.header && ![stack.arrangedSubviews containsObject:current]) { [self unavailable]; return; }
+    NSMutableArray<SGRNativeHistoryRow *> *rows = [NSMutableArray array];
+    for (NSUInteger displayIndex = 0; displayIndex < tracks.count; displayIndex++) {
+        NSUInteger reverseIndex = displayIndex;
+        SPTPlayerTrack *track = tracks[reverseIndex];
+        SGRNativeHistoryRow *row = [SGRNativeHistoryRenderer rowInController:controller title:track.trackTitle ?: @"제목 없음" subtitle:track.artistName ?: @"" artwork:artwork(track)];
+        if (!row) { [self restore]; [self unavailable]; return; }
+        row.view.tag = (NSInteger)reverseIndex;
+        row.view.accessibilityHint = @"이 곡 다시 재생";
+        row.view.accessibilityTraits |= UIAccessibilityTraitButton;
+        row.view.userInteractionEnabled = YES;
+        [row.view addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(replay:)]];
+        [rows addObject:row];
+    }
+
+    self.changingLayout = YES;
+    BOOL first = self.header == nil;
+    CGFloat previousHeight = self.header.frame.size.height;
+    CGPoint oldOffset = table.contentOffset;
+    [UIView performWithoutAnimation:^{
+        if (first) {
+            self.originalStack = stack; self.table = table;
+            self.originalIndex = [stack.arrangedSubviews indexOfObject:current];
+            self.originalTranslates = current.translatesAutoresizingMaskIntoConstraints;
+            self.originalMask = current.autoresizingMask;
+            self.header = [SGRHistoryHeader new];
+            self.header.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            self.header.current = current;
+            self.header.rowHeight = MAX(1, current.bounds.size.height);
+            self.header.topGap = MAX(0, stack.spacing);
+            [stack removeArrangedSubview:current];
+            [current removeFromSuperview];
+            current.translatesAutoresizingMaskIntoConstraints = YES;
+            current.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+            [self.header addSubview:current];
+        }
+        for (SGRNativeHistoryRow *row in self.header.rows) [row.view removeFromSuperview];
+        self.header.rows = rows;
+        for (SGRNativeHistoryRow *row in rows) {
+            row.view.translatesAutoresizingMaskIntoConstraints = YES;
+            row.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+            [self.header addSubview:row.view];
+        }
+        CGFloat height = self.header.topGap + self.header.rowHeight * (rows.count + 1);
+        self.header.frame = CGRectMake(0, 0, table.bounds.size.width, height);
+        [self.header setNeedsLayout]; [self.header layoutIfNeeded];
+        table.tableHeaderView = self.header;
+        self.identity = identity;
+        [controller.view setNeedsLayout]; [controller.view layoutIfNeeded];
+        // Show the two nearest previous tracks on entry. Older rows remain above,
+        // in this same table's scroll, without an extra screen or a nested list.
+        CGFloat offset = first ? MAX(0, (CGFloat)rows.count - 2) * self.header.rowHeight : oldOffset.y + height - previousHeight;
+        CGFloat maxOffset = MAX(-table.adjustedContentInset.top, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom);
+        table.contentOffset = CGPointMake(oldOffset.x, MIN(maxOffset, MAX(-table.adjustedContentInset.top, offset)));
+    }];
+    self.changingLayout = NO;
 }
-- (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
-    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"track"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"track"];
-    SPTPlayerTrack *track = self.groups[index.section][index.row];
-    cell.textLabel.text = track.trackTitle ?: @"제목 없음";
-    cell.detailTextLabel.text = track.artistName ?: @"";
-    cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody compatibleWithTraitCollection:self.traitCollection];
-    cell.detailTextLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote compatibleWithTraitCollection:self.traitCollection];
-    cell.textLabel.adjustsFontForContentSizeCategory = YES; cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
-    cell.textLabel.numberOfLines = 0; cell.detailTextLabel.numberOfLines = 0;
-    cell.accessibilityHint = index.section == 0 ? @"이 곡 다시 재생" : index.section == 2 ? @"이 곡으로 건너뛰기" : @"현재 재생 중인 곡";
-    cell.selectionStyle = index.section == 1 ? UITableViewCellSelectionStyleNone : UITableViewCellSelectionStyleDefault;
-    return cell;
+- (void)layout {
+    if (self.changingLayout || !self.header) return;
+    if (!SGFlag(SGRKeyPlayerHistory, NO)) { [self finishReplay:nil]; [self restore]; return; }
+    if (self.table.tableHeaderView != self.header) { [self restore]; return; }
+    CGFloat width = self.table.bounds.size.width;
+    CGSize fitting = [self.header.current systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                      withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGFloat rowHeight = fitting.height > 0 ? fitting.height : self.header.rowHeight;
+    CGFloat height = self.header.topGap + rowHeight * (self.header.rows.count + 1);
+    if (fabs(self.header.frame.size.width - width) < 0.5 && fabs(self.header.frame.size.height - height) < 0.5) return;
+    self.changingLayout = YES;
+    self.header.rowHeight = rowHeight;
+    self.header.frame = CGRectMake(0, 0, width, height);
+    [self.header setNeedsLayout];
+    self.table.tableHeaderView = self.header;
+    self.changingLayout = NO;
 }
-- (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {
-    [table deselectRowAtIndexPath:index animated:YES];
+- (void)restore {
+    if (!self.header || self.changingLayout) return;
+    self.changingLayout = YES;
+    [UIView performWithoutAnimation:^{
+        UIView *current = self.header.current;
+        if (current.superview == self.header) {
+            [current removeFromSuperview];
+            current.translatesAutoresizingMaskIntoConstraints = self.originalTranslates;
+            current.autoresizingMask = self.originalMask;
+            [self.originalStack insertArrangedSubview:current atIndex:MIN(self.originalIndex, self.originalStack.arrangedSubviews.count)];
+        }
+        if (self.table.tableHeaderView == self.header) self.table.tableHeaderView = nil;
+        self.header = nil; self.originalStack = nil; self.table = nil;
+        [self.controller.viewIfLoaded setNeedsLayout];
+    }];
+    self.changingLayout = NO;
+}
+- (void)finishReplay:(NSString *)error {
+    self.replaySerial++;
+    self.replayTask = nil; self.replayWrapper = nil;
+    self.replayTargetURI = nil; self.replayOriginIdentity = nil;
+    self.replayWaitingForState = NO;
+    if (!error) return;
+    UIViewController *owner = self.controller;
+    if (!owner.viewIfLoaded.window || owner.presentedViewController) return;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"이전 곡을 재생할 수 없습니다" message:error preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert); [owner presentViewController:alert animated:YES completion:nil];
+}
+- (void)replayTimedOut:(NSNumber *)serial {
+    if (serial.unsignedIntegerValue != self.replaySerial || !self.replayTargetURI) return;
+    BOOL superseded = self.replayCommandEpoch != atomic_load(&sgr_historyCommands);
+    [self finishReplay:superseded ? nil : @"재생 요청을 확인하지 못했습니다. 대기열을 확인한 뒤 다시 시도해 주세요."];
+}
+- (void)watchReplayTask:(id<SGRHistoryTask>)task serial:(NSUInteger)serial done:(void (^)(void))done {
+    if (serial != self.replaySerial || !self.replayTargetURI) return;
+    if (![task respondsToSelector:@selector(addCallback:on:)] || ![task respondsToSelector:@selector(addErrorCallback:on:)]) {
+        [self finishReplay:@"Spotify가 재생 요청의 결과를 반환하지 않았습니다. 대기열을 확인해 주세요."]; return;
+    }
+    self.replayTask = task;
+    __weak SGRQueueHistory *weakSelf = self;
+    __weak id weakTask = task;
+    [task addCallback:^(id value) {
+        SGRQueueHistory *history = weakSelf;
+        if (!history || history.replaySerial != serial || history.replayTask != weakTask) return;
+        if (history.replayCommandEpoch != atomic_load(&sgr_historyCommands)) { [history finishReplay:nil]; return; }
+        done();
+    } on:dispatch_get_main_queue()];
+    [task addErrorCallback:^(NSError *failure) {
+        SGRQueueHistory *history = weakSelf;
+        if (!history || history.replaySerial != serial || history.replayTask != weakTask) return;
+        if (history.replayCommandEpoch != atomic_load(&sgr_historyCommands)) { [history finishReplay:nil]; return; }
+        SGLog(@"queue history: replay command failed (%@, %ld)", failure.domain, (long)failure.code);
+        [history finishReplay:@"Spotify에서 재생 요청을 완료하지 못했습니다. 대기열을 확인한 뒤 다시 시도해 주세요."];
+    } on:dispatch_get_main_queue()];
+}
+- (void)replay:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateRecognized || !SGFlag(SGRKeyPlayerHistory, NO) || self.replayTargetURI) return;
+    UIViewController *controller = self.controller;
+    if (!controller || [SGRNativeHistoryRenderer isEditingQueueOf:controller]) return;
+    if (!self.header || gesture.view.superview != self.header) return;
+    NSInteger index = gesture.view.tag;
     NSArray *shown = self.identity;
-    [self playerStateDidReport:SGPlayerState()];
-    if (![shown isEqual:self.identity] || index.section == 1 || index.row >= self.groups[index.section].count) return;
-    id player = SGPlayer();
-    SEL selector = NSSelectorFromString(index.section == 0 ? @"skipToPreviousTrackWithOptions:track:loggingParams:" : @"skipToNextTrackWithOptions:track:loggingParams:");
-    NSMethodSignature *signature = [player methodSignatureForSelector:selector];
-    if (![player respondsToSelector:selector] || signature.numberOfArguments != 5 || signature.methodReturnType[0] != '@') {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"이 곡을 선택할 수 없습니다" message:@"현재 Spotify에서 대상 곡 건너뛰기를 사용할 수 없습니다. Spotify 대기열을 이용하세요." preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"확인" style:UIAlertActionStyleCancel handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil]; return;
+    [self refresh:SGPlayerState()];
+    if (![shown isEqual:self.identity] || gesture.view.superview != self.header || index < 0 || (NSUInteger)index >= self.tracks.count) return;
+    id<SPTPlayer> player = SGPlayer();
+    Class wrapper = objc_getClass("SPTPlayerQueueWrapperImpl"), trackClass = objc_getClass("SPTPlayerTrack");
+    NSString *uri = SGURIString(self.tracks[(NSUInteger)index].URI);
+    if (!uri.length || !SGURIString(SGPlayerState().track.URI).length ||
+        ![wrapper instancesRespondToSelector:@selector(initWithPlayer:)] ||
+        ![wrapper instancesRespondToSelector:@selector(queueTrackPlayNext:)] ||
+        ![trackClass instancesRespondToSelector:@selector(initWithURI:albumURI:artistURI:andUID:)] ||
+        ![player respondsToSelector:@selector(skipToNextTrackWithOptions:)]) {
+        [self finishReplay:@"현재 Spotify에서 대기열 재생 명령을 사용할 수 없습니다."]; return;
     }
-    // These terminal selectors are evidenced in Spotify 9.1.90 and Shared/Sing/Sing.x.
-    ((id (*)(id, SEL, id, id, id))objc_msgSend)(player, selector, nil, self.groups[index.section][index.row], nil);
+    // A history entry's UID/provider belong to its old context occurrence. Ask
+    // Spotify to enqueue a fresh recording through its own queue-next wrapper;
+    // it supplies queue metadata/revision handling and keeps all existing next
+    // tracks. Reusing a past entry as the terminal skip's track is a no-op in 9.1.90.
+    SPTPlayerTrack *fresh = [[trackClass alloc] initWithURI:[NSURL URLWithString:uri] albumURI:nil artistURI:nil andUID:nil];
+    if (!fresh) { [self finishReplay:@"Spotify에서 이전 곡을 준비하지 못했습니다."]; return; }
+    self.replayTargetURI = uri;
+    self.replayOriginIdentity = playbackIdentity(SGPlayerState());
+    self.replayCommandEpoch = atomic_load(&sgr_historyCommands);
+    NSUInteger serial = ++self.replaySerial;
+    self.replayWrapper = [[wrapper alloc] initWithPlayer:player];
+    id task = [self.replayWrapper queueTrackPlayNext:fresh];
+    __weak SGRQueueHistory *weakSelf = self;
+    [self watchReplayTask:task serial:serial done:^{
+        SGRQueueHistory *history = weakSelf;
+        if (!history) return;
+        if (![playbackIdentity(SGPlayerState()) isEqual:history.replayOriginIdentity] || !SGFlag(SGRKeyPlayerHistory, NO)) {
+            [history finishReplay:nil]; return;
+        }
+        history.replayWaitingForState = YES;
+        sgr_historyOwnCommand = YES;
+        id next = [player skipToNextTrackWithOptions:nil];
+        sgr_historyOwnCommand = NO;
+        [history watchReplayTask:next serial:serial done:^{
+            // A fulfilled task acknowledges a command. Only a changed native
+            // playback occurrence confirms that the requested song really plays.
+            [weakSelf playerStateDidReport:SGPlayerState()];
+        }];
+    }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [weakSelf replayTimedOut:@(serial)];
+    });
 }
+
 @end
 
-BOOL SGRPlayerShowHistory(void) {
-    if (!SGRedesignedUI() || !SGFlag(SGRKeyPlayerHistory, NO)) return NO;
-    UIViewController *owner = SGTopController();
-    if ([owner isKindOfClass:SGRHistoryQueue.class]) return YES;
-    if ([owner isKindOfClass:UINavigationController.class] &&
-        [((UINavigationController *)owner).topViewController isKindOfClass:SGRHistoryQueue.class]) return YES;
-    if (!owner.viewIfLoaded.window || owner.isBeingPresented || owner.isBeingDismissed || owner.transitionCoordinator) return NO;
-    SGRHistoryQueue *queue = [SGRHistoryQueue new];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:queue];
-    SGPresentDark(nav);
-    [owner presentViewController:nav animated:YES completion:nil];
-    return YES;
-}
-@interface SGRHistoryButton : UIButton
-@end
-@implementation SGRHistoryButton
-- (void)open { SGRPlayerShowHistory(); }
-@end
-void SGRPlayerAttachHistory(UIView *queue) {
-    static char key;
-    SGRHistoryButton *button = objc_getAssociatedObject(queue, &key);
-    if (!queue || !SGFlag(SGRKeyPlayerHistory, NO)) { [button removeFromSuperview]; return; }
-    if (!button) {
-        button = [SGRHistoryButton buttonWithType:UIButtonTypeCustom];
-        button.backgroundColor = UIColor.clearColor;
-        button.accessibilityLabel = @"재생 대기 목록 및 이전 곡";
-        [button addTarget:button action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
-        objc_setAssociatedObject(queue, &key, button, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+void SGRPlayerUpdateHistory(UIViewController *controller) {
+    if (!SGRedesignedUI() || !controller) return;
+    SGRQueueHistory *history = objc_getAssociatedObject(controller, &kHistoryAdapter);
+    if (!history && SGFlag(SGRKeyPlayerHistory, NO)) {
+        history = [SGRQueueHistory new]; history.controller = controller;
+        objc_setAssociatedObject(controller, &kHistoryAdapter, history, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        SGAddPlayerStateObserver(history);
     }
-    button.frame = queue.bounds; button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [queue addSubview:button];
+    [history refresh:SGPlayerState()];
+}
+void SGRPlayerLayoutHistory(UIViewController *controller) {
+    SGRQueueHistory *history = objc_getAssociatedObject(controller, &kHistoryAdapter);
+    [history layout];
 }
