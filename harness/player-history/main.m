@@ -21,6 +21,9 @@ extern void SGRHarnessSetEnabled(BOOL);
 extern void SGRHarnessSetRedesigned(BOOL);
 extern void SGRHarnessSetPlayer(id);
 extern void SGRPlayerHistoryTransportCommand(void);
+extern void SGRHarnessSetHistoryQueueTracks(NSArray *);
+extern void SGRHarnessDeferHistoryQueue(BOOL);
+extern void SGRHarnessCompleteHistoryQueueAtIndex(NSUInteger, NSArray *);
 extern SPTPlayerState *SGPlayerState(void);
 @interface SGRFakeTask : NSObject
 - (void)fulfill;
@@ -173,17 +176,37 @@ static id replayTarget(UIView *row) {
    check(rows.count==25 && [[[rows.firstObject valueForKey:@"view"] accessibilityLabel] isEqual:@"track 10"] && [[[rows.lastObject valueForKey:@"view"] accessibilityLabel] isEqual:@"track 34"],@"newest chronological suffix of 25 history entries is shown");
    check(header.frame.size.height>q.table.bounds.size.height && q.table.contentSize.height>header.frame.size.height,@"long history stays in the original table scroll with future rows");
    check(q.table.dataSource==source && q.table.delegate==delegate,@"history updates do not replace future editing/reorder ownership");
-   SGRHarnessSetEnabled(NO);SGRPlayerLayoutHistory(q);[q.view layoutIfNeeded];
-   check(q.table.tableHeaderView==nil && q.stack.arrangedSubviews[1]==original && !original.translatesAutoresizingMaskIntoConstraints,@"turning off restores the original current view, position and layout policy");
-   SGRHarnessSetEnabled(YES);SGRHarnessSetState(initial);SGRPlayerUpdateHistory(q);
-   check(q.table.tableHeaderView!=nil,@"re-enabling rebuilds history in the same original queue");
-   SGRHarnessSetState(state(now,@[],@[next]));
-   check(q.table.tableHeaderView==nil && original.superview==q.stack,@"empty reverse history restores the native queue without empty replacement UI");
-   q.rendererFails=YES;SGRHarnessSetState(initial);
-   check(q.table.tableHeaderView==nil && original.superview==q.stack,@"unsupported native renderer leaves native queue functional");q.rendererFails=NO;
-   SGRHarnessSetRedesigned(NO);SGRPlayerUpdateHistory(q);
-   check(q.table.tableHeaderView==nil,@"Native UI is unchanged");
-   NSLog(@"PASS player-history: %d checks (native queue adapter, exact targeted replay, duplicates, stale state, cap, scrolling, restoration)",checks);exit(0);
+   NSMutableArray *completeHistory=[NSMutableArray array];
+   for (NSUInteger i=0;i<6;i++) [completeHistory addObject:track([NSString stringWithFormat:@"spotify:track:complete-%lu",(unsigned long)i],[NSString stringWithFormat:@"complete %lu",(unsigned long)i])];
+   SGRHarnessSetHistoryQueueTracks(completeHistory);SGRPlayerUpdateHistory(q);
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+    header=q.table.tableHeaderView;rows=[header valueForKey:@"rows"];
+    check(rows.count==6 && [[[rows.firstObject valueForKey:@"view"] accessibilityLabel] isEqual:@"complete 0"] && [[[rows.lastObject valueForKey:@"view"] accessibilityLabel] isEqual:@"complete 5"],@"complete native prevTracks supplies history beyond the short state reverse window");
+    SGRHarnessDeferHistoryQueue(YES);SGRPlayerUpdateHistory(q);
+    SPTPlayerTrack *changedCurrent=track(@"spotify:track:new-context-current",@"new context current");
+    SPTPlayerTrack *newOld=track(@"spotify:track:new-context-old",@"new context old");
+    SPTPlayerTrack *newNear=track(@"spotify:track:new-context-near",@"new context near");
+    SGRHarnessSetState(state(changedCurrent,@[newOld,newNear],@[next]));
+    rows=[q.table.tableHeaderView valueForKey:@"rows"];
+    check(rows.count==2 && [[[rows.firstObject valueForKey:@"view"] accessibilityLabel] isEqual:@"new context old"],@"new playback identity immediately falls back to its own state history");
+    SGRHarnessCompleteHistoryQueueAtIndex(0,completeHistory);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+     rows=[q.table.tableHeaderView valueForKey:@"rows"];
+     check(rows.count==2 && [[[rows.firstObject valueForKey:@"view"] accessibilityLabel] isEqual:@"new context old"],@"late full-queue response from the prior playback identity is ignored");
+     SGRHarnessDeferHistoryQueue(NO);SGRHarnessSetHistoryQueueTracks(nil);
+     SGRHarnessSetEnabled(NO);SGRPlayerLayoutHistory(q);[q.view layoutIfNeeded];
+     check(q.table.tableHeaderView==nil && q.stack.arrangedSubviews[1]==original && !original.translatesAutoresizingMaskIntoConstraints,@"turning off restores the original current view, position and layout policy");
+     SGRHarnessSetEnabled(YES);SGRHarnessSetState(initial);SGRPlayerUpdateHistory(q);
+     check(q.table.tableHeaderView!=nil,@"re-enabling rebuilds history in the same original queue");
+     SGRHarnessSetState(state(now,@[],@[next]));
+     check(q.table.tableHeaderView==nil && original.superview==q.stack,@"empty reverse history restores the native queue without empty replacement UI");
+     q.rendererFails=YES;SGRHarnessSetState(initial);
+     check(q.table.tableHeaderView==nil && original.superview==q.stack,@"unsupported native renderer leaves native queue functional");q.rendererFails=NO;
+     SGRHarnessSetRedesigned(NO);SGRPlayerUpdateHistory(q);
+     check(q.table.tableHeaderView==nil,@"Native UI is unchanged");
+     NSLog(@"PASS player-history: %d checks (native queue adapter, exact targeted replay, duplicates, stale state, cap, scrolling, restoration)",checks);exit(0);
+    });
+   });
   } @catch(NSException *e) { NSLog(@"FAIL player-history exception: %@\n%@",e,[NSThread callStackSymbols]);exit(1); }
  });return YES;
 }

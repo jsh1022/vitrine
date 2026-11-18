@@ -5,6 +5,15 @@ above the current-track row in a header on Spotify's existing queue table; futur
 table ownership, editing, shuffle, repeat and the player timer stay with Spotify. If the native
 renderer or expected layout is unavailable, the adapter leaves the original queue in place.
 
+## Regression rationale
+
+`SPTPlayerState.reverse` is a small default window (two tracks), not the full history. The production
+adapter reads `prevTracks` from `getQueueWithCallback:` and displays its chronological suffix, up to
+25 rows. It fetches when the queue opens and when the current occurrence changes, and discards a
+late callback if that occurrence has changed. This is the available native queue history, not an
+account lifetime history; 25 rows are a display cap, not a promise that 25 entries are always
+available.
+
 ## Local checks
 
 Run the deterministic UIKit adapter harness and the Swift/Objective-C ABI harness on a booted

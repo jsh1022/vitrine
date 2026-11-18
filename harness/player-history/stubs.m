@@ -9,6 +9,8 @@ static BOOL sg_enabled = YES, sg_redesigned = YES;
 static SPTPlayerState *sg_state;
 static id sg_player;
 static NSHashTable *sg_observers;
+static BOOL sg_deferHistoryQueue;
+static NSMutableArray *sg_historyQueueCallbacks;
 BOOL SGRedesignedUI(void) { return sg_redesigned; }
 BOOL SGFlag(NSString *key, BOOL fallback) { return [key isEqual:SGRKeyPlayerHistory] ? sg_enabled : fallback; }
 void SGLog(NSString *format, ...) {}
@@ -37,6 +39,10 @@ NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri 
 @property(nonatomic, readwrite) double duration;
 @end
 @implementation SPTPlayerState @end
+@interface SGRFakeQueue : NSObject
+@property(nonatomic,copy) NSArray *prevTracks;
+@end
+@implementation SGRFakeQueue @end
 @interface SGRFakeTask : NSObject
 @property(nonatomic,copy) void (^success)(id);
 @property(nonatomic,copy) void (^failure)(NSError *);
@@ -59,6 +65,8 @@ NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri 
 @property(nonatomic,strong) NSMutableArray<SGRFakeTask *> *queueTasks;
 @property(nonatomic,strong) NSMutableArray<SGRFakeTask *> *skipTasks;
 @property(nonatomic,strong) SPTPlayerTrack *stateTrack;
+@property(nonatomic,copy) NSArray<SPTPlayerTrack *> *historyQueueTracks;
+- (id)getQueueWithCallback:(void (^)(id))callback;
 @end
 @implementation SPTPlayerQueueWrapperImpl
 - (instancetype)initWithPlayer:(id)player { if ((self=[super init])) _player=player; return self; }
@@ -66,6 +74,13 @@ NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri 
 @end
 @implementation SGRFakePlayer
 - (instancetype)init { if ((self=[super init])) { _calls=[NSMutableArray array]; _queueTasks=[NSMutableArray array]; _skipTasks=[NSMutableArray array]; } return self; }
+- (id)getQueueWithCallback:(void (^)(id))callback {
+    NSLog(@"fake getQueue callback request: defer=%d tracks=%lu",sg_deferHistoryQueue,(unsigned long)self.historyQueueTracks.count);
+    NSObject *token=[NSObject new];
+    if (sg_deferHistoryQueue) { if (!sg_historyQueueCallbacks) sg_historyQueueCallbacks=[NSMutableArray array]; [sg_historyQueueCallbacks addObject:[callback copy]]; }
+    else { SGRFakeQueue *queue=[SGRFakeQueue new]; queue.prevTracks=self.historyQueueTracks; NSLog(@"fake returning prevTracks=%lu",(unsigned long)queue.prevTracks.count); callback(queue); }
+    return token;
+}
 - (id)skipToNextTrackWithOptions:(id)o { [_calls addObject:@{@"selector":NSStringFromSelector(_cmd),@"options":o ?: NSNull.null}]; SGRFakeTask *task=[SGRFakeTask new]; [_skipTasks addObject:task]; return task; }
 @end
 @interface SGRNativeHistoryRow ()
@@ -85,3 +100,15 @@ void SGRHarnessSetStateWithoutReport(SPTPlayerState *state) { sg_state=state; }
 void SGRHarnessSetEnabled(BOOL enabled) { sg_enabled=enabled; }
 void SGRHarnessSetRedesigned(BOOL enabled) { sg_redesigned=enabled; }
 void SGRHarnessSetPlayer(id player) { sg_player=player; }
+void SGRHarnessSetHistoryQueueTracks(NSArray *tracks) { [sg_player setValue:tracks forKey:@"historyQueueTracks"]; }
+void SGRHarnessDeferHistoryQueue(BOOL defer) { sg_deferHistoryQueue=defer; if (!defer) [sg_historyQueueCallbacks removeAllObjects]; }
+void SGRHarnessCompleteHistoryQueue(NSArray *tracks) {
+    NSArray *callbacks=[sg_historyQueueCallbacks copy]; [sg_historyQueueCallbacks removeAllObjects];
+    SGRFakeQueue *queue=[SGRFakeQueue new]; queue.prevTracks=tracks;
+    for (void (^callback)(id) in callbacks) callback(queue);
+}
+void SGRHarnessCompleteHistoryQueueAtIndex(NSUInteger index, NSArray *tracks) {
+    if (index >= sg_historyQueueCallbacks.count) return;
+    void (^callback)(id)=[sg_historyQueueCallbacks[index] copy]; [sg_historyQueueCallbacks removeObjectAtIndex:index];
+    SGRFakeQueue *queue=[SGRFakeQueue new]; queue.prevTracks=tracks; callback(queue);
+}

@@ -41,11 +41,11 @@ static NSArray *playbackIdentity(SPTPlayerState *state) {
     return @[SGURIString(state.contextURI) ?: @"", SGURIString(state.track.URI) ?: @"", trackUID(state.track)];
 }
 
-static NSArray<SPTPlayerTrack *> *historyTracks(SPTPlayerState *state) {
-    if (![state.reverse isKindOfClass:NSArray.class]) return @[];
+static NSArray<SPTPlayerTrack *> *historyTracks(NSArray *source) {
+    if (![source isKindOfClass:NSArray.class]) return @[];
     NSMutableArray *tracks = [NSMutableArray array];
     Class trackClass = objc_getClass("SPTPlayerTrack");
-    for (id track in state.reverse) {
+    for (id track in source) {
         if (trackClass && [track isKindOfClass:trackClass]) [tracks addObject:track];
     }
     // Native prevTracks/reverse are chronological: keep the newest suffix.
@@ -104,6 +104,10 @@ static UITableView *queueTable(UIView *view) {
 @property(nonatomic) UIViewAutoresizing originalMask;
 @property(nonatomic, copy) NSArray<SPTPlayerTrack *> *tracks;
 @property(nonatomic, copy) NSArray *identity;
+@property(nonatomic, copy) NSArray *fullHistory, *fullHistoryIdentity, *queriedHistoryIdentity;
+@property(nonatomic, strong) id historyFetch;
+@property(nonatomic) NSUInteger historyFetchSerial;
+- (void)requestHistory;
 @property(nonatomic) BOOL changingLayout;
 @property(nonatomic) BOOL warned;
 @property(nonatomic, strong) id replayTask;
@@ -122,6 +126,35 @@ static UITableView *queueTable(UIView *view) {
 @end
 
 @implementation SGRQueueHistory
+- (void)requestHistory {
+    if (!SGFlag(SGRKeyPlayerHistory, NO) || !self.controller.viewIfLoaded.window) return;
+    NSArray *origin = playbackIdentity(SGPlayerState());
+    if ([origin isEqual:self.queriedHistoryIdentity]) return;
+    id player = SGPlayer();
+    SEL selector = NSSelectorFromString(@"getQueueWithCallback:");
+    NSMethodSignature *signature = [player methodSignatureForSelector:selector];
+    if (![player respondsToSelector:selector] || signature.numberOfArguments != 3 || signature.methodReturnType[0] != '@') return;
+    self.queriedHistoryIdentity = origin;
+    NSUInteger serial = ++self.historyFetchSerial;
+    __weak SGRQueueHistory *weakSelf = self;
+    id (^received)(id) = ^id(id queue) {
+        NSArray *previous = [queue respondsToSelector:NSSelectorFromString(@"prevTracks")] ? [queue valueForKey:@"prevTracks"] : nil;
+        NSArray *snapshot = [previous isKindOfClass:NSArray.class] ? [previous copy] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SGRQueueHistory *history = weakSelf;
+            if (!history || serial != history.historyFetchSerial || ![origin isEqual:playbackIdentity(SGPlayerState())] || !SGFlag(SGRKeyPlayerHistory, NO)) return;
+            history.historyFetch = nil;
+            if (!snapshot) return;
+            history.fullHistory = snapshot;
+            history.fullHistoryIdentity = origin;
+            [history refresh:SGPlayerState()];
+        });
+        return nil;
+    };
+    // This API returns a cancellation token, not an SPTask. Its single argument
+    // callback supplies the complete native queue, unlike state.reverse's 2-item window.
+    self.historyFetch = ((id (*)(id, SEL, id))objc_msgSend)(player, selector, received);
+}
 - (void)unavailable {
     if (self.warned) return;
     self.warned = YES;
@@ -144,6 +177,7 @@ static UITableView *queueTable(UIView *view) {
             [self finishReplay:nil];
         }
     }
+    [self requestHistory];
     // Rebind command targets on every report; redraw only when the history changes.
     [self refresh:state];
 }
@@ -153,7 +187,7 @@ static UITableView *queueTable(UIView *view) {
         [self finishReplay:nil];
         [self restore]; self.tracks = @[]; self.identity = nil; return;
     }
-    NSArray *tracks = historyTracks(state);
+    NSArray *tracks = historyTracks([self.fullHistoryIdentity isEqual:playbackIdentity(state)] ? self.fullHistory : state.reverse);
     NSArray *identity = historyIdentity(state, tracks);
     self.tracks = tracks;
     if (!tracks.count) {
@@ -362,6 +396,8 @@ void SGRPlayerUpdateHistory(UIViewController *controller) {
         objc_setAssociatedObject(controller, &kHistoryAdapter, history, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         SGAddPlayerStateObserver(history);
     }
+    history.queriedHistoryIdentity = nil;
+    [history requestHistory];
     [history refresh:SGPlayerState()];
 }
 void SGRPlayerLayoutHistory(UIViewController *controller) {
