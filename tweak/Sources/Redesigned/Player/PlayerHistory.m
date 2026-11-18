@@ -373,6 +373,7 @@ static UITableView *queueTable(UIView *view) {
         if (![playbackIdentity(SGPlayerState()) isEqual:history.replayOriginIdentity] || !SGFlag(SGRKeyPlayerHistory, NO)) {
             [history finishReplay:nil]; return;
         }
+        SGLog(@"queue history: enqueue acknowledged, skipping to next");
         history.replayWaitingForState = YES;
         sgr_historyOwnCommand = YES;
         id next = [player skipToNextTrackWithOptions:nil];
