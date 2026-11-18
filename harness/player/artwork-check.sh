@@ -15,3 +15,4 @@ SIMCTL_CHILD_HARNESS_SCENARIO=motion SIMCTL_CHILD_HARNESS_CANVAS_FILE="$OUT/moti
 rg -q 'motion checks: 26 of 26 right -- PASS' "$OUT/motion.log"
 cat "$OUT/inline-art.log"
 rg 'motion check|motion checks:' "$OUT/motion.log"
+"$(dirname "$0")/main.m" "$(dirname "$0")/../scene.m" "$(dirname "$0")/stubs.m" "$(dirname "$0")/../player-history/stubs.m" "$(dirname "$0")/../tabbar/touch.m" \
