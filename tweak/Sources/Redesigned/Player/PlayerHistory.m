@@ -358,12 +358,14 @@ static UITableView *queueTable(UIView *view) {
     // tracks. Reusing a past entry as the terminal skip's track is a no-op in 9.1.90.
     SPTPlayerTrack *fresh = [[trackClass alloc] initWithURI:[NSURL URLWithString:uri] albumURI:nil artistURI:nil andUID:nil];
     if (!fresh) { [self finishReplay:@"Spotify에서 이전 곡을 준비하지 못했습니다."]; return; }
-    self.replayTargetURI = uri;
+       self.replayTargetURI = uri;
     self.replayOriginIdentity = playbackIdentity(SGPlayerState());
-    self.replayCommandEpoch = atomic_load(&sgr_historyCommands);
     NSUInteger serial = ++self.replaySerial;
     self.replayWrapper = [[wrapper alloc] initWithPlayer:player];
+    sgr_historyOwnCommand = YES;
     id task = [self.replayWrapper queueTrackPlayNext:fresh];
+    sgr_historyOwnCommand = NO;
+    self.replayCommandEpoch = atomic_load(&sgr_historyCommands);
     __weak SGRQueueHistory *weakSelf = self;
     [self watchReplayTask:task serial:serial done:^{
         SGRQueueHistory *history = weakSelf;
