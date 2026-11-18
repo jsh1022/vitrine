@@ -172,6 +172,7 @@ static UITableView *queueTable(UIView *view) {
             SGLog(@"queue history: replay confirmed by player state");
             [self finishReplay:nil];
         } else if (![current isEqual:self.replayOriginIdentity]) {
+            SGLog(@"queue history: state identity changed %@ -> %@", self.replayOriginIdentity, current);
             // A user/remote track change supersedes a pending enqueue. Never skip
             // the new song when that old request eventually completes.
             [self finishReplay:nil];
@@ -295,6 +296,7 @@ static UITableView *queueTable(UIView *view) {
     self.changingLayout = NO;
 }
 - (void)finishReplay:(NSString *)error {
+    if (self.replayTargetURI) SGLog(@"queue history: finishReplay err=%@ epoch=%llu now=%llu waiting=%d", error ?: @"nil", (unsigned long long)self.replayCommandEpoch, (unsigned long long)atomic_load(&sgr_historyCommands), self.replayWaitingForState);
     self.replaySerial++;
     self.replayTask = nil; self.replayWrapper = nil;
     self.replayTargetURI = nil; self.replayOriginIdentity = nil;
