@@ -418,6 +418,7 @@ void SGRPlayerUpdateHistory(UIViewController *controller) {
         SGAddPlayerStateObserver(history);
     }
     history.queriedHistoryIdentity = nil;
+    history.pinDeadline = CACurrentMediaTime() + 1.5;
     [history requestHistory];
     [history refresh:SGPlayerState()];
 }
