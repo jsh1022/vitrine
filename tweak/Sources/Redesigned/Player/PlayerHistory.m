@@ -421,6 +421,7 @@ void SGRPlayerUpdateHistory(UIViewController *controller) {
     history.pinDeadline = CACurrentMediaTime() + 1.5;
     [history requestHistory];
     [history refresh:SGPlayerState()];
+    dispatch_async(dispatch_get_main_queue(), ^{ [history pinToCurrentIfNeeded]; });
 }
 void SGRPlayerLayoutHistory(UIViewController *controller) {
     SGRQueueHistory *history = objc_getAssociatedObject(controller, &kHistoryAdapter);
