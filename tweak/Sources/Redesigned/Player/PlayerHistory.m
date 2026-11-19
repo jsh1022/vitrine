@@ -257,9 +257,12 @@ static UITableView *queueTable(UIView *view) {
         [controller.view setNeedsLayout]; [controller.view layoutIfNeeded];
         // Show the two nearest previous tracks on entry. Older rows remain above,
         // in this same table's scroll, without an extra screen or a nested list.
-        CGFloat offset = first ? MAX(0, (CGFloat)rows.count - 2) * self.header.rowHeight : oldOffset.y + height - previousHeight;
-        CGFloat maxOffset = MAX(-table.adjustedContentInset.top, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom);
-        table.contentOffset = CGPointMake(oldOffset.x, MIN(maxOffset, MAX(-table.adjustedContentInset.top, offset)));
+        if (first) self.pinDeadline = CACurrentMediaTime() + 1.5;
+        if (![self pinToCurrentIfNeeded]) {
+            CGFloat offset = oldOffset.y + height - previousHeight;
+            CGFloat maxOffset = MAX(-table.adjustedContentInset.top, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom);
+            table.contentOffset = CGPointMake(oldOffset.x, MIN(maxOffset, MAX(-table.adjustedContentInset.top, offset)));
+        }
     }];
     self.changingLayout = NO;
 }
