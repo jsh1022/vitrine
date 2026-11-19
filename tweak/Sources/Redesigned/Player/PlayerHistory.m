@@ -109,6 +109,8 @@ static UITableView *queueTable(UIView *view) {
 @property(nonatomic) NSUInteger historyFetchSerial;
 - (void)requestHistory;
 @property(nonatomic) BOOL changingLayout;
+@property(nonatomic) CFTimeInterval pinDeadline;
+- (BOOL)pinToCurrentIfNeeded;
 @property(nonatomic) BOOL warned;
 @property(nonatomic, strong) id replayTask;
 @property(nonatomic, strong) id replayWrapper;
