@@ -266,6 +266,17 @@ static UITableView *queueTable(UIView *view) {
     }];
     self.changingLayout = NO;
 }
+- (BOOL)pinToCurrentIfNeeded {
+    UITableView *table = self.table;
+    if (!table || !self.header || CACurrentMediaTime() > self.pinDeadline) return NO;
+    if (table.isTracking || table.isDragging || table.isDecelerating) return NO;
+    CGFloat inset = table.adjustedContentInset.top;
+    NSUInteger count = self.header.rows.count;
+    CGFloat y = count > 2 ? self.header.topGap + (count - 2) * self.header.rowHeight : 0;
+    CGFloat maxOffset = MAX(-inset, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom);
+    table.contentOffset = CGPointMake(table.contentOffset.x, MIN(maxOffset, MAX(-inset, y - inset)));
+    return YES;
+}
 - (void)layout {
     if (self.changingLayout || !self.header) return;
     if (!SGFlag(SGRKeyPlayerHistory, NO)) { [self finishReplay:nil]; [self restore]; return; }
