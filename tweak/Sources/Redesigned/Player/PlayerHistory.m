@@ -385,23 +385,18 @@ static UITableView *queueTable(UIView *view) {
     sgr_historyOwnCommand = NO;
     self.replayCommandEpoch = atomic_load(&sgr_historyCommands);
     __weak SGRQueueHistory *weakSelf = self;
-    [self watchReplayTask:task serial:serial done:^{
+    self.replayTask = task;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         SGRQueueHistory *history = weakSelf;
-        if (!history) return;
-        if (![playbackIdentity(SGPlayerState()) isEqual:history.replayOriginIdentity] || !SGFlag(SGRKeyPlayerHistory, NO)) {
-            [history finishReplay:nil]; return;
-        }
-        SGLog(@"queue history: enqueue acknowledged, skipping to next");
+        if (!history || history.replaySerial != serial || !history.replayTargetURI) return;
         history.replayWaitingForState = YES;
         sgr_historyOwnCommand = YES;
         id next = [player skipToNextTrackWithOptions:nil];
         sgr_historyOwnCommand = NO;
         [history watchReplayTask:next serial:serial done:^{
-            // A fulfilled task acknowledges a command. Only a changed native
-            // playback occurrence confirms that the requested song really plays.
             [weakSelf playerStateDidReport:SGPlayerState()];
         }];
-    }];
+    });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [weakSelf replayTimedOut:@(serial)];
     });
