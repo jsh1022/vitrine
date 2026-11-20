@@ -272,7 +272,7 @@ static UITableView *queueTable(UIView *view) {
     if (table.isTracking || table.isDragging || table.isDecelerating) return NO;
     CGFloat inset = table.adjustedContentInset.top;
     NSUInteger count = self.header.rows.count;
-    CGFloat y = count > 2 ? self.header.topGap + (count - 2) * self.header.rowHeight : 0;
+    CGFloat y = count > 0 ? self.header.topGap + count * self.header.rowHeight : 0;
     CGFloat maxOffset = MAX(-inset, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom);
     table.contentOffset = CGPointMake(table.contentOffset.x, MIN(maxOffset, MAX(-inset, y - inset)));
     return YES;
