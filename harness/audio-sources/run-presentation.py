@@ -58,6 +58,26 @@ def main():
         "PASS inline lyric position, delay, seek and track replacement", "PASS audio source presentations:", "PASS unavailable WireGuard:", "PASS playback quality badge and popover", "PASS full-screen static artwork and live option removal")
     output = Path(base) / "diagnostics"
     output.mkdir(parents=True, exist_ok=True)
+    receipt_path = None
+    if not handoff:
+        # Resolve the installed container before launching UIKit. A post-exit
+        # simctl lookup can stall even when every app check has finished.
+        for attempt in range(3):
+            try:
+                container = subprocess.run(
+                    ["xcrun", "simctl", "get_app_container", device, bundle, "data"],
+                    capture_output=True, text=True, timeout=30, check=True)
+                container_path = Path(container.stdout.strip())
+                if not container.stdout.strip() or not container_path.is_absolute() or not container_path.is_dir():
+                    raise ValueError("simctl did not return an existing absolute data-container path")
+                receipt_path = container_path / "Documents/presentation-result.json"
+                break
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                print(f"Container setup attempt {attempt + 1}/3 failed: {error}", flush=True)
+        if receipt_path is None:
+            print("FAIL: could not locate test data container before launch", flush=True)
+            collect(device, output, process, bundle)
+            return 1
     code = 1
     try:
         result = subprocess.run(
@@ -76,10 +96,7 @@ def main():
         # A fresh identity rejects files left by an older launch, including the other UI mode.
         receipt_ok = False
         try:
-            container = subprocess.run(
-                ["xcrun", "simctl", "get_app_container", device, bundle, "data"],
-                capture_output=True, text=True, timeout=15, check=True)
-            receipt = json.loads((Path(container.stdout.strip()) / "Documents/presentation-result.json").read_text())
+            receipt = json.loads(receipt_path.read_text())
             lines = receipt.get("markers", [])
             receipt_ok = (receipt.get("run") == run_id and receipt.get("passed") is True
                           and isinstance(lines, list) and all(isinstance(line, str) for line in lines)
