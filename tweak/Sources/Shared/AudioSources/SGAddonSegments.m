@@ -143,7 +143,7 @@ static NSDictionary *hls(NSData *data, NSURL *base) {
 - (void)parser:(NSXMLParser *)p foundCharacters:(NSString *)s { [self.stack.lastObject.text appendString:s]; }
 - (void)parser:(NSXMLParser *)p didEndElement:(NSString *)n namespaceURI:(NSString *)u qualifiedName:(NSString *)q { [self.stack removeLastObject]; }
 @end
-static NSArray *children(SGAddonXMLNode *n, NSString *name) { return [n.children filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(SGAddonXMLNode *c, NSDictionary *b) { return [c.name isEqual:name]; }]]; }
+static NSArray<SGAddonXMLNode *> *children(SGAddonXMLNode *n, NSString *name) { return [n.children filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(SGAddonXMLNode *c, NSDictionary *b) { return [c.name isEqual:name]; }]]; }
 static SGAddonXMLNode *child(SGAddonXMLNode *n, NSString *name) { return children(n,name).firstObject; }
 static double isoDuration(NSString *s) {
     NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"^PT(?:(\\d+(?:\\.\\d+)?)H)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)S)?$" options:0 error:NULL];
@@ -231,16 +231,16 @@ static NSDictionary *dash(NSData *data, NSURL *base) {
         [parts addObject:part(init,nil)];
         NSMutableArray *times=[NSMutableArray array];
         if (timeline) {
-            NSArray *entries=children(timeline,@"S"); uint64_t at=0;
+            NSArray<SGAddonXMLNode *> *entries=children(timeline,@"S"); uint64_t at=0;
             for (NSUInteger i=0;i<entries.count;i++) {
-                NSDictionary *a=[entries[i] attributes]; uint64_t d=0,t=0;
+                NSDictionary *a=entries[i].attributes; uint64_t d=0,t=0;
                 if (!integer(a[@"d"],&d) || !d || (a[@"t"] && !integer(a[@"t"],&t))) return nil;
                 if (a[@"t"]) at=t;
                 NSInteger repeats=0;
                 if (a[@"r"] && ![a[@"r"] isEqual:@"-1"]) { uint64_t r; if (!integer(a[@"r"],&r) || r>2048) return nil; repeats=(NSInteger)r; }
                 if ([a[@"r"] isEqual:@"-1"]) {
                     double until=end;
-                    if (i+1<entries.count) { uint64_t next; if (!integer([entries[i+1] attributes][@"t"],&next)) return nil; until=next; }
+                    if (i+1<entries.count) { uint64_t next; if (!integer(entries[i+1].attributes[@"t"],&next)) return nil; until=next; }
                     if (until<=at || ceil((until-at)/d)>2048) return nil;
                     repeats=(NSInteger)ceil((until-at)/d)-1;
                 }
