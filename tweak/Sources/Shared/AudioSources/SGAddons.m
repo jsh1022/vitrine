@@ -7,6 +7,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <Network/Network.h>
 #import <stdatomic.h>
+#import <math.h>
 
 static _Atomic uint64_t sg_generation;
 static NSString *sg_status = @"대기 중";
@@ -17,12 +18,14 @@ static NSString *sg_failure; // worker-owned, fixed diagnostics only
 static NSMutableDictionary<NSString *, NSDictionary *> *sg_prepared;
 static NSArray *sg_upcomingPlan;
 static _Atomic uint64_t sg_prefetchGeneration;
+static _Atomic NSUInteger sg_foregroundPending;
 static uint64_t sg_activePlan;
 static NSString *sg_lastMediaURL, *sg_lastMediaETag;
 static BOOL sg_background; // worker only
 static BOOL sg_prefix;     // media requests only, worker only
 static double sg_requestDeadline;
 static void discard(NSDictionary *entry);
+static void clearLookupCache(void);
 static dispatch_queue_t worker(void) {
     static dispatch_queue_t q;
     static dispatch_once_t once;
@@ -110,6 +113,7 @@ void SGAddonRetryCurrentTrack(void) {
     SGAddonCancel();
     // A source/transport/policy edit invalidates cached authorizations and renditions too.
     dispatch_async(worker(), ^{
+        clearLookupCache();
         for (NSDictionary *entry in sg_prepared.allValues) discard(entry);
         [sg_prepared removeAllObjects];
     });
@@ -126,6 +130,7 @@ void SGAddonRetryCurrentTrack(void) {
 @property(nonatomic) NSUInteger expectedBytes;
 @property(nonatomic, copy) NSString *entityTag;
 @property(nonatomic, copy) NSString *retryAfter;
+@property(nonatomic) BOOL transportFailed;
 @property(nonatomic, strong) NSMutableData *body;
 @property(nonatomic, strong) NSFileHandle *file;
 @property(nonatomic, strong) dispatch_semaphore_t done;
@@ -168,6 +173,7 @@ void SGAddonRetryCurrentTrack(void) {
     if (self.prefix && self.received == self.limit) { self.prefixSatisfied = YES; [task cancel]; }
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    self.transportFailed = [error.domain isEqual:NSURLErrorDomain] && error.code != NSURLErrorCancelled;
     if (error && !(self.prefixSatisfied && error.code == NSURLErrorCancelled && [error.domain isEqual:NSURLErrorDomain])) self.failed = YES;
     if (self.expectedBytes && self.received != self.expectedBytes) self.failed = YES;
     [self.file closeFile];
@@ -183,22 +189,53 @@ void SGAddonRetryCurrentTrack(void) {
 }
 @end
 
-// All budget/cache state is confined to worker(). Counts include the media request.
-static NSMutableDictionary *sg_calls, *sg_quiet, *sg_manifests;
+// Worker-confined server cooldowns and bounded in-memory lookup cache. There is
+// no fixed requests/minute quota. Source changes never clear server cooldowns.
+static NSMutableDictionary *sg_quiet, *sg_failures, *sg_manifests, *sg_jsonCache;
 static void initialize(void) {
-    if (sg_calls) return;
-    sg_calls = [NSMutableDictionary dictionary]; sg_quiet = [NSMutableDictionary dictionary]; sg_manifests = [NSMutableDictionary dictionary];
+    if (sg_quiet) return;
+    sg_quiet = [NSMutableDictionary dictionary]; sg_failures = [NSMutableDictionary dictionary];
+    sg_manifests = [NSMutableDictionary dictionary]; sg_jsonCache = [NSMutableDictionary dictionary];
 }
-static BOOL budget(NSString *identifier) {
+static void clearLookupCache(void) {
+    initialize(); [sg_manifests removeAllObjects]; [sg_jsonCache removeAllObjects];
+}
+static void invalidateSourceLookups(NSString *identifier) {
     initialize();
-    double now = NSDate.date.timeIntervalSince1970;
-    if ([sg_quiet[identifier] doubleValue] > now) return NO;
-    NSMutableArray *calls = sg_calls[identifier] ?: [NSMutableArray array];
-    [calls filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSNumber *at, NSDictionary *bindings) { return at.doubleValue > now - 60; }]];
-    sg_calls[identifier] = calls;
-    if (calls.count >= 5) return NO;
-    [calls addObject:@(now)];
-    return YES;
+    [sg_manifests removeObjectForKey:identifier];
+    NSString *prefix = [identifier stringByAppendingString:@"|"];
+    for (NSString *key in sg_jsonCache.allKeys) if ([key hasPrefix:prefix]) [sg_jsonCache removeObjectForKey:key];
+}
+static BOOL sourceReady(NSString *identifier) {
+    initialize();
+    return [sg_quiet[identifier] doubleValue] <= NSDate.date.timeIntervalSince1970;
+}
+static double retryAfterSeconds(NSString *header) {
+    if (!header.length) return -1;
+    NSScanner *scanner = [NSScanner scannerWithString:header];
+    double seconds = 0;
+    if ([scanner scanDouble:&seconds] && scanner.isAtEnd && isfinite(seconds) && seconds >= 0) return seconds;
+    NSDateFormatter *formatter = [NSDateFormatter new];
+    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    formatter.dateFormat = @"EEE, dd MMM yyyy HH:mm:ss zzz";
+    NSDate *date = [formatter dateFromString:header];
+    return date ? MAX(0, date.timeIntervalSinceNow) : -1;
+}
+static BOOL superseded(uint64_t generation) {
+    return generation != atomic_load(&sg_generation) ||
+        (sg_background && (sg_activePlan != atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending) > 0));
+}
+static void foregroundFinished(void) {
+    atomic_fetch_sub(&sg_foregroundPending, 1);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Re-submit only the current plan once foreground work has drained. No
+        // polling timer or old captured queue is allowed to restart prefetch.
+        if (atomic_load(&sg_foregroundPending) || !sg_upcomingPlan.count) return;
+        NSArray *latest = sg_upcomingPlan;
+        sg_upcomingPlan = nil;
+        SGAddonUpdateUpcoming(latest);
+    });
 }
 static BOOL networkAllowed(BOOL *unmetered) {
     // Check the current network before every request, including the media download.
@@ -223,9 +260,9 @@ static BOOL networkAllowed(BOOL *unmetered) {
     return allowed;
 }
 static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume) {
-    if (generation != atomic_load(&sg_generation) || (sg_background && sg_activePlan != atomic_load(&sg_prefetchGeneration))) return nil;
+    if (superseded(generation)) return nil;
     if (!networkAllowed(NULL)) { sg_failure = @"네트워크 정책: 비과금 Wi-Fi를 사용하거나 셀룰러 다운로드를 허용하세요"; return nil; }
-    if (!budget(identifier)) { sg_failure = @"소스 요청 제한 또는 대기 시간에 도달했습니다. 나중에 다시 시도하세요"; return nil; }
+    if (!sourceReady(identifier)) { sg_failure = @"서버 재시도 대기 중입니다. 잠시 후 다시 시도하세요"; return nil; }
     NSString *reason;
     NSURLSessionConfiguration *config = SGSourceSessionConfiguration(&reason);
     if (!config) { sg_failure = @"WireGuard를 사용할 수 없어 애드온 요청을 차단했습니다"; return nil; } // enabled WireGuard never falls back to a direct session
@@ -272,21 +309,27 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     [task resume];
     double deadline = CFAbsoluteTimeGetCurrent() + (path ? 120 : 20);
     if (sg_requestDeadline > 0) deadline = MIN(deadline, sg_requestDeadline);
+    BOOL deadlineExpired = NO;
     while (dispatch_semaphore_wait(transfer.done, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10))) {
-        if (generation != atomic_load(&sg_generation) || (sg_background && (sg_activePlan != atomic_load(&sg_prefetchGeneration) || !SGFlag(SGKeyAddons, NO))) || CFAbsoluteTimeGetCurrent() > deadline) [task cancel];
+        deadlineExpired = CFAbsoluteTimeGetCurrent() > deadline;
+        if (superseded(generation) || (sg_background && !SGFlag(SGKeyAddons, NO)) || deadlineExpired) [task cancel];
     }
     [session finishTasksAndInvalidate];
     nw_path_monitor_cancel(monitor);
-    if (transfer.status == 429) {
-        double delay = transfer.retryAfter.doubleValue;
-        if (delay <= 0) {
-            NSDateFormatter *formatter = [NSDateFormatter new];
-            formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-            formatter.dateFormat = @"EEE, dd MMM yyyy HH:mm:ss zzz";
-            delay = [[formatter dateFromString:transfer.retryAfter] timeIntervalSinceNow];
-        }
-        sg_quiet[identifier] = @(NSDate.date.timeIntervalSince1970 + MAX(60, delay));
+    // Cancellation for a newer song/current lookup is not a server failure.
+    BOOL interrupted = superseded(generation);
+    BOOL retryable = transfer.status == 429 || transfer.status >= 500 || (!interrupted && (transfer.transportFailed || deadlineExpired));
+    if (retryable) {
+        NSUInteger attempts = MIN(6, [sg_failures[identifier] unsignedIntegerValue] + 1);
+        sg_failures[identifier] = @(attempts);
+        double serverDelay = retryAfterSeconds(transfer.retryAfter);
+        double backoff = MIN(120, 5 * (1U << (attempts - 1)));
+        double delay = serverDelay >= 0 ? MAX(1, serverDelay) : (transfer.status == 429 ? MAX(60, backoff) : backoff);
+        sg_quiet[identifier] = @(MAX([sg_quiet[identifier] doubleValue], NSDate.date.timeIntervalSince1970 + delay));
+    } else if (!transfer.failed && transfer.received) {
+        [sg_failures removeObjectForKey:identifier];
     }
+    if (interrupted) return nil;
     if (transfer.failed || !transfer.received) {
         if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 인증이 거부되었습니다(401/403). 서비스 설정 페이지에서 개인 manifest 링크를 갱신하세요";
         else if (transfer.status == 429) sg_failure = @"소스 요청이 제한되었습니다(429). Retry-After 대기 중";
@@ -296,9 +339,25 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     return !transfer.failed && transfer.received && generation == atomic_load(&sg_generation) ? transfer : nil;
 }
 static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation) {
+    if (!url || superseded(generation)) return nil;
+    initialize();
+    // URLs can contain private source parameters: memory only, never diagnostics.
+    NSString *key = [identifier stringByAppendingFormat:@"|%@", url.absoluteString];
+    NSDictionary *cached = sg_jsonCache[key];
+    double now = NSDate.date.timeIntervalSince1970;
+    if ([cached[@"until"] doubleValue] > now) return cached[@"value"];
+    [sg_jsonCache removeObjectForKey:key];
     SGAddonTransfer *response = fetch(url, nil, identifier, generation, nil);
     id value = response ? [NSJSONSerialization JSONObjectWithData:response.body options:0 error:NULL] : nil;
-    return [value isKindOfClass:NSDictionary.class] ? value : nil;
+    if (![value isKindOfClass:NSDictionary.class]) return nil;
+    double until = now + 30;
+    if ([value[@"expiresAt"] respondsToSelector:@selector(doubleValue)]) until = MIN(until, [value[@"expiresAt"] doubleValue] - 1);
+    if (until > NSDate.date.timeIntervalSince1970) {
+        for (NSString *old in sg_jsonCache.allKeys) if ([sg_jsonCache[old][@"until"] doubleValue] <= now) [sg_jsonCache removeObjectForKey:old];
+        if (sg_jsonCache.count >= 64) [sg_jsonCache removeAllObjects];
+        sg_jsonCache[key] = @{@"value":value, @"until":@(until)};
+    }
+    return value;
 }
 static void rememberSourceInfo(NSDictionary *source, NSDictionary *manifest) {
     NSMutableDictionary *info = [NSMutableDictionary dictionary];
@@ -331,7 +390,10 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
             : @"지원하지 않는 manifest입니다.";
         return nil;
     }
-    sg_manifests[identifier] = @{@"value": value, @"until": @(NSDate.date.timeIntervalSince1970 + 600)};
+    double now = NSDate.date.timeIntervalSince1970, until = now + 600;
+    if ([value[@"expiresAt"] respondsToSelector:@selector(doubleValue)]) until = MIN(until, [value[@"expiresAt"] doubleValue] - 1);
+    if (until <= now) { sg_failure = @"소스 정보가 만료되었습니다. 개인 manifest 링크를 갱신해 주세요"; return nil; }
+    sg_manifests[identifier] = @{@"value": value, @"until": @(until)};
     return value;
 }
 void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *)) {
@@ -341,6 +403,7 @@ void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString 
     uint64_t generation = atomic_load(&sg_generation);
     dispatch_async(worker(), ^{
         sg_failure = nil;
+        invalidateSourceLookups(identifier);
         NSDictionary *value = manifest(selected, generation);
         NSString *error = value ? nil : (sg_failure ?: @"소스 정보를 불러오지 못했습니다.");
         dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(error); });
@@ -351,7 +414,7 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
     uint64_t generation = atomic_load(&sg_generation);
     dispatch_async(worker(), ^{
         initialize();
-        [sg_manifests removeObjectForKey:identifier];
+        invalidateSourceLookups(identifier);
         sg_failure = nil;
         BOOL ok = NO;
         for (NSDictionary *source in sources) if ([source[@"id"] isEqual:identifier]) {
@@ -411,7 +474,7 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
         sg_failure = nil;
         NSDictionary *measured = nil;
         for (NSDictionary *source in sources) {
-            if (generation != atomic_load(&sg_generation)) break;
+            if (superseded(generation)) break;
             NSDictionary *m = manifest(source, generation);
             if (!m) continue;
             NSURL *base = SGAddonBaseURL(source[@"url"]);
@@ -474,10 +537,11 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
     NSArray *sources = SGAddonEnabledSources();
     BOOL lookup = SGAddonAllowsCurrentLookup();
     double wait = SGAddonPlaybackMode() == SGAddonPlaybackPrefer ? MAX(5, MIN(30, SGInt(SGKeyAddonWaitSeconds, 10))) : 0;
+    atomic_fetch_add(&sg_foregroundPending, 1);
     sg_status = @"일치하는 녹음 검색 중";
     sg_preparation = SGAddonPreparationSearching;
     dispatch_async(worker(), ^{
-        if (generation != atomic_load(&sg_generation)) { dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); }); return; }
+        if (generation != atomic_load(&sg_generation)) { foregroundFinished(); dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); }); return; }
         NSDictionary *entry = sg_prepared[uri];
         sg_failure = nil;
         [sg_prepared removeObjectForKey:uri];
@@ -493,6 +557,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
         sg_requestDeadline = 0;
         NSString *failure = sg_failure ?: (lookup ? @"검증된 파일이 없어 Spotify 오디오를 유지합니다" : @"재생 중 자동 전환이 꺼져 있습니다. 다음 곡을 계속 준비합니다");
         NSDictionary *result = entry;
+        foregroundFinished();
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation == atomic_load(&sg_generation)) {
                 sg_media = result[@"info"];
@@ -512,7 +577,7 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
     uint64_t generation = atomic_load(&sg_generation);
     NSArray *sources = SGAddonEnabledSources(), *upcoming = [tracks copy];
     dispatch_async(worker(), ^{
-        if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation)) return;
+        if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation) || atomic_load(&sg_foregroundPending)) return;
         if (!sg_prepared) sg_prepared = [NSMutableDictionary dictionary];
         NSSet *wanted = [NSSet setWithArray:[upcoming valueForKey:@"uri"]];
         for (NSString *uri in sg_prepared.allKeys) if (![wanted containsObject:uri]) {
@@ -523,7 +588,7 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
         sg_background = YES; sg_activePlan = plan;
         NSUInteger index = 0;
         for (NSDictionary *track in upcoming) {
-            if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation)) break;
+            if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation) || atomic_load(&sg_foregroundPending)) break;
             BOOL whole = index++ == 0 && (wifi || SGFlag(SGKeyAddonPrefetchCellular, NO));
             NSString *uri = track[@"uri"];
             NSDictionary *cached = sg_prepared[uri];
@@ -537,13 +602,21 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
             else discard(entry);
         }
         sg_background = NO; sg_prefix = NO; sg_requestDeadline = 0;
-        // Keep the existing per-source five-request/minute budget. A plan that met the
-        // limit gets another bounded attempt while it still owns this exact queue epoch.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            if (plan == atomic_load(&sg_prefetchGeneration) && generation == atomic_load(&sg_generation)) {
+        // Retry only a failed plan with a real cooldown. A successful/unchanged
+        // queue does not repeatedly resolve and download every 60 seconds.
+        double nextRetry = 0, now = NSDate.date.timeIntervalSince1970;
+        for (NSDictionary *source in sources) {
+            double until = [sg_quiet[source[@"id"]] doubleValue];
+            if (until > now && (!nextRetry || until < nextRetry)) nextRetry = until;
+        }
+        BOOL missing = NO;
+        for (NSDictionary *track in upcoming) if (!sg_prepared[track[@"uri"]]) missing = YES;
+        if (missing && nextRetry > now && !atomic_load(&sg_foregroundPending)) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MIN(3600, MAX(1, nextRetry - now)) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation) || atomic_load(&sg_foregroundPending)) return;
                 sg_upcomingPlan = nil;
                 SGAddonUpdateUpcoming(upcoming);
-            }
-        });
+            });
+        }
     });
 }
