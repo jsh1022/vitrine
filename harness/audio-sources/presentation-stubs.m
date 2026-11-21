@@ -150,5 +150,16 @@ void SGSetInt(NSString *key, NSInteger value) {}
 BOOL SGRedesignedUIStored(void) { return SGRedesignedUI(); }
 BOOL SGStreamQuality(NSInteger *metered, NSInteger *nonMetered) { if (!SGPresentationNativePCM) return NO; *metered = 1; *nonMetered = 4; return YES; }
 
-// This harness exercises the parent settings presentation; source management is a separate page.
-UIViewController *SGAddonSourcesPage(void) { return [UIViewController new]; }
+// Keep storage/network and cell styling isolated; the source controller and actions
+// themselves are production code linked by presentation-check.sh.
+BOOL SGAddonSetSourceEnabled(NSString *identifier, BOOL enabled) { return YES; }
+BOOL SGAddonMoveSource(NSString *identifier, NSUInteger index) { return YES; }
+void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *)) { if (completion) completion(nil); }
+UITableViewCell *SGDequeueCell(UITableView *table, NSString *identifier) {
+    return [table dequeueReusableCellWithIdentifier:identifier] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:identifier];
+}
+void SGFillCell(UITableViewCell *cell, NSString *title, NSString *subtitle, UIColor *color, NSString *symbol) {
+    UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+    content.text = title; content.secondaryText = subtitle;
+    cell.contentConfiguration = content;
+}

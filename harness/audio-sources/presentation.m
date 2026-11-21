@@ -301,13 +301,34 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             if (![hit isDescendantOfView:badge] || !singleTap) { fail(@"quality control must accept an ordinary tap outside the scrub unit bounds"); return; }
             [badge sendActionsForControlEvents:UIControlEventTouchUpInside];
         }, 200);
+    } else if (index == 0) {
+        SGModRow *entry = nil;
+        for (SGModRow *row in SGPresentationRows) if ([row.title isEqual:@"음원을 찾는 순서"]) entry = row;
+        if (!entry.page) { fail(@"missing source-management page entry"); return; }
+        UIViewController *controller = entry.page();
+        if (![controller isKindOfClass:UITableViewController.class]) { fail(@"source management must be the real table controller"); return; }
+        [self.nav pushViewController:controller animated:NO];
+        UITableView *table = ((UITableViewController *)controller).tableView;
+        [table layoutIfNeeded];
+        NSIndexPath *add = [NSIndexPath indexPathForRow:0 inSection:1];
+        if (![controller.title isEqual:@"음원을 찾는 순서"] || [table.dataSource numberOfSectionsInTableView:table] != 2 ||
+            [table.dataSource tableView:table numberOfRowsInSection:1] != 1) {
+            fail(@"source-management add section missing"); return;
+        }
+        UITableViewCell *cell = [table.dataSource tableView:table cellForRowAtIndexPath:add];
+        UIListContentConfiguration *content = (id)cell.contentConfiguration;
+        if (![content isKindOfClass:UIListContentConfiguration.class] || ![content.text isEqual:@"추가 음원 서비스 연결"]) {
+            fail(@"production add-source row missing"); return;
+        }
+        if (![table.delegate respondsToSelector:@selector(tableView:didSelectRowAtIndexPath:)]) { fail(@"source-management row action missing"); return; }
+        [table.delegate tableView:table didSelectRowAtIndexPath:add];
     } else if (index == 3) {
         SGShowPlaybackDetails();
     } else {
         // Do not replace the navigation stack during the previous modal's dismissal.
         // The WireGuard page only supplies the actual action rows for these two steps.
         if (index == 1) (void)SGWireGuardSettingsPage();
-        NSString *title = @[@"소스 추가", @".conf 파일 가져오기", @"저장된 프로필 삭제"][index];
+        NSString *title = @[@"추가 음원 서비스 연결", @".conf 파일 가져오기", @"저장된 프로필 삭제"][index];
         SGModRow *found = nil;
         for (SGModRow *row in SGPresentationRows) if ([row.title isEqualToString:title]) found = row;
         if (!found.action) { fail(@"missing production row action"); return; }
@@ -318,7 +339,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         if (!shown.viewIfLoaded.window || shown.isBeingPresented || shown.isBeingDismissed || shown.transitionCoordinator) return NO;
         // A just-dismissed controller can remain attached until the next run-loop turn.
         // Wait for this step's expected controller, not the previous step's modal.
-        if (index == 0) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"무손실 소스 추가"];
+        if (index == 0) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"추가 음원 서비스 연결"];
         if (index == 1) return [shown isKindOfClass:UIDocumentPickerViewController.class];
         if (index == 2) return [shown isKindOfClass:UIAlertController.class] && [shown.title isEqualToString:@"WireGuard"];
         if (index == 3) return [shown isKindOfClass:UINavigationController.class] && [((UINavigationController *)shown).topViewController.title isEqualToString:@"상세 재생 정보"];
@@ -328,7 +349,7 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     }, ^{
         UIViewController *shown = self.nav.presentedViewController;
         if (shown.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) fail(@"missing dark style");
-        if (index == 0 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"무손실 소스 추가"] || [(UIAlertController *)shown textFields].count != 1)) fail(@"add-source editor missing");
+        if (index == 0 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"추가 음원 서비스 연결"] || [(UIAlertController *)shown textFields].count != 1)) fail(@"add-source editor missing");
         if (index == 1 && ![shown isKindOfClass:UIDocumentPickerViewController.class]) fail(@"document picker missing");
         if (index == 2 && (![shown isKindOfClass:UIAlertController.class] || ![shown.title isEqualToString:@"WireGuard"])) fail(@"result message missing");
         if (index == 3 && (![shown isKindOfClass:UINavigationController.class] || ![((UINavigationController *)shown).topViewController.title isEqualToString:@"상세 재생 정보"])) fail(@"playback details missing");
