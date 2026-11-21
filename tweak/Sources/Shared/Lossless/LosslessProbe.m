@@ -48,7 +48,7 @@ static NSDictionary *quality(NSDictionary *p, NSString **error) {
 NSDictionary *SGLosslessProbe(NSString *verb, NSDictionary *p, NSString **error) {
     if ([verb isEqualToString:@"anchor"]) {
         NSString *path = p[@"path"];
-        if (!path.length) { *error = @"lossless anchor takes --path to a FLAC or ALAC file in the app's container"; return nil; }
+        if (!path.length) { *error = @"lossless anchor takes --path to a stereo FLAC, ALAC, uncompressed PCM WAV or AIFF file in the app's container"; return nil; }
         return SGLosslessAnchor(path, p[@"hint"] ? [p[@"hint"] doubleValue] : -1, error);
     }
     if ([verb isEqualToString:@"check"]) return SGLosslessCheck(error);

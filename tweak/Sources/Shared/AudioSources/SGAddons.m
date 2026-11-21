@@ -1,9 +1,12 @@
 #import "SGAddons.h"
 #import "SGAddonProtocol.h"
+#import "SGAddonSegments.h"
 #import "SGSourceSecrets.h"
 #import "SGWireGuard.h"
 #import "Core/SGCore.h"
 #import "Shared/Lossless/SGLossless.h"
+#import "Shared/Lossless/SGSourceFileFormat.h"
+#import "Shared/Lossless/SGSegmentedDecode.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <Network/Network.h>
 #import <stdatomic.h>
@@ -128,6 +131,9 @@ void SGAddonRetryCurrentTrack(void) {
 @property(nonatomic) NSInteger status;
 @property(nonatomic) NSUInteger offset;
 @property(nonatomic) NSUInteger expectedBytes;
+@property(nonatomic, strong) NSValue *boundedRange;
+@property(nonatomic) BOOL mediaRequest;
+@property(nonatomic, strong) NSURL *responseURL;
 @property(nonatomic, copy) NSString *entityTag;
 @property(nonatomic, copy) NSString *retryAfter;
 @property(nonatomic) BOOL transportFailed;
@@ -139,16 +145,24 @@ void SGAddonRetryCurrentTrack(void) {
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition))completion {
     self.status = [(NSHTTPURLResponse *)response statusCode];
+    self.responseURL = response.URL;
     self.retryAfter = [(NSHTTPURLResponse *)response valueForHTTPHeaderField:@"Retry-After"];
     self.entityTag = [(NSHTTPURLResponse *)response valueForHTTPHeaderField:@"ETag"];
-    self.failed = self.status != 200 && !((self.prefix || self.offset) && self.status == 206);
+    self.failed = self.boundedRange ? self.status != 206 : self.status != 200 && !((self.prefix || self.offset) && self.status == 206);
     if (self.status == 206) {
         NSString *range = [(NSHTTPURLResponse *)response valueForHTTPHeaderField:@"Content-Range"];
         unsigned long long start = 0, end = 0, total = 0;
+        if (self.boundedRange) {
+            NSRange requested = self.boundedRange.rangeValue;
+            if (sscanf(range.UTF8String ?: "", "bytes %llu-%llu/%llu", &start, &end, &total) != 3 ||
+                start != requested.location || end < start || end >= total || end-start+1 != requested.length) self.failed = YES;
+            self.expectedBytes = requested.length;
+        } else {
         if (sscanf(range.UTF8String ?: "", "bytes %llu-%llu/%llu", &start, &end, &total) != 3 ||
             start != self.offset || end < start || end >= total || (!self.prefix && (total > self.limit || end != total - 1)) ||
             (self.prefix && end != MIN(total, self.limit) - 1)) self.failed = YES;
         self.expectedBytes = self.prefix ? MIN(total, self.limit) : total;
+        }
     } else if (self.status == 200 && self.offset) {
         // If-Range mismatch or a server ignoring Range: replace the prefix, never append it twice.
         [self.file truncateAtOffset:0 error:NULL]; [self.file seekToOffset:0 error:NULL];
@@ -183,7 +197,7 @@ void SGAddonRetryCurrentTrack(void) {
  newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest *))completion {
     // Preserve secrets on addon API calls: no JSON redirects, even to another HTTPS host.
     // Media redirects carry no application auth header; refuse every downgrade.
-    BOOL allowed = self.file && [request.URL.scheme.lowercaseString isEqualToString:@"https"] && !request.URL.user && !request.URL.password;
+    BOOL allowed = self.mediaRequest && [request.URL.scheme.lowercaseString isEqualToString:@"https"] && !request.URL.user && !request.URL.password && !request.URL.fragment;
     if (!allowed) self.failed = YES;
     completion(allowed ? request : nil);
 }
@@ -259,7 +273,7 @@ static BOOL networkAllowed(BOOL *unmetered) {
     if (unmetered) *unmetered = wifi;
     return allowed;
 }
-static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume) {
+static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume, NSValue *range, NSUInteger limit, NSString *accept) {
     if (superseded(generation)) return nil;
     if (!networkAllowed(NULL)) { sg_failure = @"네트워크 정책: 비과금 Wi-Fi를 사용하거나 셀룰러 다운로드를 허용하세요"; return nil; }
     if (!sourceReady(identifier)) { sg_failure = @"서버 재시도 대기 중입니다. 잠시 후 다시 시도하세요"; return nil; }
@@ -273,7 +287,9 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     config.allowsConstrainedNetworkAccess = NO;
     SGAddonTransfer *transfer = [SGAddonTransfer new];
     transfer.prefix = path && sg_prefix;
-    transfer.limit = path ? (transfer.prefix ? 2 * 1024 * 1024 : 128 * 1024 * 1024) : 1024 * 1024;
+    transfer.limit = limit;
+    transfer.boundedRange = range;
+    transfer.mediaRequest = path != nil || ![accept isEqual:@"application/json"];
     transfer.done = dispatch_semaphore_create(0);
     if (path) {
         [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:@{NSFileProtectionKey: NSFileProtectionCompleteUntilFirstUserAuthentication}];
@@ -292,12 +308,16 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     } else transfer.body = [NSMutableData data];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:transfer delegateQueue:nil];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    if (transfer.prefix) [request setValue:@"bytes=0-2097151" forHTTPHeaderField:@"Range"];
+    if (range) {
+        NSRange r = range.rangeValue;
+        if (!r.length || r.location > NSUIntegerMax-r.length || r.length>limit) { [transfer.file closeFile]; [session invalidateAndCancel]; return nil; }
+        [request setValue:[NSString stringWithFormat:@"bytes=%lu-%lu",(unsigned long)r.location,(unsigned long)NSMaxRange(r)-1] forHTTPHeaderField:@"Range"];
+    } else if (transfer.prefix) [request setValue:@"bytes=0-2097151" forHTTPHeaderField:@"Range"];
     else if (transfer.offset) {
         [request setValue:[NSString stringWithFormat:@"bytes=%lu-", (unsigned long)transfer.offset] forHTTPHeaderField:@"Range"];
         [request setValue:resume[@"etag"] forHTTPHeaderField:@"If-Range"];
     }
-    [request setValue:path ? @"audio/*,application/octet-stream" : @"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:accept forHTTPHeaderField:@"Accept"];
     // Match BitChord iOS's addon compatibility header; this is not app proof.
     [request setValue:@"BitChord/v1.8" forHTTPHeaderField:@"User-Agent"];
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request];
@@ -338,6 +358,74 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
         else sg_failure = @"소스 연결 실패 또는 시간 초과";
     }
     return !transfer.failed && transfer.received && generation == atomic_load(&sg_generation) ? transfer : nil;
+}
+static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume) {
+    return fetchBounded(url,path,identifier,generation,resume,nil,path ? (sg_prefix ? 2*1024*1024 : 128*1024*1024) : 1024*1024,
+                        path ? @"audio/*,application/octet-stream" : @"application/json");
+}
+
+static BOOL prepareSegmentsWithinDeadline(NSDictionary *stream, NSString *path, NSString *identifier, uint64_t generation) {
+    if (sg_prefix) { sg_failure=@"분할 스트림은 Wi-Fi 또는 전체 사전 준비가 허용된 연결에서 준비합니다"; return NO; }
+    NSString *transport=SGAddonStreamTransport(stream);
+    NSURL *url=[NSURL URLWithString:stream[@"url"]];
+    CFAbsoluteTime deadline=CFAbsoluteTimeGetCurrent()+120;
+    BOOL (^cancelled)(void)=^BOOL { return superseded(generation) || CFAbsoluteTimeGetCurrent()>deadline ||
+        (sg_requestDeadline>0 && CFAbsoluteTimeGetCurrent()>sg_requestDeadline); };
+    NSDictionary *plan=nil;
+    NSMutableSet *visited=[NSMutableSet set];
+    for (NSUInteger depth=0;depth<4 && !cancelled();depth++) {
+        if ([visited containsObject:url]) break; [visited addObject:url];
+        SGAddonTransfer *response=fetchBounded(url,nil,identifier,generation,nil,nil,1024*1024,
+            @"application/vnd.apple.mpegurl,application/x-mpegURL,application/dash+xml");
+        if (!response) return NO;
+        plan=SGAddonSegmentPlan(response.body,response.responseURL ?: url,transport);
+        if (!plan[@"playlist"]) break;
+        url=plan[@"playlist"]; plan=nil;
+    }
+    NSArray *parts=plan[@"parts"];
+    if (!parts.count || cancelled()) { sg_failure=sg_failure ?: @"지원하지 않는 HLS/DASH 목록입니다. 완성된 비암호화 오디오 목록이 필요합니다"; return NO; }
+    NSString *assembled=[path stringByAppendingString:@".segments.mp4"], *piece=[path stringByAppendingString:@".part"];
+    NSFileManager *files=NSFileManager.defaultManager;
+    [files createFileAtPath:assembled contents:nil attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication}];
+    NSFileHandle *writer=[NSFileHandle fileHandleForWritingAtPath:assembled];
+    BOOL ok=writer!=nil;
+    NSUInteger bytes=0;
+    for (NSDictionary *p in parts) {
+        if (!ok || cancelled() || bytes>=128*1024*1024) { ok=NO; break; }
+        SGAddonTransfer *download=fetchBounded(p[@"url"],piece,identifier,generation,nil,p[@"range"],128*1024*1024-bytes,@"audio/*,video/mp4,application/octet-stream");
+        if (!download) { ok=NO; break; }
+        NSFileHandle *reader=[NSFileHandle fileHandleForReadingAtPath:piece];
+        if (!reader) { ok=NO; break; }
+        NSUInteger copied=0;
+        while (!cancelled()) {
+            NSError *error=nil;
+            NSData *data=[reader readDataUpToLength:64*1024 error:&error];
+            if (error) { ok=NO; break; }
+            if (!data.length) break;
+            if (![writer writeData:data error:&error]) { ok=NO; break; }
+            copied+=data.length;
+        }
+        [reader closeFile];
+        if (copied!=download.received || cancelled()) ok=NO;
+        bytes+=copied;
+        [files removeItemAtPath:piece error:NULL];
+    }
+    [writer closeFile];
+    if (ok && !cancelled()) {
+        // Prefer the ordinary decoder when it understands the complete assembled file.
+        if (parts.count==1 && SGMeasureLosslessFile(assembled,[plan[@"duration"] doubleValue])) {
+            [files removeItemAtPath:path error:NULL]; ok=[files moveItemAtPath:assembled toPath:path error:NULL];
+        } else ok=SGDecodeSegmentedLossless(assembled,path,cancelled);
+    } else ok=NO;
+    [files removeItemAtPath:piece error:NULL]; [files removeItemAtPath:assembled error:NULL];
+    if (!ok) { [files removeItemAtPath:path error:NULL]; sg_failure=sg_failure ?: @"분할 음원이 지원되는 스테레오 무손실 코덱이 아니거나 완전히 준비되지 않았습니다"; }
+    return ok;
+}
+static BOOL prepareSegments(NSDictionary *stream, NSString *path, NSString *identifier, uint64_t generation) {
+    double previous=sg_requestDeadline;
+    sg_requestDeadline=previous>0 ? MIN(previous,CFAbsoluteTimeGetCurrent()+120) : CFAbsoluteTimeGetCurrent()+120;
+    @try { return prepareSegmentsWithinDeadline(stream,path,identifier,generation); }
+    @finally { sg_requestDeadline=previous; }
 }
 static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation) {
     if (!url || superseded(generation)) return nil;
@@ -438,10 +526,11 @@ NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {
     SInt64 frames = 0;
     size = sizeof frames;
     status |= ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &size, &frames);
+    BOOL supported = SGSourceFileSupported(file, format);
     ExtAudioFileDispose(file);
     BOOL flac = format.mFormatID == kAudioFormatFLAC, alac = format.mFormatID == kAudioFormatAppleLossless;
     double seconds = format.mSampleRate > 0 ? frames / format.mSampleRate : 0;
-    if (status || (!flac && !alac) || format.mChannelsPerFrame != 2 || seconds <= 0 || (expected > 0 && fabs(seconds - expected) > 30)) return nil;
+    if (status || !supported || !isfinite(seconds) || seconds <= 0 || (expected > 0 && fabs(seconds - expected) > 30)) return nil;
     UInt32 bits = format.mBitsPerChannel;
     if (!bits && alac && format.mFormatFlags >= 1 && format.mFormatFlags <= 4) {
         const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[format.mFormatFlags];
@@ -455,7 +544,7 @@ NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {
             bits = (UInt32)((fields >> 36) & 31) + 1;
         }
     }
-    return @{@"codec": flac ? @"FLAC" : @"ALAC", @"rate": @(format.mSampleRate), @"bits": @(bits),
+    return @{@"codec": SGSourceFileCodec(format), @"rate": @(format.mSampleRate), @"bits": @(bits),
              @"channels": @(format.mChannelsPerFrame), @"duration": @(seconds),
              @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / seconds / 1000)};
 }
@@ -493,14 +582,16 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
                 NSMutableDictionary *fallback = [candidate mutableCopy];
                 fallback[@"url"] = candidate[@"streamURL"]; stream = fallback;
             }
-            if (!stream || !SGAddonDirectStream(stream)) { if (stream) sg_failure = @"지원하지 않는 스트림입니다. 직접 제공되는 스테레오 FLAC/ALAC가 필요합니다. DASH/HLS/Atmos/DRM은 이 엔진에 연결되지 않았습니다"; continue; }
+            NSString *transport=stream ? SGAddonStreamTransport(stream) : nil;
+            if (!stream || !SGAddonStreamSupported(stream)) { if (stream) sg_failure = @"지원하지 않는 스트림입니다. 비암호화 스테레오 FLAC/ALAC/PCM이 필요하며 MP3/AAC/Atmos/DRM은 지원하지 않습니다"; continue; }
             // As in BitChord, resolved rendition metadata wins over catalogue hints.
             id expiry = stream[@"expiresAt"];
             if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970) {
                 sg_failure = @"음원 URL이 만료되었습니다. 소스를 갱신하고 다시 시도하세요"; continue;
             }
-            SGAddonTransfer *download = fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation, sg_prefix ? nil : prefixEntry);
-            if (download) {
+            SGAddonTransfer *download = transport ? nil : fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation, sg_prefix ? nil : prefixEntry);
+            if (transport && prepareSegments(stream,path,source[@"id"],generation)) measured=SGMeasureLosslessFile(path,duration);
+            else if (download) {
                 sg_lastMediaURL = stream[@"url"]; sg_lastMediaETag = download.entityTag;
                 if (sg_prefix) {
                     // Prefixes warm a bounded HTTP/file cache only. They are never submitted to the decoder.
@@ -520,7 +611,7 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
                 }
                 info[@"declared"] = declared; measured = info; break;
             }
-            sg_failure = sg_failure ?: @"받은 음원이 일치하는 스테레오 FLAC/ALAC 파일이 아닙니다";
+            sg_failure = sg_failure ?: @"받은 음원이 일치하는 스테레오 FLAC/ALAC 또는 WAV/AIFF(무압축 PCM) 파일이 아닙니다";
             [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
         }
         if (!measured || generation != atomic_load(&sg_generation)) { [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; path = nil; }

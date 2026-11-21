@@ -1,4 +1,5 @@
 #import "SGAddonProtocol.h"
+#import "SGAddonSegments.h"
 #import <math.h>
 
 static NSString *string(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
@@ -91,16 +92,20 @@ BOOL SGAddonTrackMatches(NSDictionary *c, NSString *title, NSString *artist, dou
     return title.length && artist.length && isfinite(seconds) && seconds > 0 && lengthMatches && [fold(string(c[@"title"])) isEqualToString:fold(title)] &&
         [artists(string(c[@"artist"])) intersectsSet:artists(artist)];
 }
-BOOL SGAddonDirectStream(NSDictionary *s) {
+BOOL SGAddonStreamSupported(NSDictionary *s) {
     NSURL *url = [NSURL URLWithString:string(s[@"url"])];
     if (![url.scheme.lowercaseString isEqualToString:@"https"] || !url.host.length || url.user || url.password) return NO;
+    for (NSString *key in @[@"codec", @"format", @"mimeType"]) {
+        NSString *value = string(s[key]).lowercaseString;
+        if ([@[@"mp3", @"aac", @"he-aac", @"he-aac-v2", @"audio/mpeg", @"audio/aac", @"audio/aacp"] containsObject:value] || [value hasPrefix:@"mp4a"]) return NO;
+    }
     id encrypted = s[@"encrypted"];
     if (encrypted == NSNull.null) encrypted = nil;
     if ([encrypted isKindOfClass:NSString.class]) encrypted = [encrypted stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
     if (encrypted && ![encrypted isEqual:@NO] && ![encrypted isEqual:@"false"] && ![encrypted isEqual:@"none"] && ![encrypted isEqual:@""]) return NO;
     for (NSString *key in @[@"manifest", @"mediaType"]) {
         NSString *v = string(s[key]).lowercaseString;
-        if (v.length && ![v isEqualToString:@"none"]) return NO;
+        if (v.length && ![v isEqualToString:@"none"] && !SGAddonStreamTransport(@{key:v})) return NO;
     }
     if ([s[@"atmos"] isEqual:@YES]) return NO;
     id modes = s[@"audioModes"];
@@ -110,8 +115,10 @@ BOOL SGAddonDirectStream(NSDictionary *s) {
     }
     for (NSString *key in @[@"format", @"mimeType", @"audioMode", @"quality", @"audioQuality", @"codec"]) {
         NSString *v = string(s[key]).lowercaseString;
-        if ([v containsString:@"dash"] || [v containsString:@"hls"] || [v containsString:@"mpegurl"] || [v containsString:@"atmos"] || [v containsString:@"dolby"]) return NO;
+        if ([v containsString:@"atmos"] || [v containsString:@"dolby"]) return NO;
+        if (([v containsString:@"dash"] || [v containsString:@"hls"] || [v containsString:@"mpegurl"]) && !SGAddonStreamTransport(s)) return NO;
     }
     // Decoder, not these hints, decides whether the completed file is lossless.
     return YES;
 }
+BOOL SGAddonDirectStream(NSDictionary *s) { return !SGAddonStreamTransport(s) && SGAddonStreamSupported(s); }

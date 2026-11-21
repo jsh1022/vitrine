@@ -6,6 +6,7 @@
 // where Spotify plays; a block the ring does not hold yet keeps Spotify's sound.
 #import "SGLossless.h"
 #import "SGWiredOutput.h"
+#import "SGSourceFileFormat.h"
 #import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -130,14 +131,14 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
     OSStatus status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &size, &source);
     size = sizeof frames;
     if (!status) status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &size, &frames);
-    BOOL lossless = source.mFormatID == kAudioFormatFLAC || source.mFormatID == kAudioFormatAppleLossless;
+    BOOL lossless = SGSourceFileSupported(file, source);
     AudioStreamBasicDescription client = {rate, kAudioFormatLinearPCM,
         kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved, 4, 1, 4, 2, 32, 0};
     if (!status && lossless && source.mChannelsPerFrame == 2 && frames > 0)
         status = ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, sizeof client, &client);
     if (status || !lossless || source.mChannelsPerFrame != 2 || frames <= 0) {
         ExtAudioFileDispose(file);
-        *error = @"not stereo FLAC or ALAC";
+        *error = @"not supported stereo FLAC, ALAC or WAV/AIFF PCM";
         return NO;
     }
     *reader = (Reader){file, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate)};
@@ -203,7 +204,7 @@ static BOOL load(NSString *path, double rate, NSString **error) {
         const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[source.mFormatFlags];
     }
     if (!bits) bits = [SGMeasureLosslessFile(path, 0)[@"bits"] unsignedIntValue];
-    NSDictionary *info = @{@"codec": source.mFormatID == kAudioFormatFLAC ? @"FLAC" : @"ALAC",
+    NSDictionary *info = @{@"codec": SGSourceFileCodec(source),
         @"rate": @(source.mSampleRate), @"bits": @(bits), @"channels": @(source.mChannelsPerFrame), @"clientRate": @(rate),
         @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / (sg_reader.frames / rate) / 1000)};
     @synchronized (NSProcessInfo.processInfo) { sg_sourceInfo = info; }

@@ -17,6 +17,9 @@ xcrun --sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-a
   -o "$APP/LosslessHandoff"
 ffmpeg -v error -y -f lavfi -i 'aevalsrc=0.08*sin(2*PI*440*t)|0.06*sin(2*PI*997*t):s=44100:d=12' -c:a flac -sample_fmt s16 "$APP/fixture.flac"
 ffmpeg -v error -y -i "$APP/fixture.flac" -c:a alac -sample_fmt s32p "$APP/fixture.m4a"
+ffmpeg -v error -y -i "$APP/fixture.flac" -c:a pcm_s16le "$APP/fixture.wav"
+ffmpeg -v error -y -i "$APP/fixture.flac" -c:a pcm_s16be "$APP/fixture.aiff"
+ffmpeg -v error -y -i "$APP/fixture.flac" -c:a aac "$APP/lossy.m4a"
 python3 - "$APP" <<'PY'
 from pathlib import Path
 import plistlib,sys

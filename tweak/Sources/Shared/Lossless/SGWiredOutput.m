@@ -1,4 +1,5 @@
 #import "SGWiredOutput.h"
+#import "SGSourceFileFormat.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/AudioSources/SGAddons.h"
 #import "Core/SGCore.h"
@@ -90,9 +91,11 @@ void SGWiredOutputPrepare(NSString *path) {
         AudioStreamBasicDescription source = {0}; UInt32 size = sizeof source;
         OSStatus read = ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file);
         if (!read) read = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &size, &source);
+        BOOL supported = !read && file && SGSourceFileSupported(file, source);
         if (file) ExtAudioFileDispose(file);
-        if (read || (source.mFormatID != kAudioFormatFLAC && source.mFormatID != kAudioFormatAppleLossless)
+        if (!supported
             || source.mChannelsPerFrame != 2 || !isfinite(source.mSampleRate) || source.mSampleRate < 44100 || source.mSampleRate > 192000) {
+            if (!restore()) return;
             status(@"Unavailable", @"This file cannot use wired source-rate output"); return;
         }
         AVAudioSession *session = AVAudioSession.sharedInstance;

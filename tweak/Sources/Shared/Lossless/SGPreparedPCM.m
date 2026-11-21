@@ -1,4 +1,5 @@
 #import "SGPreparedPCM.h"
+#import "SGSourceFileFormat.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <stdatomic.h>
 #include <math.h>
@@ -39,8 +40,7 @@ static void fail(NSError **error, NSInteger code, NSString *message) {
     status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &size, &source);
     SInt64 sourceFrames = 0; size = sizeof(sourceFrames);
     if (!status) status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &size, &sourceFrames);
-    BOOL formatOK = (source.mFormatID == kAudioFormatFLAC || source.mFormatID == kAudioFormatAppleLossless)
-        && source.mChannelsPerFrame == 2 && isfinite(source.mSampleRate) && source.mSampleRate >= 8000
+    BOOL formatOK = SGSourceFileSupported(file, source) && source.mSampleRate >= 8000
         && source.mSampleRate <= 192000 && sourceFrames > 0;
     double expected = formatOK ? ceil(sourceFrames * rate / source.mSampleRate) : 0;
     uint64_t limit = maxBytes / (2 * sizeof(float));

@@ -1,4 +1,4 @@
-// Lossless: a local FLAC or ALAC file of the same recording plays in place of Spotify's sound.
+// Lossless: a local FLAC, ALAC or WAV/AIFF PCM file of the same recording replaces Spotify's sound.
 //
 //     SGLosslessEngine.m   finds where Spotify plays in the file by matching its sound, and swaps the file in
 //     SGLosslessStore.m    which file belongs to which Spotify track

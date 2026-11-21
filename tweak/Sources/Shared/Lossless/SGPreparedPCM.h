@@ -12,7 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) uint64_t frameCount;
 @property(nonatomic, readonly) const float *left;
 @property(nonatomic, readonly) const float *right;
-// Call off the render/main threads. Only stereo FLAC/ALAC, decoded to planar Float32. maxBytes is
+// Call off the render/main threads. Stereo FLAC/ALAC or WAV/AIFF PCM, decoded to planar Float32. maxBytes is
 // a PCM allocation budget (at most 32 MiB); encoded files are limited to 64 MiB. Cancellation is
 // checked between native reads. The caller retains this object while its pointers are used.
 + (nullable instancetype)prepareURL:(NSURL *)url sampleRate:(double)rate maxBytes:(NSUInteger)maxBytes

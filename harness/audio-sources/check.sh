@@ -7,7 +7,7 @@ mkdir -p "$OUT"
 # Foundation fixture executable runs on the Mac host, without Spotify or an IPA.
 xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
   -I"$SRC" "$ROOT/harness/audio-sources/protocol.m" \
-  "$SRC/Shared/AudioSources/SGAddonProtocol.m" -framework Foundation -o "$OUT/protocol"
+  "$SRC/Shared/AudioSources/SGAddonProtocol.m" "$SRC/Shared/AudioSources/SGAddonSegments.m" -framework Foundation -o "$OUT/protocol"
 "$OUT/protocol"
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
@@ -35,6 +35,7 @@ for relative in Native/Player/InlineLyrics.x Redesigned/Player/InlineLyrics.x Re
 done
 for enabled in 0 1; do
   for source in "$SRC"/Shared/AudioSources/*.m "$SRC/Shared/Lossless/SGLosslessEngine.m" \
+                "$SRC/Shared/Lossless/SGSegmentedDecode.m" \
                 "$SRC/Shared/Lossless/SGWiredOutput.m" \
                 "$SRC/Native/Player/PlayerSettings.m" "$SRC/Redesigned/Player/PlayerSettings.m" \
                 "$SRC/App/Pages.m" "$SRC/Redesigned/Player/PlayerMenu.m" "$SRC/Redesigned/Player/PlayerHistory.m"; do

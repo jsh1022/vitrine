@@ -121,6 +121,22 @@ static void directTests(void) {
     SGPreparedPCM *alac=[SGPreparedPCM prepareURL:[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"fixture.m4a"]
         sampleRate:48000 maxBytes:8*1024*1024 cancellation:token error:&error];
     expect(alac && !error && alac.frameCount==576000,"ALAC converts to planar 48 kHz");
+    for (NSString *name in @[@"fixture.wav", @"fixture.aiff"]) {
+        SGPreparedPCM *pcm=[SGPreparedPCM prepareURL:[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:name]
+            sampleRate:44100 maxBytes:8*1024*1024 cancellation:token error:&error];
+        expect(pcm && !error && pcm.frameCount==asset.frameCount,"WAV/AIFF PCM decodes to the complete stereo recording");
+        if (pcm && pcm.frameCount==asset.frameCount) {
+            double difference=0;
+            for (uint64_t i=0;i<pcm.frameCount;++i) {
+                difference=fmax(difference,fabs(pcm.left[i]-asset.left[i]));
+                difference=fmax(difference,fabs(pcm.right[i]-asset.right[i]));
+            }
+            expect(difference<0.000001,"WAV/AIFF decoded channels match the lossless reference");
+        }
+    }
+    expect(![SGPreparedPCM prepareURL:[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"lossy.m4a"]
+        sampleRate:44100 maxBytes:8*1024*1024 cancellation:token error:&error] && error,
+        "AAC remains rejected despite sharing the ALAC container extension");
     expect(![SGPreparedPCM prepareURL:url sampleRate:44100 maxBytes:8192 cancellation:token error:&error],"PCM budget rejects oversized decode");
     [token cancel];
     expect(![SGPreparedPCM prepareURL:url sampleRate:44100 maxBytes:8*1024*1024 cancellation:token error:&error]
