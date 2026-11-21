@@ -35,8 +35,9 @@ NSURL *SGAddonEndpoint(NSURL *base, NSArray<NSString *> *segments, NSDictionary<
 }
 BOOL SGAddonManifestSupported(NSDictionary *m) {
     id resources = m[@"resources"];
-    id proof = m[@"bitchordAuth"]; if (proof == NSNull.null) proof = nil;
-    if (!string(m[@"id"]).length || (proof && ![proof isEqual:@NO])) return NO;
+    // Like BitChord iOS, try the supplied URL even when bitchordAuth is declared.
+    // The flag grants no credentials: the server still decides access (401/403).
+    if (!string(m[@"id"]).length) return NO;
     if (!resources) return YES;
     return [resources isKindOfClass:NSArray.class] && (![resources count] || [resources containsObject:@"search"]);
 }

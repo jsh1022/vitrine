@@ -298,7 +298,8 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
         [request setValue:resume[@"etag"] forHTTPHeaderField:@"If-Range"];
     }
     [request setValue:path ? @"audio/*,application/octet-stream" : @"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:@"Vitrine/" SG_VERSION " (audio-addon)" forHTTPHeaderField:@"User-Agent"];
+    // Match BitChord iOS's addon compatibility header; this is not app proof.
+    [request setValue:@"BitChord/v1.8" forHTTPHeaderField:@"User-Agent"];
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request];
     nw_path_monitor_t monitor = nw_path_monitor_create();
     nw_path_monitor_set_queue(monitor, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
@@ -331,7 +332,7 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
     }
     if (interrupted) return nil;
     if (transfer.failed || !transfer.received) {
-        if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 인증이 거부되었습니다(401/403). 서비스 설정 페이지에서 개인 manifest 링크를 갱신하세요";
+        if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 접근이 거부되었습니다(401/403). 개인 링크의 만료·권한을 확인하세요. 공식 앱 증명이 필요한 서비스는 지원하지 않습니다.";
         else if (transfer.status == 429) sg_failure = @"소스 요청이 제한되었습니다(429). Retry-After 대기 중";
         else if (transfer.status) sg_failure = [NSString stringWithFormat:@"소스 HTTP %ld 또는 불완전하거나 너무 큰 응답", (long)transfer.status];
         else sg_failure = @"소스 연결 실패 또는 시간 초과";
@@ -385,9 +386,7 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     if (!value) return nil;
     rememberSourceInfo(source, value);
     if (!SGAddonManifestSupported(value)) {
-        sg_failure = [value[@"bitchordAuth"] isEqual:@YES]
-            ? @"공식 BitChord 앱 인증이 필요합니다. Vitrine용으로 허용된 인증 방법이 없어 연결할 수 없습니다."
-            : @"지원하지 않는 manifest입니다.";
+        sg_failure = @"지원하지 않는 manifest입니다.";
         return nil;
     }
     double now = NSDate.date.timeIntervalSince1970, until = now + 600;
@@ -427,7 +426,7 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
             break;
         }
         NSString *failure = sg_failure ?: @"지원하지 않는 manifest 또는 검색 응답";
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"manifest 및 인증 검색에 성공했습니다. 실제 재생에는 음원 매칭, 디코딩, 정렬도 성공해야 합니다." : failure); });
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(ok ? @"manifest 및 검색 요청에 성공했습니다. 실제 재생에는 음원 매칭, 디코딩, 정렬도 성공해야 합니다." : failure); });
     });
 }
 NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {

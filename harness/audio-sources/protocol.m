@@ -14,7 +14,9 @@ int main(void) { @autoreleasepool {
     for (NSString *input in @[@"http://example.test/root", @"file:///tmp/audio", @"https://user:pass@example.test", @"https://example.test/pages/setup.html", @"https://example.test/#secret"])
         require(!SGAddonBaseURL(input), @"reject unsupported source URLs");
     require(SGAddonManifestSupported(@{@"id": @"library", @"resources": @[@"search", @"stream"]}), @"ordinary HTTP addon supported");
-    require(!SGAddonManifestSupported(@{@"id": @"private", @"bitchordAuth": @YES}), @"never impersonate official app");
+    require(SGAddonManifestSupported(@{@"id": @"private", @"bitchordAuth": @YES}), @"auth declaration defers access decision to the server, matching BitChord iOS");
+    require(!SGAddonManifestSupported(@{@"bitchordAuth": @YES}), @"auth declaration does not replace required manifest id");
+    require(!SGAddonManifestSupported(@{@"id": @"private", @"bitchordAuth": @YES, @"resources": @[@"video"]}), @"auth declaration does not enable unsupported resources");
     require(!SGAddonManifestSupported(@{@"resources": @[@"search"]}), @"manifest needs an id");
     require(!SGAddonManifestSupported(@{@"id": @"other", @"resources": @[@"video"]}), @"unsupported resources");
     NSDictionary *parameters = SGAddonParameters(@{@"settings": @[

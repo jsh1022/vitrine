@@ -45,7 +45,7 @@ Spotify 9.1.78/9.1.88/9.1.90의 본인 decrypted IPA가 필요하며, 결과 IPA
 
 ## 지원 범위와 동작
 
-`/manifest.json`, `/search?q=...`, `/stream/{id}` 계약을 사용합니다. 검색 결과의 직접 `streamURL`도 지원합니다. 비밀 경로 접두사와 기본 URL의 query를 보존하고, 곡 ID를 한 개의 경로 세그먼트로 인코딩합니다. 사용자 에이전트는 Vitrine입니다. BitChord 공식 앱 인증을 요구하는 공급자는 사용하지 않습니다.
+`/manifest.json`, `/search?q=...`, `/stream/{id}` 계약을 사용합니다. 검색 결과의 직접 `streamURL`도 지원합니다. 비밀 경로 접두사와 기본 URL의 query를 보존하고, 곡 ID를 한 개의 경로 세그먼트로 인코딩합니다. BitChord iOS proxy.28과 같은 `User-Agent: BitChord/v1.8`을 보내며 API의 `Accept`는 `application/json`입니다. `bitchordAuth: true` 선언만으로 사전 차단하지 않고 제공받은 URL로 실제 요청합니다. 이 헤더는 공식 앱 증명이 아니며 인증 토큰이나 증명을 생성하지 않습니다. 서버의 401/403 거부는 그대로 실패 처리하므로 공식 앱 증명을 필수로 요구하는 서비스는 사용할 수 없습니다.
 
 현재는 **HTTPS로 제공되는 완성된 스테레오 FLAC/ALAC 파일**만 사용합니다. HLS·DASH·DRM·Atmos·HTTP 전용 서버·추가 요청 헤더가 필요한 서버·ISRC 전용 조회·공급자별 사용자 설정 폼은 지원하지 않습니다. 호스팅된 상용 공급자와의 실시간 호환성을 확인하지 않았으며 기본 서버 주소나 계정을 넣지 않았습니다. 본인 라이브러리를 제공하는 HTTPS 서버가 첫 검증 대상으로 적합합니다.
 
