@@ -36,7 +36,7 @@ static SGAddonWait *sg_wait;
 @end
 void SGAddonBeginPlaybackWait(NSString *uri) {
     if (!SGRedesignedUI() || SGAddonPlaybackMode() != SGAddonPlaybackPrefer || !uri.length ||
-        !SGAddonSources().count || !SGPlayerMusicOutput()) return;
+        !SGAddonEnabledSources().count || !SGPlayerMusicOutput()) return;
     id<SPTPlayer> player = SGPlayer();
     SPTPlayerState *state = SGPlayerState();
     if (state.isPaused || !state.isPlaying || ![player respondsToSelector:@selector(pause:)]) return;

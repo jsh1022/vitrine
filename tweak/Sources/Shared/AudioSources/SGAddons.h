@@ -4,6 +4,7 @@
 #define SGKeyAddonPlaybackMode @"spotifyglass.redesign.sources.playbackMode"
 #define SGKeyAddonAutoSwitch @"spotifyglass.redesign.sources.autoSwitch"
 #define SGKeyAddonPrefetchCellular @"spotifyglass.redesign.sources.prefetchCellular"
+#define SGKeyAddonPrefetchEnabled @"spotifyglass.redesign.sources.prefetchEnabled"
 #define SGKeyAddonWaitSeconds @"spotifyglass.redesign.sources.waitSeconds"
 typedef NS_ENUM(NSInteger, SGAddonPlaybackStrategy) {
     SGAddonPlaybackFast, SGAddonPlaybackContinuous, SGAddonPlaybackPrefer,
@@ -17,6 +18,11 @@ void SGAddonFinishPlaybackWait(void);
 
 // Main thread. URLs and profile text live only in Keychain.
 NSArray<NSDictionary *> *SGAddonSources(void);
+NSArray<NSDictionary *> *SGAddonEnabledSources(void);
+BOOL SGAddonSetSourceEnabled(NSString *identifier, BOOL enabled);
+BOOL SGAddonMoveSource(NSString *identifier, NSUInteger index);
+void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *error));
+UIViewController *SGAddonSourcesPage(void);
 BOOL SGAddonAddSource(NSString *input);
 BOOL SGAddonRemoveSource(NSString *identifier);
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *status));

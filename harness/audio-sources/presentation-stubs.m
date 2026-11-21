@@ -60,6 +60,7 @@ BOOL SGAddonAddSource(NSString *input) { return NO; }
 BOOL SGAddonRemoveSource(NSString *identifier) { return YES; }
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) { completion(@"Test result"); }
 void SGAddonRetryCurrentTrack(void) {}
+void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {}
 NSString *SGAddonStatus(void) { return @"Idle"; }
 NSString *SGAddonStatusSummary(void) { return @"Idle"; }
 SGAddonPreparationState SGPresentationPreparation;
@@ -148,3 +149,6 @@ NSInteger SGInt(NSString *key, NSInteger fallback) { return fallback; }
 void SGSetInt(NSString *key, NSInteger value) {}
 BOOL SGRedesignedUIStored(void) { return SGRedesignedUI(); }
 BOOL SGStreamQuality(NSInteger *metered, NSInteger *nonMetered) { if (!SGPresentationNativePCM) return NO; *metered = 1; *nonMetered = 4; return YES; }
+
+// This harness exercises the parent settings presentation; source management is a separate page.
+UIViewController *SGAddonSourcesPage(void) { return [UIViewController new]; }

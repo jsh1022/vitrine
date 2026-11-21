@@ -154,7 +154,7 @@ static dispatch_queue_t sg_storeQueue;
         if (!uri.length || !item.trackTitle.length || !item.artistName.length) continue;
         [upcomingTracks addObject:@{@"uri":uri, @"title":item.trackTitle, @"artist":item.artistName,
                                     @"duration":@([item.metadata[@"duration"] doubleValue] / 1000)}];
-        if (upcomingTracks.count == 4) break;
+        if (upcomingTracks.count == 1) break;
     }
     SGAddonUpdateUpcoming(upcomingTracks);
     if (!_path || _busy || SGLosslessPlaying()) return;

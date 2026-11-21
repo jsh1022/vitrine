@@ -38,13 +38,32 @@ static BOOL save(NSArray *sources) {
     NSData *data = [NSJSONSerialization dataWithJSONObject:sources options:0 error:NULL];
     return data && SGSaveSourceSecret(@"addons", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
 }
+NSArray<NSDictionary *> *SGAddonEnabledSources(void) {
+    return [SGAddonSources() filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *source, NSDictionary *bindings) {
+        return ![source[@"enabled"] isEqual:@NO];
+    }]];
+}
+BOOL SGAddonSetSourceEnabled(NSString *identifier, BOOL enabled) {
+    NSMutableArray *sources = [SGAddonSources() mutableCopy];
+    NSUInteger index = [sources indexOfObjectPassingTest:^BOOL(NSDictionary *source, NSUInteger i, BOOL *stop) { return [source[@"id"] isEqual:identifier]; }];
+    if (index == NSNotFound) return NO;
+    NSMutableDictionary *source = [sources[index] mutableCopy]; source[@"enabled"] = @(enabled); sources[index] = source;
+    BOOL ok = save(sources); if (ok) SGAddonRetryCurrentTrack(); return ok;
+}
+BOOL SGAddonMoveSource(NSString *identifier, NSUInteger index) {
+    NSMutableArray *sources = [SGAddonSources() mutableCopy];
+    NSUInteger old = [sources indexOfObjectPassingTest:^BOOL(NSDictionary *source, NSUInteger i, BOOL *stop) { return [source[@"id"] isEqual:identifier]; }];
+    if (old == NSNotFound || index >= sources.count) return NO;
+    id source = sources[old]; [sources removeObjectAtIndex:old]; [sources insertObject:source atIndex:index];
+    BOOL ok = save(sources); if (ok) SGAddonRetryCurrentTrack(); return ok;
+}
 BOOL SGAddonAddSource(NSString *input) {
     NSURL *url = SGAddonBaseURL(input);
     if (!url) return NO;
     NSMutableArray *sources = [SGAddonSources() mutableCopy];
     if (sources.count >= 8) return NO;
     for (NSDictionary *source in sources) if ([source[@"url"] isEqual:url.absoluteString]) return YES;
-    [sources addObject:@{@"id": NSUUID.UUID.UUIDString, @"url": url.absoluteString}];
+    [sources addObject:@{@"id": NSUUID.UUID.UUIDString, @"url": url.absoluteString, @"enabled": @YES}];
     BOOL ok = save(sources);
     if (ok) SGAddonRetryCurrentTrack();
     return ok;
@@ -281,6 +300,23 @@ static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation)
     id value = response ? [NSJSONSerialization JSONObjectWithData:response.body options:0 error:NULL] : nil;
     return [value isKindOfClass:NSDictionary.class] ? value : nil;
 }
+static void rememberSourceInfo(NSDictionary *source, NSDictionary *manifest) {
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    for (NSString *key in @[@"name", @"description", @"version"]) {
+        id value = manifest[key];
+        if ([value isKindOfClass:NSString.class]) info[key] = [value substringToIndex:MIN([value length], [key isEqual:@"description"] ? 1000 : 160)];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSMutableArray *sources = [SGAddonSources() mutableCopy];
+        for (NSUInteger i = 0; i < sources.count; i++) {
+            NSDictionary *current = sources[i];
+            if (![current[@"id"] isEqual:source[@"id"]] || ![current[@"url"] isEqual:source[@"url"]]) continue;
+            NSMutableDictionary *updated = [current mutableCopy]; [updated addEntriesFromDictionary:info];
+            if (![updated isEqual:current]) { sources[i] = updated; save(sources); }
+            break;
+        }
+    });
+}
 static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     initialize();
     NSString *identifier = source[@"id"];
@@ -288,6 +324,7 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     if ([cached[@"until"] doubleValue] > NSDate.date.timeIntervalSince1970) return cached[@"value"];
     NSDictionary *value = json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"manifest.json"], @{}), identifier, generation);
     if (!value) return nil;
+    rememberSourceInfo(source, value);
     if (!SGAddonManifestSupported(value)) {
         sg_failure = [value[@"bitchordAuth"] isEqual:@YES]
             ? @"공식 BitChord 앱 인증이 필요합니다. Vitrine용으로 허용된 인증 방법이 없어 연결할 수 없습니다."
@@ -296,6 +333,18 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     }
     sg_manifests[identifier] = @{@"value": value, @"until": @(NSDate.date.timeIntervalSince1970 + 600)};
     return value;
+}
+void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *)) {
+    NSDictionary *selected = nil;
+    for (NSDictionary *source in SGAddonSources()) if ([source[@"id"] isEqual:identifier]) { selected = source; break; }
+    if (!selected) { if (completion) completion(@"소스를 찾을 수 없습니다."); return; }
+    uint64_t generation = atomic_load(&sg_generation);
+    dispatch_async(worker(), ^{
+        sg_failure = nil;
+        NSDictionary *value = manifest(selected, generation);
+        NSString *error = value ? nil : (sg_failure ?: @"소스 정보를 불러오지 못했습니다.");
+        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(error); });
+    });
 }
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
     NSArray *sources = SGAddonSources();
@@ -420,9 +469,9 @@ static void discard(NSDictionary *entry) {
     if (entry[@"path"]) [NSFileManager.defaultManager removeItemAtPath:entry[@"path"] error:NULL];
 }
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration, void (^completion)(NSString *)) {
-    if (!SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() == SGAddonPlaybackFast || !SGAddonSources().count) { completion(nil); return; }
+    if (!SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() == SGAddonPlaybackFast || !SGAddonEnabledSources().count) { completion(nil); return; }
     uint64_t generation = atomic_load(&sg_generation);
-    NSArray *sources = SGAddonSources();
+    NSArray *sources = SGAddonEnabledSources();
     BOOL lookup = SGAddonAllowsCurrentLookup();
     double wait = SGAddonPlaybackMode() == SGAddonPlaybackPrefer ? MAX(5, MIN(30, SGInt(SGKeyAddonWaitSeconds, 10))) : 0;
     sg_status = @"일치하는 녹음 검색 중";
@@ -455,13 +504,13 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
     });
 }
 void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
-    if (!SGRedesignedUI() || !SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() != SGAddonPlaybackContinuous) tracks = @[];
-    if (tracks.count > 4) tracks = [tracks subarrayWithRange:NSMakeRange(0, 4)];
+    if (!SGRedesignedUI() || !SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() != SGAddonPlaybackContinuous || !SGFlag(SGKeyAddonPrefetchEnabled, YES)) tracks = @[];
+    if (tracks.count > 1) tracks = [tracks subarrayWithRange:NSMakeRange(0, 1)];
     if ([tracks isEqual:sg_upcomingPlan]) return;
     sg_upcomingPlan = [tracks copy];
     uint64_t plan = atomic_fetch_add(&sg_prefetchGeneration, 1) + 1;
     uint64_t generation = atomic_load(&sg_generation);
-    NSArray *sources = SGAddonSources(), *upcoming = [tracks copy];
+    NSArray *sources = SGAddonEnabledSources(), *upcoming = [tracks copy];
     dispatch_async(worker(), ^{
         if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation)) return;
         if (!sg_prepared) sg_prepared = [NSMutableDictionary dictionary];
