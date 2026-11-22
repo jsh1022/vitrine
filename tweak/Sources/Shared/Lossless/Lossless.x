@@ -11,7 +11,6 @@
 #import "SGLosslessStore.h"
 #import "LosslessQuality.h"
 #import "Shared/AudioSources/SGAddons.h"
-#import "Shared/AudioSources/SGStandalonePlayback.h"
 
 static const int kTries = 3;            // failed anchors in a row before waiting for the next change of source
 static const double kRetrySeconds = 2;
@@ -22,8 +21,7 @@ static dispatch_queue_t sg_storeQueue;
 @end
 
 @implementation SGLosslessCoordinator {
-    NSString *_track, *_path, *_trackUID;
-    BOOL _standaloneIntent, _standaloneFailed;
+    NSString *_track, *_path;
     NSArray *_upcomingIdentity, *_queueUpcoming;
     id _queueFetch;
     uint64_t _queueFetchSerial;
@@ -37,7 +35,7 @@ static dispatch_queue_t sg_storeQueue;
     uint64_t _gaveUpEpoch;
     double _retryAt;
     BOOL _addonAsked;
-    uint64_t _occurrence, _standaloneCommand;
+    uint64_t _occurrence;
 }
 // state.future is only a short window on Spotify 9.1.90. The complete native
 // queue API is also used by PlayerHistory; query it locally, never reconstruct a playlist.
@@ -48,7 +46,8 @@ static dispatch_queue_t sg_storeQueue;
         ++_queueFetchSerial; _queuePending=NO; _queueFetch=nil; _queueUpcoming=nil; _upcomingIdentity=nil;
         SGAddonUpdateUpcoming(@[]); return;
     }
-    NSArray *identity=@[SGURIString(state.track.URI) ?: @"", _trackUID ?: @"",
+    NSString *trackUID=[state.track respondsToSelector:NSSelectorFromString(@"UID")] ? [state.track valueForKey:@"UID"] : @"";
+    NSArray *identity=@[SGURIString(state.track.URI) ?: @"", trackUID ?: @"",
         SGURIString(state.contextURI) ?: @"", @(state.options.shufflingContext), [fallback valueForKey:@"uri"]];
     if (![_upcomingIdentity isEqual:identity]) {
         _upcomingIdentity=identity; _queueUpcoming=nil; _queueFetchedAt=0;
@@ -99,16 +98,11 @@ static dispatch_queue_t sg_storeQueue;
         _failures = 0; _gaveUpEpoch = 0; _retryAt = 0;
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     }
-    _addonAsked = NO; _standaloneFailed=NO;
+    _addonAsked = NO;
     [self tick];
 }
-- (void)standaloneFailed:(NSNotification *)note {
-    if ([_path isEqual:note.object]) { _standaloneFailed=YES; _standaloneIntent=NO; }
-}
 - (void)downloadFinished:(NSNotification *)note {
-    if (![_path isEqual:note.object]) return;
-    _standaloneFailed=NO;
-    if (SGLosslessPlaying()) return;
+    if (![_path isEqual:note.object] || SGLosslessPlaying()) return;
     // A native parser that could not use the growing prefix gets a complete-file retry,
     // without resolving the URL or downloading the recording again.
     _failures=0; _gaveUpEpoch=0; _retryAt=0;
@@ -130,17 +124,11 @@ static dispatch_queue_t sg_storeQueue;
 
 - (void)tick {
     SPTPlayerState *state = SGPlayerState();
+    if (state.isPlaying && !state.isPaused && fabs(state.playbackSpeed-1)<.001 && !SGSingOn()) SGLosslessBeginCapture();
     if (state.isPlaying && !state.isPaused && [SGWiredOutputStatus()[@"state"] isEqualToString:@"Restore pending"])
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     NSString *track = SGURIString(state.track.URI);
-    NSString *trackUID=[state.track respondsToSelector:NSSelectorFromString(@"UID")] ? [state.track valueForKey:@"UID"] : @"";
-    if ([track isEqualToString:_track] && SGStandaloneRecovering(track)) _trackUID=trackUID;
-    if (![track isEqualToString:_track] || ![trackUID isEqualToString:_trackUID]) {
-        SGStandaloneCancel();
-        _standaloneIntent=SGStandaloneTakeStartIntent(track);
-        _standaloneCommand=SGStandaloneCommandEpoch();
-        _standaloneFailed=NO;
-        _trackUID=trackUID;
+    if (![track isEqualToString:_track]) {
         SGAddonCancel();
         ++_occurrence;
         _addonAsked = NO;
@@ -206,9 +194,9 @@ static dispatch_queue_t sg_storeQueue;
     }
     if (!_nextLooking) SGLosslessLowerQuality(_nextHas);
 
-    // Addons retain their existing validation and network policy. Redesigned playback uses
-    // an independent output; Native and imported files retain sound correlation.
-    if (SGFlag(SGKeyAddons, NO) && SGAddonPlaybackMode() != SGAddonPlaybackFast && !_path && _looked && !_addonAsked && track && state.isPlaying && (!state.isPaused || _standaloneIntent) &&
+    // An addon prepares a bounded complete file while Spotify continues. The existing sound
+    // correlation, source epoch and normal-speed/Karaoke checks still own the actual handoff.
+    if (SGFlag(SGKeyAddons, NO) && SGAddonPlaybackMode() != SGAddonPlaybackFast && !_path && _looked && !_addonAsked && track && state.isPlaying && !state.isPaused &&
         state.duration > 0 && state.track.trackTitle.length && state.track.artistName.length) {
         _addonAsked = YES;
         uint64_t occurrence = _occurrence;
@@ -218,12 +206,7 @@ static dispatch_queue_t sg_storeQueue;
                 if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
                 return;
             }
-            if (path && SGStandaloneEligible()) {
-                if (SGAddonTakePlaybackWait(track)) {
-                    self->_standaloneIntent=YES; self->_standaloneCommand=SGStandaloneCommandEpoch();
-                }
-            }
-            else SGAddonFinishPlaybackWait();
+            SGAddonFinishPlaybackWait();
             if (path) { self->_path = path; [self tick]; }
         });
     }
@@ -240,22 +223,6 @@ static dispatch_queue_t sg_storeQueue;
     }
     [self updateUpcoming:upcomingTracks state:state];
     if (!_path || _busy || SGLosslessPlaying()) return;
-    if (_standaloneIntent && _standaloneCommand!=SGStandaloneCommandEpoch()) _standaloneIntent=NO;
-    BOOL addonPath=[_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"];
-    if (addonPath && SGStandaloneEligible()) {
-        if (_standaloneFailed || SGStandaloneBusy(track) || !state.isPlaying || (state.isPaused && !_standaloneIntent)) return;
-        BOOL localPauseLease=_standaloneIntent;
-        _standaloneIntent=NO; _busy=YES;
-        uint64_t occurrence=_occurrence;
-        SGAddonSetPlaybackStatus(@"자체 무손실 엔진 준비 중",NO);
-        SGStandaloneStart(_path,track,localPauseLease,^(BOOL success) {
-            self->_busy=NO;
-            if (occurrence!=self->_occurrence) return;
-            self->_standaloneFailed=!success;
-            if (!success) SGAddonSetPlaybackUnavailable();
-        });
-        return;
-    }
     if (!state.isPlaying || state.isPaused || fabs(state.playbackSpeed - 1) > 0.001 || SGSingOn()) return;
     uint64_t epoch = SGPlayerSourceEpoch();
     if (_gaveUpEpoch && _gaveUpEpoch == epoch) return;
@@ -310,7 +277,6 @@ static dispatch_queue_t sg_storeQueue;
         coordinator = [SGLosslessCoordinator new];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(retryAddons:) name:SGAddonRetryNotification object:nil];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(downloadFinished:) name:SGAddonDownloadFinishedNotification object:nil];
-        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(standaloneFailed:) name:SGStandaloneFailedNotification object:nil];
         SGAddPlayerStateObserver(coordinator);
     });
 }

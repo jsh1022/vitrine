@@ -1,0 +1,182 @@
+#import <Foundation/Foundation.h>
+#import <AudioToolbox/AudioToolbox.h>
+#import <stdatomic.h>
+#import <math.h>
+#import <unistd.h>
+#import "Shared/Player/SpeedPitch.h"
+#import "Shared/Lossless/SGLossless.h"
+#import "Shared/AudioSources/SGProgressiveFLAC.h"
+
+// These APIs are implemented by SGLosslessEngine.m. They are deliberately kept in this harness
+// until the rolling-capture / upcoming-file API is ready to become part of the public header.
+extern void SGLosslessBeginCapture(void);
+extern void SGLosslessPrepareNext(NSString * _Nullable path, double rate);
+
+static SGPlayerSourceSelector selectorCallback;
+static _Atomic uint64_t sourceEpoch = 1;
+static AudioUnit const fakeOutput = (AudioUnit)(uintptr_t)0x1234;
+static atomic_bool driving;
+static atomic_uint_fast64_t fedFrames;
+static dispatch_semaphore_t driverStopped;
+static float *fixtureLeft, *fixtureRight;
+static uint64_t fixtureFrames;
+static uint64_t fixtureStart;
+static float fixtureScale = 0.5f;
+
+void SGPlayerSetSourceSelector(SGPlayerSourceSelector callback) { selectorCallback = callback; }
+uint64_t SGPlayerSourceEpoch(void) { return atomic_load(&sourceEpoch); }
+void SGPlayerInvalidateSource(void) { atomic_fetch_add(&sourceEpoch, 1); }
+BOOL SGWiredOutputPreserveLevel(void) { return NO; }
+NSDictionary *SGMeasureLosslessFile(NSString *path, double duration) { return @{}; }
+
+static void require(BOOL ok, NSString *message) {
+    NSLog(@"%@ %@", ok ? @"PASS:" : @"FAIL:", message);
+    if (!ok) exit(1);
+}
+
+static BOOL decodeFixture(NSString *path) {
+    ExtAudioFileRef file = NULL;
+    if (ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file)) return NO;
+    UInt32 size = sizeof(SInt64);
+    SInt64 count = 0; size = sizeof count;
+    if (ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &size, &count) || count <= 0) {
+        ExtAudioFileDispose(file); return NO;
+    }
+    AudioStreamBasicDescription client = {44100, kAudioFormatLinearPCM,
+        kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved, 4, 1, 4, 2, 32, 0};
+    if (ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, sizeof client, &client)) {
+        ExtAudioFileDispose(file); return NO;
+    }
+    fixtureFrames = (uint64_t)count;
+    fixtureLeft = calloc(fixtureFrames, sizeof(float)); fixtureRight = calloc(fixtureFrames, sizeof(float));
+    if (!fixtureLeft || !fixtureRight) { ExtAudioFileDispose(file); return NO; }
+    struct { AudioBufferList list; AudioBuffer second; } buffers = {{2, {{1, (UInt32)(fixtureFrames * 4), fixtureLeft}}},
+                                                                    {1, (UInt32)(fixtureFrames * 4), fixtureRight}};
+    UInt32 got = (UInt32)fixtureFrames;
+    OSStatus status = ExtAudioFileRead(file, &got, &buffers.list);
+    ExtAudioFileDispose(file);
+    return !status && got == fixtureFrames;
+}
+
+static void feed(void) {
+    @autoreleasepool {
+        enum { n = 512 };
+        float left[n], right[n];
+        struct { AudioBufferList list; AudioBuffer second; } data = {{2, {{1, sizeof left, left}}},
+                                                                      {1, sizeof right, right}};
+        uint64_t frame = 0;
+    while (atomic_load(&driving)) {
+            for (UInt32 i = 0; i < n; i++) {
+                uint64_t f = fixtureStart + frame + i;
+                if (f >= fixtureFrames) f %= fixtureFrames;
+                left[i] = fixtureLeft[f] * fixtureScale;
+                right[i] = fixtureRight[f] * fixtureScale;
+            }
+            if (selectorCallback) selectorCallback(fakeOutput, SGPlayerSourceEpoch(), (double)frame,
+                                                   44100, n, &data.list);
+            frame += n;
+            atomic_store(&fedFrames, frame);
+            usleep((useconds_t)((double)n * 1000000.0 / 44100.0));
+        }
+        dispatch_semaphore_signal(driverStopped);
+    }
+}
+
+static void startDriver(void) {
+    atomic_store(&fedFrames, 0);
+    atomic_store(&driving, true);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ feed(); });
+}
+
+static void stopDriver(void) {
+    atomic_store(&driving, false);
+    require(dispatch_semaphore_wait(driverStopped, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0,
+            @"virtual output driver stops cleanly");
+}
+
+static void waitForHistory(void) {
+    const uint64_t target = (uint64_t)ceil(4.2 * 44100.0);
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:10.0];
+    while (atomic_load(&fedFrames) < target && deadline.timeIntervalSinceNow > 0) usleep(10000);
+    require(atomic_load(&fedFrames) >= target, @"virtual output fills at least 4.2 seconds of history before the bounded deadline");
+}
+
+static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
+    __block NSDictionary *result;
+    __block NSString *failure;
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        result = SGLosslessAnchor(path, hint, &failure);
+        dispatch_semaphore_signal(done);
+    });
+    require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 12 * NSEC_PER_SEC)) == 0,
+            @"anchor finishes within the bounded simulator run");
+    if (error) *error = failure;
+    return result;
+}
+
+int main(int argc, const char *argv[]) { @autoreleasepool {
+    require(argc == 3, @"usage: anchor-sim fixture.flac wrong.flac");
+    NSString *path = @(argv[1]), *wrong = @(argv[2]);
+    require(decodeFixture(path), @"decode deterministic FLAC fixture for virtual Spotify output");
+    driverStopped = dispatch_semaphore_create(0);
+    // Use a nonzero offset so the test proves correlation, rather than a start-of-file shortcut.
+    fixtureStart = 8 * 44100;
+    require(fixtureStart + 4 * 44100 < fixtureFrames, @"fixture is long enough for the anchor window");
+    SGLosslessBeginCapture();
+    startDriver();
+    // Keep native output flowing through the 4 s window; BeginCapture should retain its rolling tail.
+    waitForHistory();
+    double currentHint = fixtureStart / 44100.0 + atomic_load(&fedFrames) / 44100.0;
+    NSString *error = nil;
+    NSDictionary *result = anchor(path, currentHint, &error);
+    NSLog(@"RESULT rolling-anchor: %@ error=%@", result, error);
+    require(result != nil, [NSString stringWithFormat:@"same recording anchors (%@)", error ?: @"no error"]);
+    require([result[@"match"] doubleValue] >= 0.8, @"normalized correlation exceeds the production threshold");
+    require(fabs([result[@"file_frame"] doubleValue] - (fixtureStart + [result[@"source_frame"] doubleValue])) < 2.0,
+            @"known recording offset is recovered within two frames");
+    require(fabs([result[@"gain"] doubleValue] - fixtureScale) < 0.02, @"alignment gain matches the virtual output level");
+    require([result[@"capture_reused_s"] doubleValue] >= 3.9, @"anchor reuses the rolling native capture instead of recording another four seconds");
+    require([result[@"search_scope"] isEqual:@"hint"], @"hinted match stays in the local search window");
+
+    // A prepared upcoming file should be reused at anchor time. The engine owns its own bounded cache.
+    stopDriver();
+    SGLosslessStop(YES);
+    fixtureStart = 0;
+    SGLosslessBeginCapture();
+    startDriver();
+    SGLosslessPrepareNext(path, 44100);
+    usleep(1000000);
+    waitForHistory();
+    currentHint = atomic_load(&fedFrames) / 44100.0;
+    error = nil;
+    NSDictionary *prepared = anchor(path, currentHint, &error);
+    NSLog(@"RESULT prepared-anchor: %@ error=%@", prepared, error);
+    require(prepared && [prepared[@"predecoded"] boolValue], @"prepared next file is reused by anchor");
+    require([prepared[@"decoded_frames"] unsignedLongLongValue] == 0,
+            @"predecoded prefix avoids another file decode during anchor");
+
+    // A source epoch transition must invalidate all buffered samples before another anchor.
+    SGPlayerInvalidateSource();
+    SGLosslessBeginCapture();
+    error = nil;
+    currentHint = atomic_load(&fedFrames) / 44100.0;
+    NSDictionary *afterEpoch = anchor(path, currentHint, &error);
+    NSLog(@"RESULT epoch-anchor: %@ error=%@", afterEpoch, error);
+    require(afterEpoch != nil, [NSString stringWithFormat:@"same recording reanchors after epoch change (%@)", error ?: @"no error"]);
+    require(fabs([afterEpoch[@"file_frame"] doubleValue] - [afterEpoch[@"source_frame"] doubleValue]) < 2.0,
+            @"epoch reset reanchors at the recording's actual frame");
+    require([afterEpoch[@"capture_reused_s"] doubleValue] < 0.5,
+            @"epoch invalidation discards stale rolling history");
+
+    // An independent recording must not pass correlation after a fresh source epoch.
+    SGPlayerInvalidateSource();
+    SGLosslessBeginCapture();
+    currentHint = atomic_load(&fedFrames) / 44100.0;
+    NSDictionary *wrongResult = anchor(wrong, currentHint, &error);
+    require(!wrongResult, @"an unrelated recording is rejected by the production threshold");
+    require(error != nil, @"wrong-recording rejection reports a reason");
+    stopDriver();
+    SGLosslessStop(YES);
+    NSLog(@"PASS: actual lossless engine rolling capture, local correlation and prepared-file path");
+} return 0; }

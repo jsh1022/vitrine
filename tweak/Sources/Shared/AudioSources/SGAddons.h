@@ -9,16 +9,13 @@
 typedef NS_ENUM(NSInteger, SGAddonPlaybackStrategy) {
     SGAddonPlaybackFast, SGAddonPlaybackContinuous, SGAddonPlaybackPrefer,
 };
-enum { SGAddonPrefetchMaxTracks = 4 };
+enum { SGAddonPrefetchMaxTracks = 3 };
 SGAddonPlaybackStrategy SGAddonPlaybackMode(void);
 BOOL SGAddonAllowsCurrentLookup(void);
 // Main thread. The entries contain uri/title/artist/duration, never provider credentials.
 void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks);
 void SGAddonBeginPlaybackWait(NSString *uri);
 void SGAddonFinishPlaybackWait(void);
-// Consume only an unchanged automatic pause lease, without resuming Spotify. Main only.
-BOOL SGAddonTakePlaybackWait(NSString *uri);
-BOOL SGAddonHasPrepared(NSString *uri);
 
 // Main thread. URLs and profile text live only in Keychain.
 NSArray<NSDictionary *> *SGAddonSources(void);

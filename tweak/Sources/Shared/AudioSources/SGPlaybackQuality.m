@@ -1,5 +1,4 @@
 #import "SGPlaybackQuality.h"
-#import "SGStandalonePlayback.h"
 #import "SGAddons.h"
 #import "SGAudioPresentation.h"
 #import "Shared/Lossless/SGLossless.h"
@@ -15,7 +14,7 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
     double rate = [info[@"rate"] doubleValue];
     NSInteger bits = [info[@"bits"] integerValue];
     AudioStreamBasicDescription client = {0};
-    BOOL knownClient = external && info.count && (SGStandaloneActive() ? SGStandaloneOutputFormat(&client) : SGPlayerMusicClientFormat(&client)) && client.mSampleRate > 0;
+    BOOL knownClient = external && info.count && SGPlayerMusicClientFormat(&client) && client.mSampleRate > 0;
     double output = AVAudioSession.sharedInstance.sampleRate;
     // BitChord NerdStats.isHiRes: measured depth > 16 OR measured rate > 48 kHz.
     NSString *quality = external && info.count ? (rate > 48000 || bits > 16 ? @"고해상도 무손실" : @"무손실") : @"확인 불가";
