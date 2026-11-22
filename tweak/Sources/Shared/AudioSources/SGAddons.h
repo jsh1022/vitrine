@@ -40,10 +40,13 @@ NSString *SGAddonStatusSummary(void);
 typedef NS_ENUM(NSInteger, SGAddonPreparationState) {
     SGAddonPreparationIdle, SGAddonPreparationSearching, SGAddonPreparationAligning,
     SGAddonPreparationAligned, SGAddonPreparationUnavailable,
+    SGAddonPreparationDownloading, SGAddonPreparationDecoding,
 };
 SGAddonPreparationState SGAddonPreparation(void);
 void SGAddonSetPlaybackUnavailable(void);
 void SGAddonSetPlaybackStatus(NSString *status, BOOL aligned);
+// Main-thread presentation only; does not change playback or network policy.
+void SGAddonSetPreparationStage(SGAddonPreparationState stage, NSString *status);
 NSDictionary *SGAddonMediaInfo(void);
 NSDictionary *SGMeasureLosslessFile(NSString *path, double duration);
 UIViewController *SGAudioSourcesPage(void);

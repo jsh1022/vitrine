@@ -262,6 +262,7 @@ static float *readMono(Reader *reader, int64_t from, uint32_t count) {
 #pragma mark - the anchor's queue owns these
 
 static dispatch_queue_t sg_queue;
+static void (^sg_anchorProgress)(SGLosslessPreparationPhase);
 static NSString *sg_path;
 static Reader sg_reader;                    // for searches and checks
 static float *sg_coarse;                    // the file's mono at 1/kCoarse of the rate
@@ -391,6 +392,7 @@ static BOOL takeWarm(NSString *path, double rate) {
     return YES;
 }
 static BOOL loadWindow(NSString *path, double rate, double fromSeconds, double toSeconds, NSString **error) {
+    if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseDecode);
     BOOL same=sg_reader.file && [sg_path isEqual:path] && sg_reader.rate==rate;
     if (same && sg_reader.owner && (sg_reader.epoch!=SGPlayerSourceEpoch() || sg_reader.generation!=atomic_load(&sg_generation))) same=NO;
     if (!same && !takeWarm(path,rate)) {
@@ -551,6 +553,7 @@ static void stopPlaying(void) {
 static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     SGLosslessBeginCapture();
     stopPlaying();
+    if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseCapture);
     if (!record(kAnchorSeconds, error)) return nil;
     if (sg_capEpoch!=SGPlayerSourceEpoch()) { *error=@"the source changed before decoding"; return nil; }
     double rate=sg_capRate;
@@ -565,6 +568,7 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     if (from+sg_capLength>=sg_reader.frames) { *error=@"Spotify plays past the end of the file"; return nil; }
     float score=0,gain=0;
     NSString *scope=captureHint>=0 ? @"hint" : @"wide";
+    if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
     uint64_t lag=search(from,to,&score,&gain);
     if (score<kMinMatch && captureHint>=0 && sg_capEpoch==SGPlayerSourceEpoch()) {
         // Complete files may search globally; a growing source expands only around the hint.
@@ -573,6 +577,7 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
         toSeconds=growing ? captureHint+4*kHintWindow+kAnchorSeconds : -1;
         if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
         from=(uint64_t)(fromSeconds*rate); to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
+        if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
         lag=search(from,to,&score,&gain); scope=@"wide";
     }
     double took = CFAbsoluteTimeGetCurrent() - start;
@@ -651,12 +656,19 @@ void SGLosslessBeginCapture(void) {
     });
 }
 
-NSDictionary *SGLosslessAnchor(NSString *path, double hintSeconds, NSString **error) {
+NSDictionary *SGLosslessAnchorWithProgress(NSString *path, double hintSeconds,
+    void (^progress)(SGLosslessPreparationPhase), NSString **error) {
     __block NSDictionary *result;
     __block NSString *failure;
-    dispatch_sync(queue(), ^{ NSString *e; result = anchor(path, hintSeconds, &e); failure = e; });
-    *error = failure;
-    return result;
+    dispatch_sync(queue(), ^{
+        sg_anchorProgress=[progress copy];
+        @try { NSString *e=nil; result=anchor(path,hintSeconds,&e); failure=e; }
+        @finally { sg_anchorProgress=nil; }
+    });
+    *error=failure; return result;
+}
+NSDictionary *SGLosslessAnchor(NSString *path, double hintSeconds, NSString **error) {
+    return SGLosslessAnchorWithProgress(path,hintSeconds,nil,error);
 }
 
 NSDictionary *SGLosslessCheck(NSString **error) {

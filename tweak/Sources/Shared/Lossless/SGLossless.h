@@ -17,6 +17,12 @@ void SGLosslessPrepareNext(NSString *_Nullable path, double rate);
 // Decodes the hint's +/-8 s neighborhood first; failed correlation widens the search. Complete files may
 // search globally; growing FLAC expands only to +/-32 s. Retains the decoded window until another path or Stop(YES). Nil with *error when Spotify's sound does not match the file or the source changed.
 NSDictionary *_Nullable SGLosslessAnchor(NSString *path, double hintSeconds, NSString *_Nullable *_Nonnull error);
+typedef NS_ENUM(NSInteger, SGLosslessPreparationPhase) {
+    SGLosslessPhaseCapture, SGLosslessPhaseDecode, SGLosslessPhaseMatch,
+};
+// Progress runs on the serial anchor worker, never on render. The original API remains available.
+NSDictionary *_Nullable SGLosslessAnchorWithProgress(NSString *path, double hintSeconds,
+    void (^_Nullable progress)(SGLosslessPreparationPhase phase), NSString *_Nullable *_Nonnull error);
 // Off the main thread: the offset in frames between Spotify's sound and the file where the anchor puts it.
 NSDictionary *_Nullable SGLosslessCheck(NSString *_Nullable *_Nonnull error);
 // Spotify's own sound again; `release` also frees the decoded file.

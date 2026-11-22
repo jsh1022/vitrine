@@ -13,6 +13,8 @@ extern void SGLosslessBeginCapture(void);
 extern void SGLosslessPrepareNext(NSString * _Nullable path, double rate);
 
 static SGPlayerSourceSelector selectorCallback;
+static NSArray<NSNumber *> *lastPhases;
+static BOOL progressOnMain;
 static _Atomic uint64_t sourceEpoch = 1;
 static AudioUnit const fakeOutput = (AudioUnit)(uintptr_t)0x1234;
 static atomic_bool driving;
@@ -106,7 +108,13 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     __block NSString *failure;
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        result = SGLosslessAnchor(path, hint, &failure);
+        NSMutableArray *phases=[NSMutableArray array];
+        progressOnMain=NO;
+        result = SGLosslessAnchorWithProgress(path,hint,^(SGLosslessPreparationPhase phase) {
+            [phases addObject:@(phase)];
+            if (NSThread.isMainThread) progressOnMain=YES;
+        },&failure);
+        lastPhases=[phases copy];
         dispatch_semaphore_signal(done);
     });
     require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 12 * NSEC_PER_SEC)) == 0,
@@ -138,6 +146,9 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     require(fabs([result[@"gain"] doubleValue] - fixtureScale) < 0.02, @"alignment gain matches the virtual output level");
     require([result[@"capture_reused_s"] doubleValue] >= 3.9, @"anchor reuses the rolling native capture instead of recording another four seconds");
     require([result[@"search_scope"] isEqual:@"hint"], @"hinted match stays in the local search window");
+    require([lastPhases isEqual:@[@(SGLosslessPhaseCapture),@(SGLosslessPhaseDecode),@(SGLosslessPhaseMatch)]],
+            @"progress reports real capture, decode and correlation phases in order");
+    require(!progressOnMain,@"preparation progress never runs on main or changes the audio render callback");
 
     // A prepared upcoming file should be reused at anchor time. The engine owns its own bounded cache.
     stopDriver();

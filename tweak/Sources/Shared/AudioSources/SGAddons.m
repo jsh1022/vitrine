@@ -95,7 +95,9 @@ NSString *SGAddonStatus(void) { return sg_status; }
 NSString *SGAddonStatusSummary(void) {
     if (SGLosslessRendering()) return @"재생 중";
     switch (sg_preparation) {
-        case SGAddonPreparationSearching: return @"준비 중";
+        case SGAddonPreparationSearching: return @"조회 중";
+        case SGAddonPreparationDownloading: return @"다운로드 중";
+        case SGAddonPreparationDecoding: return @"디코딩 중";
         case SGAddonPreparationAligning: return @"정렬 중";
         case SGAddonPreparationAligned: return @"정렬됨";
         case SGAddonPreparationUnavailable: return @"사용 불가";
@@ -104,6 +106,9 @@ NSString *SGAddonStatusSummary(void) {
 }
 SGAddonPreparationState SGAddonPreparation(void) { return sg_preparation; }
 void SGAddonSetPlaybackUnavailable(void) { sg_preparation = SGAddonPreparationUnavailable; }
+void SGAddonSetPreparationStage(SGAddonPreparationState stage, NSString *status) {
+    sg_status=status; sg_preparation=stage;
+}
 void SGAddonSetPlaybackStatus(NSString *status, BOOL aligned) {
     sg_status = status;
     sg_preparation = aligned ? SGAddonPreparationAligned : SGAddonPreparationAligning;
@@ -389,6 +394,14 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
                         path && !sg_prefix && !sg_background && sg_progressiveReady!=nil);
 }
 
+// Called by the serial addon worker. Old requests and background preparation must
+// never replace the foreground track's display or its post-download alignment stage.
+static void reportPreparation(uint64_t generation, SGAddonPreparationState stage, NSString *status) {
+    if (sg_background || sg_progressiveOffered) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (generation==atomic_load(&sg_generation)) SGAddonSetPreparationStage(stage,status);
+    });
+}
 static BOOL prepareSegmentsWithinDeadline(NSDictionary *stream, NSString *path, NSString *identifier, uint64_t generation) {
     if (sg_prefix) { sg_failure=@"분할 스트림은 Wi-Fi 또는 전체 사전 준비가 허용된 연결에서 준비합니다"; return NO; }
     NSString *transport=SGAddonStreamTransport(stream);
@@ -437,6 +450,7 @@ static BOOL prepareSegmentsWithinDeadline(NSDictionary *stream, NSString *path, 
     }
     [writer closeFile];
     if (ok && !cancelled()) {
+        reportPreparation(generation,SGAddonPreparationDecoding,@"분할 음원 디코딩 및 파일 형식 확인 중");
         // Prefer the ordinary decoder when it understands the complete assembled file.
         if (parts.count==1 && SGMeasureLosslessFile(assembled,[plan[@"duration"] doubleValue])) {
             [files removeItemAtPath:path error:NULL]; ok=[files moveItemAtPath:assembled toPath:path error:NULL];
@@ -589,6 +603,7 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
         NSDictionary *measured = nil;
         for (NSDictionary *source in sources) {
             if (superseded(generation)) break;
+            reportPreparation(generation,SGAddonPreparationSearching,@"애드온 소스 및 일치하는 음원 조회 중");
             NSDictionary *m = manifest(source, generation);
             if (!m) continue;
             NSURL *base = SGAddonBaseURL(source[@"url"]);
@@ -616,6 +631,7 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
                 sg_failure = @"음원 URL이 만료되었습니다. 소스를 갱신하고 다시 시도하세요"; continue;
             }
             sg_progressiveName=[m[@"name"] isKindOfClass:NSString.class] ? m[@"name"] : @"Addon";
+            reportPreparation(generation,SGAddonPreparationDownloading,@"무손실 음원 다운로드 중");
             SGAddonTransfer *download = transport ? nil : fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation, sg_prefix ? nil : prefixEntry);
             if (transport && prepareSegments(stream,path,source[@"id"],generation)) measured=SGMeasureLosslessFile(path,duration);
             else if (download) {
@@ -623,7 +639,10 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
                 if (sg_prefix) {
                     // Prefixes warm a bounded HTTP/file cache only. They are never submitted to the decoder.
                     measured = @{@"trackURI":uri, @"partial":@YES};
-                } else measured = SGMeasureLosslessFile(path, duration);
+                } else {
+                    reportPreparation(generation,SGAddonPreparationDecoding,@"다운로드 완료 · 디코더에서 파일 형식 확인 중");
+                    measured = SGMeasureLosslessFile(path, duration);
+                }
             }
             if (measured) {
                 NSMutableDictionary *info = [measured mutableCopy];
@@ -681,8 +700,8 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (generation!=atomic_load(&sg_generation)) { completion(nil); return; }
                 sg_progressivePath=path; sg_media=info;
-                sg_status=@"FLAC 다운로드 중 · 받은 구간 디코딩 및 정렬 대기 중";
-                sg_preparation=SGAddonPreparationAligning;
+                sg_status=@"FLAC 다운로드 진행 중 · 받은 구간 디코딩 대기 중";
+                sg_preparation=SGAddonPreparationDecoding;
                 completion(path);
             });
         };
@@ -709,8 +728,8 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
             }
             if (generation == atomic_load(&sg_generation)) {
                 sg_media = result[@"info"];
-                sg_status = result ? @"무손실 헤더 확인됨 · 디코딩 및 정렬 대기 중" : failure;
-                sg_preparation = result ? SGAddonPreparationAligning : SGAddonPreparationUnavailable;
+                sg_status = result ? @"파일 검증 완료 · 디코딩 대기 중" : failure;
+                sg_preparation = result ? SGAddonPreparationDecoding : SGAddonPreparationUnavailable;
                 completion(result[@"path"]);
             } else { discard(result); completion(nil); }
         });

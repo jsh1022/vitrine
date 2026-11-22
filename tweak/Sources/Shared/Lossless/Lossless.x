@@ -230,7 +230,7 @@ static dispatch_queue_t sg_storeQueue;
     if (now < _retryAt) return;
 
     _busy = YES;
-    SGAddonSetPlaybackStatus(@"무손실 녹음 디코딩 및 정렬 중", NO);
+    SGAddonSetPreparationStage(SGAddonPreparationAligning,@"정렬 준비 중 · Spotify 소리 수집 대기");
     NSString *path = _path;
     uint64_t occurrence = _occurrence;
     double hint = state.position;
@@ -240,7 +240,17 @@ static dispatch_queue_t sg_storeQueue;
         if (epoch != SGPlayerSourceEpoch()) error = @"the source changed before preparation";
         else {
             SGWiredOutputPrepare(path);
-            anchored = SGLosslessAnchor(path, hint, &error);
+            anchored = SGLosslessAnchorWithProgress(path,hint,^(SGLosslessPreparationPhase phase) {
+                uint64_t source=SGPlayerSourceEpoch();
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (occurrence!=self->_occurrence || ![path isEqual:self->_path] || source!=SGPlayerSourceEpoch()) return;
+                    if (phase==SGLosslessPhaseDecode)
+                        SGAddonSetPreparationStage(SGAddonPreparationDecoding,@"재생 위치 주변 음원 디코딩 중");
+                    else if (phase==SGLosslessPhaseCapture)
+                        SGAddonSetPreparationStage(SGAddonPreparationAligning,@"정렬 중 · Spotify 소리 수집 및 연속 구간 확인 중");
+                    else SGAddonSetPreparationStage(SGAddonPreparationAligning,@"정렬 중 · Spotify 소리와 음원 비교 중");
+                });
+            },&error);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_busy = NO;
