@@ -44,6 +44,13 @@ static dispatch_queue_t sg_storeQueue;
     _addonAsked = NO;
     [self tick];
 }
+- (void)downloadFinished:(NSNotification *)note {
+    if (![_path isEqual:note.object] || SGLosslessPlaying()) return;
+    // A native parser that could not use the growing prefix gets a complete-file retry,
+    // without resolving the URL or downloading the recording again.
+    _failures=0; _gaveUpEpoch=0; _retryAt=0;
+    [self tick];
+}
 
 // Position reports are not change callbacks, and a seek or resume shows only in the source's epoch: while
 // Spotify plays, a tick each second catches those, and a file that arrives while the song before plays.
@@ -211,6 +218,7 @@ static dispatch_queue_t sg_storeQueue;
         static SGLosslessCoordinator *coordinator;
         coordinator = [SGLosslessCoordinator new];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(retryAddons:) name:SGAddonRetryNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(downloadFinished:) name:SGAddonDownloadFinishedNotification object:nil];
         SGAddPlayerStateObserver(coordinator);
     });
 }

@@ -8,6 +8,7 @@
 #import "SGWiredOutput.h"
 #import "SGSourceFileFormat.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGProgressiveFLAC.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/SpeedPitch.h"
 #import <Accelerate/Accelerate.h>
@@ -110,21 +111,28 @@ static void quiesce(void) {
 
 #pragma mark - the file
 
+static _Atomic uint64_t sg_generation; // also revokes blocked growing-file reads
+
 typedef struct {
     ExtAudioFileRef file;
+    CFTypeRef owner;
     double fileRate, rate;
     uint64_t frames;                        // at the client rate
 } Reader;
 
 static void closeReader(Reader *reader) {
     if (reader->file) ExtAudioFileDispose(reader->file);
+    if (reader->owner) CFRelease(reader->owner);
     *reader = (Reader){0};
 }
 
 static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **error) {
     closeReader(reader);
-    ExtAudioFileRef file;
-    if (ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file)) { *error = @"the file does not open"; return NO; }
+    ExtAudioFileRef file=NULL; CFTypeRef owner=NULL;
+    BOOL growing=SGProgressiveFLACRegistered(path);
+    uint64_t epoch=SGPlayerSourceEpoch(), generation=atomic_load(&sg_generation);
+    BOOL opened=growing ? SGProgressiveFLACOpen(path,&file,&owner,^BOOL { return epoch!=SGPlayerSourceEpoch() || generation!=atomic_load(&sg_generation); }) : !ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file);
+    if (!opened) { *error = @"the file does not open"; return NO; }
     AudioStreamBasicDescription source = {0};
     UInt32 size = sizeof source;
     SInt64 frames = 0;
@@ -138,10 +146,11 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
         status = ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, sizeof client, &client);
     if (status || !lossless || source.mChannelsPerFrame != 2 || frames <= 0) {
         ExtAudioFileDispose(file);
+        if (owner) CFRelease(owner);
         *error = @"not supported stereo FLAC, ALAC or WAV/AIFF PCM";
         return NO;
     }
-    *reader = (Reader){file, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate)};
+    *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate)};
     return YES;
 }
 
@@ -179,7 +188,6 @@ static Reader sg_reader;                    // for searches and checks
 static float *sg_coarse;                    // the file's mono at 1/kCoarse of the rate
 static uint64_t sg_coarseCount;
 static _Atomic uint64_t sg_anchorEpoch;
-static _Atomic uint64_t sg_generation;      // the writer stops when this changes
 static atomic_uint sg_writers;              // writers still running
 
 static void drop(void) {
@@ -191,8 +199,11 @@ static void drop(void) {
     @synchronized (NSProcessInfo.processInfo) { sg_sourceInfo = nil; }
 }
 
-static BOOL load(NSString *path, double rate, NSString **error) {
-    if (sg_coarse && [sg_path isEqualToString:path] && sg_reader.rate == rate) return YES;
+static BOOL load(NSString *path, double rate, double hint, NSString **error) {
+    BOOL growing=SGProgressiveFLACRegistered(path) && !SGProgressiveFLACComplete(path);
+    uint64_t needed=growing && isfinite(hint) && hint>=0 ? (uint64_t)ceil((hint+kHintWindow+kAnchorSeconds+8)*rate) : UINT64_MAX;
+    if (sg_coarse && !SGProgressiveFLACRegistered(path) && [sg_path isEqualToString:path] && sg_reader.rate == rate &&
+        sg_coarseCount*kCoarse>=MIN(needed,sg_reader.frames)-MIN((uint64_t)kCoarse,sg_reader.frames)) return YES;
     drop();
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
     if (!openReader(&sg_reader, path, rate, error)) return NO;
@@ -203,18 +214,19 @@ static BOOL load(NSString *path, double rate, NSString **error) {
     if (!bits && source.mFormatID == kAudioFormatAppleLossless && source.mFormatFlags >= 1 && source.mFormatFlags <= 4) {
         const UInt32 depths[] = {0, 16, 20, 24, 32}; bits = depths[source.mFormatFlags];
     }
-    if (!bits) bits = [SGMeasureLosslessFile(path, 0)[@"bits"] unsignedIntValue];
+    if (!bits) bits = [(SGProgressiveFLACInfo(path) ?: SGMeasureLosslessFile(path, 0))[@"bits"] unsignedIntValue];
     NSDictionary *info = @{@"codec": SGSourceFileCodec(source),
         @"rate": @(source.mSampleRate), @"bits": @(bits), @"channels": @(source.mChannelsPerFrame), @"clientRate": @(rate),
-        @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / (sg_reader.frames / rate) / 1000)};
+        @"averageKbps": @(growing ? 0 : [NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / (sg_reader.frames / rate) / 1000)};
     @synchronized (NSProcessInfo.processInfo) { sg_sourceInfo = info; }
-    sg_coarseCount = sg_reader.frames / kCoarse;
+    uint64_t decodeFrames=MIN(needed,sg_reader.frames);
+    sg_coarseCount = decodeFrames / kCoarse;
     sg_coarse = calloc(sg_coarseCount + 1, sizeof(float));
     float *l = malloc(kChunk * sizeof(float)), *r = malloc(kChunk * sizeof(float));
     float sum = 0;
     uint64_t at = 0;
     BOOL seek = YES;
-    for (UInt32 got; (got = readAt(&sg_reader, at, kChunk, l, r, seek)); at += got) {
+    for (UInt32 got; at<decodeFrames && (got = readAt(&sg_reader, at, (UInt32)MIN((uint64_t)kChunk,decodeFrames-at), l, r, seek)); at += got) {
         seek = NO;
         for (UInt32 i = 0; i < got; i++) {
             uint64_t f = at + i;
@@ -228,7 +240,7 @@ static BOOL load(NSString *path, double rate, NSString **error) {
     free(l); free(r);
     sg_path = path;
     SGLog(@"lossless: read %@, %llu frames at %.0f Hz in %.2f s", path.lastPathComponent, at, rate, CFAbsoluteTimeGetCurrent() - start);
-    if (at + kChunk < sg_reader.frames) { *error = @"the file ended early"; drop(); return NO; }
+    if (at + kChunk < decodeFrames) { *error = @"the file ended early"; drop(); return NO; }
     return YES;
 }
 
@@ -331,7 +343,12 @@ static void fill(NSString *path, double rate, uint64_t from, uint64_t generation
         }
         if (end + kChunk > reading + kRing - kChunk) { usleep(20000); continue; }
         UInt32 got = readAt(&reader, end, kChunk, l, r, seek);
-        if (!got) break;
+        if (!got) {
+            if (end<reader.frames && SGProgressiveFLACRegistered(path) && atomic_load(&sg_generation)==generation && SGPlayerSourceEpoch()==epoch) {
+                atomic_store(&sg_live,false); atomic_store(&sg_anchorEpoch,0);
+            }
+            break;
+        }
         seek = NO;
         uint64_t i = end % kRing;
         UInt32 first = (UInt32)MIN((uint64_t)got, kRing - i);
@@ -365,7 +382,7 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     stopPlaying();
     if (!record(kAnchorSeconds, error)) return nil;
     double rate = sg_capRate;
-    if (!load(path, rate, error)) return nil;
+    if (!load(path, rate, hint, error)) return nil;
     if (sg_reader.frames <= sg_capLength) { *error = @"the file is shorter than the capture"; return nil; }
 
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();

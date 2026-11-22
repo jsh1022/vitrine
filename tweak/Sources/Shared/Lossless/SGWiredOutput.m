@@ -2,6 +2,7 @@
 #import "SGSourceFileFormat.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGProgressiveFLAC.h"
 #import "Core/SGCore.h"
 #import <AVFoundation/AVFoundation.h>
 #import <unistd.h>
@@ -89,10 +90,15 @@ void SGWiredOutputPrepare(NSString *path) {
         }
         ExtAudioFileRef file = NULL;
         AudioStreamBasicDescription source = {0}; UInt32 size = sizeof source;
-        OSStatus read = ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file);
+        CFTypeRef owner=NULL;
+        uint64_t epoch=SGPlayerSourceEpoch();
+        BOOL progressive=SGProgressiveFLACRegistered(path);
+        OSStatus read = progressive ? (SGProgressiveFLACOpen(path,&file,&owner,^BOOL { return epoch!=SGPlayerSourceEpoch(); }) ? noErr : kAudioFileUnspecifiedError)
+            : ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file);
         if (!read) read = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &size, &source);
         BOOL supported = !read && file && SGSourceFileSupported(file, source);
         if (file) ExtAudioFileDispose(file);
+        if (owner) CFRelease(owner);
         if (!supported
             || source.mChannelsPerFrame != 2 || !isfinite(source.mSampleRate) || source.mSampleRate < 44100 || source.mSampleRate > 192000) {
             if (!restore()) return;

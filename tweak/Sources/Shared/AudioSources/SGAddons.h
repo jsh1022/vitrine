@@ -31,6 +31,7 @@ void SGAddonCancel(void);
 void SGAddonInvalidateRequests(void);
 void SGAddonRetryCurrentTrack(void);
 #define SGAddonRetryNotification @"spotifyglass.addons.retry"
+#define SGAddonDownloadFinishedNotification @"spotifyglass.addons.downloadFinished"
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration,
                     void (^completion)(NSString *path));
 NSString *SGAddonStatus(void);

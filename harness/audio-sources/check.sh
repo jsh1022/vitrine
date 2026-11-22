@@ -9,6 +9,7 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
   -I"$SRC" "$ROOT/harness/audio-sources/protocol.m" \
   "$SRC/Shared/AudioSources/SGAddonProtocol.m" "$SRC/Shared/AudioSources/SGAddonSegments.m" -framework Foundation -o "$OUT/protocol"
 "$OUT/protocol"
+bash "$ROOT/harness/audio-sources/progressive-check.sh"
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 LOGOS="${LOGOS:?Set LOGOS to a theos/logos checkout}"
