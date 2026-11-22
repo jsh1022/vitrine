@@ -5,6 +5,7 @@
 // and is made exact on a short window read at full rate. Playback reads from a ring that a worker fills ahead of
 // where Spotify plays; a block the ring does not hold yet keeps Spotify's sound.
 #import "SGLossless.h"
+#import "Shared/AudioSources/SGStandalonePlayback.h"
 #import "SGWiredOutput.h"
 #import "SGSourceFileFormat.h"
 #import "Shared/AudioSources/SGAddons.h"
@@ -485,15 +486,18 @@ void SGLosslessStop(BOOL release) {
 }
 
 BOOL SGLosslessPlaying(void) {
+    if (SGStandaloneActive()) return YES;
     uint64_t epoch = atomic_load(&sg_anchorEpoch);
     return epoch && epoch == SGPlayerSourceEpoch();
 }
 
 NSDictionary *SGLosslessSourceInfo(void) {
+    if (SGStandaloneActive()) return SGStandaloneSourceInfo();
     if (!SGLosslessPlaying()) return @{};
     @synchronized (NSProcessInfo.processInfo) { return sg_sourceInfo ?: @{}; }
 }
 BOOL SGLosslessRendering(void) {
+    if (SGStandaloneActive()) return SGStandaloneRendering();
     uint64_t at = atomic_load(&sg_renderedAt);
     if (!at || !SGLosslessPlaying()) return NO;
     mach_timebase_info_data_t base;

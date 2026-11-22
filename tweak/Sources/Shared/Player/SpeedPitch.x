@@ -1148,6 +1148,8 @@ BOOL SGPlayerPitchAvailable(void) {
     return sg_reachable || tapped();
 }
 
+float SGPlayerGain(void) { return loadFloat(&sg_gainBits); }
+
 void SGPlayerSetGain(float gain) {
     if (!sg_reachable) {
         static int logged;

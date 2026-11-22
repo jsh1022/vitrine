@@ -1,4 +1,5 @@
 #import "SGAddons.h"
+#import "SGStandalonePlayback.h"
 #import "SGAddonProtocol.h"
 #import "SGAddonSegments.h"
 #import "SGProgressiveFLAC.h"
@@ -9,6 +10,7 @@
 #import "Shared/Lossless/SGSourceFileFormat.h"
 #import "Shared/Lossless/SGSegmentedDecode.h"
 #import "Shared/Player/SpeedPitch.h"
+#import "Shared/Player/PlayerState.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <Network/Network.h>
 #import <stdatomic.h>
@@ -34,6 +36,9 @@ static void (^sg_progressiveReady)(NSString *, NSDictionary *);
 static double sg_progressiveDuration;
 static BOOL sg_progressiveOffered;
 static NSString *sg_progressiveName;
+static NSString *sg_preparedURI; // complete prefetch only, main-thread readiness hint
+static double sg_preparedAt;
+BOOL SGAddonHasPrepared(NSString *uri) { return uri.length && [sg_preparedURI isEqual:uri] && CFAbsoluteTimeGetCurrent()-sg_preparedAt<600; }
 static NSString *sg_progressivePath; // main only
 static void discard(NSDictionary *entry);
 static void clearLookupCache(void);
@@ -95,8 +100,8 @@ NSString *SGAddonStatusSummary(void) {
     if (SGLosslessRendering()) return @"재생 중";
     switch (sg_preparation) {
         case SGAddonPreparationSearching: return @"준비 중";
-        case SGAddonPreparationAligning: return @"정렬 중";
-        case SGAddonPreparationAligned: return @"정렬됨";
+        case SGAddonPreparationAligning: return SGStandaloneEnabled() ? @"준비 중" : @"정렬 중";
+        case SGAddonPreparationAligned: return SGStandaloneEnabled() ? @"준비됨" : @"정렬됨";
         case SGAddonPreparationUnavailable: return @"사용 불가";
         default: return @"대기 중";
     }
@@ -122,6 +127,8 @@ void SGAddonCancel(void) {
     sg_preparation = SGAddonPreparationIdle;
 }
 void SGAddonRetryCurrentTrack(void) {
+    SGStandaloneRecover(@"애드온 설정 변경");
+    sg_preparedURI=nil;
     SGAddonFinishPlaybackWait();
     SGAddonCancel();
     // A source/transport/policy edit invalidates cached authorizations and renditions too.
@@ -650,6 +657,7 @@ static void discard(NSDictionary *entry) {
 }
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration, void (^completion)(NSString *)) {
     if (!SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() == SGAddonPlaybackFast || !SGAddonEnabledSources().count) { completion(nil); return; }
+    if ([sg_preparedURI isEqual:uri]) sg_preparedURI=nil;
     uint64_t generation = atomic_load(&sg_generation);
     NSArray *sources = SGAddonEnabledSources();
     BOOL lookup = SGAddonAllowsCurrentLookup();
@@ -700,6 +708,7 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
                     }
                     else {
                         SGPlayerInvalidateSource(); SGLosslessStop(NO);
+                        SGStandaloneRecover(@"FLAC 다운로드 실패");
                         sg_preparation=SGAddonPreparationUnavailable; sg_status=failure;
                     }
                 } else if (result) discard(result);
@@ -716,16 +725,19 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
 }
 void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
     if (!SGRedesignedUI() || !SGFlag(SGKeyAddons, NO) || SGAddonPlaybackMode() != SGAddonPlaybackContinuous || !SGFlag(SGKeyAddonPrefetchEnabled, YES)) tracks = @[];
-    if (tracks.count > 1) tracks = [tracks subarrayWithRange:NSMakeRange(0, 1)];
+    if (tracks.count > SGAddonPrefetchMaxTracks) tracks = [tracks subarrayWithRange:NSMakeRange(0, SGAddonPrefetchMaxTracks)];
     if ([tracks isEqual:sg_upcomingPlan]) return;
+    if (![[tracks valueForKey:@"uri"] containsObject:sg_preparedURI]) sg_preparedURI=nil;
     sg_upcomingPlan = [tracks copy];
     uint64_t plan = atomic_fetch_add(&sg_prefetchGeneration, 1) + 1;
     uint64_t generation = atomic_load(&sg_generation);
     NSArray *sources = SGAddonEnabledSources(), *upcoming = [tracks copy];
+    NSString *currentURI=SGURIString(SGPlayerState().track.URI);
     dispatch_async(worker(), ^{
         if (plan != atomic_load(&sg_prefetchGeneration) || generation != atomic_load(&sg_generation) || atomic_load(&sg_foregroundPending)) return;
         if (!sg_prepared) sg_prepared = [NSMutableDictionary dictionary];
-        NSSet *wanted = [NSSet setWithArray:[upcoming valueForKey:@"uri"]];
+        NSMutableSet *wanted = [NSMutableSet setWithArray:[upcoming valueForKey:@"uri"]];
+        if (currentURI.length) [wanted addObject:currentURI];
         for (NSString *uri in sg_prepared.allKeys) if (![wanted containsObject:uri]) {
             discard(sg_prepared[uri]); [sg_prepared removeObjectForKey:uri];
         }
@@ -740,11 +752,24 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
             NSDictionary *cached = sg_prepared[uri];
             if (cached && CFAbsoluteTimeGetCurrent() - [cached[@"made"] doubleValue] < 600 && (!whole || ![cached[@"info"][@"partial"] boolValue])) continue;
             [sg_prepared removeObjectForKey:uri];
+            if (index>1) {
+                // BitChord staggers farther source warm-ups; current playback always preempts.
+                double readyAt=CFAbsoluteTimeGetCurrent()+.5;
+                while (CFAbsoluteTimeGetCurrent()<readyAt && !superseded(generation)) [NSThread sleepForTimeInterval:.02];
+                if (superseded(generation)) break;
+            }
             sg_prefix = !whole;
             sg_requestDeadline = CFAbsoluteTimeGetCurrent() + 120;
             NSDictionary *entry = prepare(uri, track[@"title"], track[@"artist"], [track[@"duration"] doubleValue], sources, generation, cached);
             discard(cached);
-            if (plan == atomic_load(&sg_prefetchGeneration) && generation == atomic_load(&sg_generation) && entry) sg_prepared[uri] = entry;
+            if (plan == atomic_load(&sg_prefetchGeneration) && generation == atomic_load(&sg_generation) && entry) {
+                sg_prepared[uri] = entry;
+                if (![entry[@"info"][@"partial"] boolValue]) dispatch_async(dispatch_get_main_queue(), ^{
+                    if (plan==atomic_load(&sg_prefetchGeneration) && generation==atomic_load(&sg_generation)) {
+                        sg_preparedURI=uri; sg_preparedAt=CFAbsoluteTimeGetCurrent();
+                    }
+                });
+            }
             else discard(entry);
         }
         sg_background = NO; sg_prefix = NO; sg_requestDeadline = 0;

@@ -2,6 +2,7 @@
 // Only at normal speed with Karaoke off; anything else leaves Spotify's own sound.
 #import "Core/SGCore.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Sing/Sing.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -10,6 +11,7 @@
 #import "SGLosslessStore.h"
 #import "LosslessQuality.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGStandalonePlayback.h"
 
 static const int kTries = 3;            // failed anchors in a row before waiting for the next change of source
 static const double kRetrySeconds = 2;
@@ -20,7 +22,13 @@ static dispatch_queue_t sg_storeQueue;
 @end
 
 @implementation SGLosslessCoordinator {
-    NSString *_track, *_path;
+    NSString *_track, *_path, *_trackUID;
+    BOOL _standaloneIntent, _standaloneFailed;
+    NSArray *_upcomingIdentity, *_queueUpcoming;
+    id _queueFetch;
+    uint64_t _queueFetchSerial;
+    BOOL _queuePending;
+    double _queueFetchedAt;
     BOOL _busy, _looked, _looking, _nextHas, _nextLooking;
     NSString *_next;
     NSTimer *_ticker;
@@ -29,7 +37,57 @@ static dispatch_queue_t sg_storeQueue;
     uint64_t _gaveUpEpoch;
     double _retryAt;
     BOOL _addonAsked;
-    uint64_t _occurrence;
+    uint64_t _occurrence, _standaloneCommand;
+}
+// state.future is only a short window on Spotify 9.1.90. The complete native
+// queue API is also used by PlayerHistory; query it locally, never reconstruct a playlist.
+- (void)updateUpcoming:(NSArray<NSDictionary *> *)fallback state:(SPTPlayerState *)state {
+    BOOL enabled=SGRedesignedUI() && SGFlag(SGKeyAddons,NO)
+        && SGAddonPlaybackMode()==SGAddonPlaybackContinuous && SGFlag(SGKeyAddonPrefetchEnabled,YES);
+    if (!enabled) {
+        ++_queueFetchSerial; _queuePending=NO; _queueFetch=nil; _queueUpcoming=nil; _upcomingIdentity=nil;
+        SGAddonUpdateUpcoming(@[]); return;
+    }
+    NSArray *identity=@[SGURIString(state.track.URI) ?: @"", _trackUID ?: @"",
+        SGURIString(state.contextURI) ?: @"", @(state.options.shufflingContext), [fallback valueForKey:@"uri"]];
+    if (![_upcomingIdentity isEqual:identity]) {
+        _upcomingIdentity=identity; _queueUpcoming=nil; _queueFetchedAt=0;
+        _queueFetch=nil; _queuePending=NO; ++_queueFetchSerial;
+    }
+    SGAddonUpdateUpcoming(_queueUpcoming ?: fallback);
+    double now=NSProcessInfo.processInfo.systemUptime;
+    id player=SGPlayer(); SEL selector=NSSelectorFromString(@"getQueueWithCallback:");
+    NSMethodSignature *signature=[player methodSignatureForSelector:selector];
+    if (_queuePending && now-_queueFetchedAt>=3) { _queuePending=NO; _queueFetch=nil; ++_queueFetchSerial; }
+    if (_queuePending || now-_queueFetchedAt<3 || ![player respondsToSelector:selector]
+        || signature.numberOfArguments!=3 || signature.methodReturnType[0]!='@') return;
+    _queuePending=YES; _queueFetchedAt=now;
+    uint64_t serial=++_queueFetchSerial;
+    __weak SGLosslessCoordinator *weakSelf=self;
+    id (^received)(id)=^id(id queue) {
+        NSArray *items=[queue respondsToSelector:NSSelectorFromString(@"nextTracks")] ? [[queue valueForKey:@"nextTracks"] copy] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SGLosslessCoordinator *owner=weakSelf;
+            if (!owner || serial!=owner->_queueFetchSerial || ![identity isEqual:owner->_upcomingIdentity]) return;
+            owner->_queuePending=NO; owner->_queueFetch=nil;
+            if (![items isKindOfClass:NSArray.class]) return;
+            NSMutableArray *tracks=[NSMutableArray array];
+            NSUInteger count=0;
+            for (id value in items) {
+                if (count++==SGAddonPrefetchMaxTracks) break;
+                if (![value isKindOfClass:objc_getClass("SPTPlayerTrack")]) break;
+                SPTPlayerTrack *item=value; NSString *track=SGURIString(item.URI);
+                if (!track.length || !item.trackTitle.length || !item.artistName.length) break;
+                [tracks addObject:@{@"uri":track,@"title":item.trackTitle,@"artist":item.artistName,
+                    @"duration":@([item.metadata[@"duration"] doubleValue]/1000)}];
+            }
+            // Never drop a better current state window while queue metadata is still loading.
+            owner->_queueUpcoming=tracks.count>=fallback.count ? [tracks copy] : fallback;
+            SGAddonUpdateUpcoming(owner->_queueUpcoming);
+        });
+        return nil;
+    };
+    _queueFetch=((id(*)(id,SEL,id))objc_msgSend)(player,selector,received);
 }
 - (void)retryAddons:(NSNotification *)note {
     if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"]) {
@@ -41,11 +99,16 @@ static dispatch_queue_t sg_storeQueue;
         _failures = 0; _gaveUpEpoch = 0; _retryAt = 0;
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     }
-    _addonAsked = NO;
+    _addonAsked = NO; _standaloneFailed=NO;
     [self tick];
 }
+- (void)standaloneFailed:(NSNotification *)note {
+    if ([_path isEqual:note.object]) { _standaloneFailed=YES; _standaloneIntent=NO; }
+}
 - (void)downloadFinished:(NSNotification *)note {
-    if (![_path isEqual:note.object] || SGLosslessPlaying()) return;
+    if (![_path isEqual:note.object]) return;
+    _standaloneFailed=NO;
+    if (SGLosslessPlaying()) return;
     // A native parser that could not use the growing prefix gets a complete-file retry,
     // without resolving the URL or downloading the recording again.
     _failures=0; _gaveUpEpoch=0; _retryAt=0;
@@ -70,7 +133,14 @@ static dispatch_queue_t sg_storeQueue;
     if (state.isPlaying && !state.isPaused && [SGWiredOutputStatus()[@"state"] isEqualToString:@"Restore pending"])
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     NSString *track = SGURIString(state.track.URI);
-    if (![track isEqualToString:_track]) {
+    NSString *trackUID=[state.track respondsToSelector:NSSelectorFromString(@"UID")] ? [state.track valueForKey:@"UID"] : @"";
+    if ([track isEqualToString:_track] && SGStandaloneRecovering(track)) _trackUID=trackUID;
+    if (![track isEqualToString:_track] || ![trackUID isEqualToString:_trackUID]) {
+        SGStandaloneCancel();
+        _standaloneIntent=SGStandaloneTakeStartIntent(track);
+        _standaloneCommand=SGStandaloneCommandEpoch();
+        _standaloneFailed=NO;
+        _trackUID=trackUID;
         SGAddonCancel();
         ++_occurrence;
         _addonAsked = NO;
@@ -136,9 +206,9 @@ static dispatch_queue_t sg_storeQueue;
     }
     if (!_nextLooking) SGLosslessLowerQuality(_nextHas);
 
-    // An addon prepares a bounded complete file while Spotify continues. The existing sound
-    // correlation, source epoch and normal-speed/Karaoke checks still own the actual handoff.
-    if (SGFlag(SGKeyAddons, NO) && SGAddonPlaybackMode() != SGAddonPlaybackFast && !_path && _looked && !_addonAsked && track && state.isPlaying && !state.isPaused &&
+    // Addons retain their existing validation and network policy. Redesigned playback uses
+    // an independent output; Native and imported files retain sound correlation.
+    if (SGFlag(SGKeyAddons, NO) && SGAddonPlaybackMode() != SGAddonPlaybackFast && !_path && _looked && !_addonAsked && track && state.isPlaying && (!state.isPaused || _standaloneIntent) &&
         state.duration > 0 && state.track.trackTitle.length && state.track.artistName.length) {
         _addonAsked = YES;
         uint64_t occurrence = _occurrence;
@@ -148,7 +218,12 @@ static dispatch_queue_t sg_storeQueue;
                 if (path) [NSFileManager.defaultManager removeItemAtPath:path error:NULL];
                 return;
             }
-            SGAddonFinishPlaybackWait();
+            if (path && SGStandaloneEligible()) {
+                if (SGAddonTakePlaybackWait(track)) {
+                    self->_standaloneIntent=YES; self->_standaloneCommand=SGStandaloneCommandEpoch();
+                }
+            }
+            else SGAddonFinishPlaybackWait();
             if (path) { self->_path = path; [self tick]; }
         });
     }
@@ -161,10 +236,26 @@ static dispatch_queue_t sg_storeQueue;
         if (!uri.length || !item.trackTitle.length || !item.artistName.length) continue;
         [upcomingTracks addObject:@{@"uri":uri, @"title":item.trackTitle, @"artist":item.artistName,
                                     @"duration":@([item.metadata[@"duration"] doubleValue] / 1000)}];
-        if (upcomingTracks.count == 1) break;
+        if (upcomingTracks.count == SGAddonPrefetchMaxTracks) break;
     }
-    SGAddonUpdateUpcoming(upcomingTracks);
+    [self updateUpcoming:upcomingTracks state:state];
     if (!_path || _busy || SGLosslessPlaying()) return;
+    if (_standaloneIntent && _standaloneCommand!=SGStandaloneCommandEpoch()) _standaloneIntent=NO;
+    BOOL addonPath=[_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"];
+    if (addonPath && SGStandaloneEligible()) {
+        if (_standaloneFailed || SGStandaloneBusy(track) || !state.isPlaying || (state.isPaused && !_standaloneIntent)) return;
+        BOOL localPauseLease=_standaloneIntent;
+        _standaloneIntent=NO; _busy=YES;
+        uint64_t occurrence=_occurrence;
+        SGAddonSetPlaybackStatus(@"자체 무손실 엔진 준비 중",NO);
+        SGStandaloneStart(_path,track,localPauseLease,^(BOOL success) {
+            self->_busy=NO;
+            if (occurrence!=self->_occurrence) return;
+            self->_standaloneFailed=!success;
+            if (!success) SGAddonSetPlaybackUnavailable();
+        });
+        return;
+    }
     if (!state.isPlaying || state.isPaused || fabs(state.playbackSpeed - 1) > 0.001 || SGSingOn()) return;
     uint64_t epoch = SGPlayerSourceEpoch();
     if (_gaveUpEpoch && _gaveUpEpoch == epoch) return;
@@ -219,6 +310,7 @@ static dispatch_queue_t sg_storeQueue;
         coordinator = [SGLosslessCoordinator new];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(retryAddons:) name:SGAddonRetryNotification object:nil];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(downloadFinished:) name:SGAddonDownloadFinishedNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(standaloneFailed:) name:SGStandaloneFailedNotification object:nil];
         SGAddPlayerStateObserver(coordinator);
     });
 }

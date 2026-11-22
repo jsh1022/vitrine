@@ -13,10 +13,11 @@ bash "$ROOT/harness/audio-sources/progressive-check.sh"
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 LOGOS="${LOGOS:?Set LOGOS to a theos/logos checkout}"
-for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy; do
+for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy SGStandaloneHooks; do
   part=Lossless
   if [ "$name" = SpeedPitchMenu ] || [ "$name" = SpeedPitch ]; then part=Player; fi
   if [ "$name" = WireGuardProxy ]; then part=NetworkProxy; fi
+  if [ "$name" = SGStandaloneHooks ]; then part=AudioSources; fi
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/$part/$name.x" > "$OUT/$name.m"
   xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \

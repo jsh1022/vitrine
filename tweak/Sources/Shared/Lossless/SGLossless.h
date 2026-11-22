@@ -1,5 +1,6 @@
 // Lossless: a local FLAC, ALAC or WAV/AIFF PCM file of the same recording replaces Spotify's sound.
 //
+//     Shared/AudioSources/SGStandalonePlayback: redesigned addons use their own paused-native engine
 //     SGLosslessEngine.m   finds where Spotify plays in the file by matching its sound, and swaps the file in
 //     SGLosslessStore.m    which file belongs to which Spotify track
 //     Lossless.x           anchors again at each track start, seek or resume (the switch below)

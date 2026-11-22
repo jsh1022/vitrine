@@ -43,6 +43,8 @@ BOOL SGPlayerPitchAvailable(void);
 // unit plays, in the output's own format, so a Connect device is left as it was, and it
 // does nothing when Spotify's output was never reached (AudioOutputUnitStart not rebound). Not stored.
 void SGPlayerSetGain(float gain);
+// Current fade target, also used by an independent local addon output. Any thread.
+float SGPlayerGain(void);
 // The audio effects' reverb as the menu sets it, 0 to 100, 0 while it is off. Any amount turns the effects and
 // the reverb on with it; 0 turns the reverb off and leaves the rest of the effects as they were.
 float SGPlayerReverb(void);

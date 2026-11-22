@@ -1,5 +1,6 @@
 // An owned, bounded pause lease. Any user transport command revokes automatic resume.
 #import "SGAddons.h"
+#import "SGStandalonePlayback.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -56,14 +57,18 @@ void SGAddonBeginPlaybackWait(NSString *uri) {
     });
 }
 void SGAddonFinishPlaybackWait(void) { [sg_wait finish]; }
+BOOL SGAddonTakePlaybackWait(NSString *uri) {
+    if (![sg_wait.uri isEqual:uri] || sg_wait.command!=atomic_load(&sg_transportCommands)) return NO;
+    sg_wait.uri=nil; ++sg_wait.serial; return YES;
+}
 // Signatures are already declared/called in Headers/SPTPlayer.h and Shared/Sing/Sing.x.
 %hook SPTEsperantoPlayer
 - (id)pause:(id)options {
-    if (!sg_ownedCommand) atomic_fetch_add(&sg_transportCommands, 1);
+    if (!sg_ownedCommand && !SGStandaloneInternalCommand()) atomic_fetch_add(&sg_transportCommands, 1);
     return %orig;
 }
 - (id)resume:(id)options {
-    if (!sg_ownedCommand) atomic_fetch_add(&sg_transportCommands, 1);
+    if (!sg_ownedCommand && !SGStandaloneInternalCommand()) atomic_fetch_add(&sg_transportCommands, 1);
     return %orig;
 }
 - (id)seekTo:(double)position relative:(long long)relative options:(id)options creatorTimestampPositionMs:(double)creator {

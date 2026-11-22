@@ -69,19 +69,19 @@ UIViewController *SGAudioSourcesPage(void) {
         @[@"빠른 재생", @"연속 재생 우선", @"애드온 우선 재생"], 1);
     playbackMode.choiceNotes = @[
         @"애드온을 조회하거나 기다리지 않고 Spotify 기본 스트림으로 바로 재생합니다.",
-        @"현재 곡은 Spotify로 바로 재생하고, 다음 곡 사전 준비가 켜져 있으면 바로 다음 한 곡만 준비합니다. Wi-Fi에서는 전체 파일을 받으며, 모바일 데이터에서는 셀룰러 다운로드를 허용하면 앞부분 최대 2 MiB를 받으며, ‘모바일 데이터로 다음 곡 전체 준비’도 켜면 전체 파일을 받습니다. 사전 준비를 꺼도 자동 음원 전환 설정은 유지됩니다.",
-        @"설정한 시간만큼 재생을 기다린 뒤 Spotify 기본 스트림으로 재개합니다. 재개 후 Spotify 오디오와 파일의 4초 상관 분석으로 안전한 전환 여부를 확인합니다.",
+        @"현재 곡은 바로 재생하고 다음 최대 4곡을 준비합니다. Wi-Fi에서는 바로 다음 곡 전체를, 나머지 곡은 앞부분 최대 2 MiB씩 준비합니다. 모바일 데이터에서는 셀룰러 다운로드를 허용한 경우 앞부분만 받으며, ‘모바일 데이터로 다음 곡 전체 준비’도 켜면 바로 다음 곡 전체를 받습니다. 사전 준비를 꺼도 자동 음원 전환 설정은 유지됩니다.",
+        @"설정한 시간 안에 애드온 파일 검증과 재생 준비가 끝나면 자체 엔진으로 재생합니다. 실패하거나 대기 시간을 넘기면 Spotify 기본 스트림으로 재생합니다.",
     ];
     playbackMode.chosen = ^(NSInteger index) { SGAddonRetryCurrentTrack(); };
     playbackMode.visible = ^BOOL { return SGRedesignedUIStored(); };
 
-    SGModRow *autoSwitch = SGSwitchRow(@"재생 중 자동 음원 전환", @"안전한 상관 정렬이 끝나면 현재 곡을 전환합니다. 꺼도 다음 곡은 준비합니다.", SGKeyAddonAutoSwitch);
+    SGModRow *autoSwitch = SGSwitchRow(@"재생 중 자동 음원 전환", @"파일 검증과 자체 엔진 준비가 끝나면 현재 곡을 전환합니다. 꺼도 사전 준비가 켜져 있으면 다음 곡들은 준비합니다.", SGKeyAddonAutoSwitch);
     autoSwitch.changed = ^(BOOL on) { SGAddonRetryCurrentTrack(); };
     autoSwitch.visible = ^BOOL {
         return SGRedesignedUIStored() && SGInt(SGKeyAddonPlaybackMode, SGAddonPlaybackContinuous) == SGAddonPlaybackContinuous;
     };
 
-    SGModRow *prefetch = SGSwitchRow(@"다음 곡 사전 준비", @"켜면 바로 다음 한 곡만 미리 준비합니다.", SGKeyAddonPrefetchEnabled);
+    SGModRow *prefetch = SGSwitchRow(@"다음 곡 사전 준비", @"켜면 다음 최대 4곡을 순서대로 미리 준비합니다. 바로 다음 곡 전체 준비는 네트워크 설정을 따르며, 나머지는 앞부분 최대 2 MiB씩 받습니다.", SGKeyAddonPrefetchEnabled);
     prefetch.changed = ^(BOOL on) { SGAddonUpdateUpcoming(@[]); };
     prefetch.visible = autoSwitch.visible;
 
