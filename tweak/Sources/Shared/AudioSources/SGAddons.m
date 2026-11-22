@@ -136,7 +136,6 @@ void SGAddonRetryCurrentTrack(void) {
 @property(nonatomic, strong) NSURL *responseURL;
 @property(nonatomic, copy) NSString *entityTag;
 @property(nonatomic, copy) NSString *retryAfter;
-@property(nonatomic) BOOL transportFailed;
 @property(nonatomic, strong) NSMutableData *body;
 @property(nonatomic, strong) NSFileHandle *file;
 @property(nonatomic, strong) dispatch_semaphore_t done;
@@ -187,7 +186,6 @@ void SGAddonRetryCurrentTrack(void) {
     if (self.prefix && self.received == self.limit) { self.prefixSatisfied = YES; [task cancel]; }
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-    self.transportFailed = [error.domain isEqual:NSURLErrorDomain] && error.code != NSURLErrorCancelled;
     if (error && !(self.prefixSatisfied && error.code == NSURLErrorCancelled && [error.domain isEqual:NSURLErrorDomain])) self.failed = YES;
     if (self.expectedBytes && self.received != self.expectedBytes) self.failed = YES;
     [self.file closeFile];
@@ -205,10 +203,10 @@ void SGAddonRetryCurrentTrack(void) {
 
 // Worker-confined server cooldowns and bounded in-memory lookup cache. There is
 // no fixed requests/minute quota. Source changes never clear server cooldowns.
-static NSMutableDictionary *sg_quiet, *sg_failures, *sg_manifests, *sg_jsonCache;
+static NSMutableDictionary *sg_quiet, *sg_manifests, *sg_jsonCache;
 static void initialize(void) {
     if (sg_quiet) return;
-    sg_quiet = [NSMutableDictionary dictionary]; sg_failures = [NSMutableDictionary dictionary];
+    sg_quiet = [NSMutableDictionary dictionary];
     sg_manifests = [NSMutableDictionary dictionary]; sg_jsonCache = [NSMutableDictionary dictionary];
 }
 static void clearLookupCache(void) {
@@ -337,23 +335,19 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
     }
     [session finishTasksAndInvalidate];
     nw_path_monitor_cancel(monitor);
-    // Cancellation for a newer song/current lookup is not a server failure.
+    // Only a server-specified delay blocks subsequent requests. Transport errors
+    // and timeouts fail this attempt without inventing a source-wide cooldown.
     BOOL interrupted = superseded(generation);
-    BOOL retryable = transfer.status == 429 || transfer.status >= 500 || (!interrupted && (transfer.transportFailed || deadlineExpired));
-    if (retryable) {
-        NSUInteger attempts = MIN(6, [sg_failures[identifier] unsignedIntegerValue] + 1);
-        sg_failures[identifier] = @(attempts);
-        double serverDelay = retryAfterSeconds(transfer.retryAfter);
-        double backoff = MIN(120, 5 * (1U << (attempts - 1)));
-        double delay = serverDelay >= 0 ? MAX(1, serverDelay) : (transfer.status == 429 ? MAX(60, backoff) : backoff);
-        sg_quiet[identifier] = @(MAX([sg_quiet[identifier] doubleValue], NSDate.date.timeIntervalSince1970 + delay));
-    } else if (!transfer.failed && transfer.received) {
-        [sg_failures removeObjectForKey:identifier];
+    double serverDelay = retryAfterSeconds(transfer.retryAfter);
+    if ((transfer.status == 429 || transfer.status >= 500) && serverDelay > 0) {
+        sg_quiet[identifier] = @(MAX([sg_quiet[identifier] doubleValue], NSDate.date.timeIntervalSince1970 + serverDelay));
     }
     if (interrupted) return nil;
     if (transfer.failed || !transfer.received) {
         if (transfer.status == 401 || transfer.status == 403) sg_failure = @"소스 접근이 거부되었습니다(401/403). 개인 링크의 만료·권한을 확인하세요. 공식 앱 증명이 필요한 서비스는 지원하지 않습니다.";
-        else if (transfer.status == 429) sg_failure = @"소스 요청이 제한되었습니다(429). Retry-After 대기 중";
+        else if (transfer.status == 429) sg_failure = serverDelay > 0
+            ? @"소스 요청이 제한되었습니다(429). 서버가 지정한 Retry-After 대기 중"
+            : @"소스 요청이 제한되었습니다(429). 서버가 대기 시간을 지정하지 않았습니다";
         else if (transfer.status) sg_failure = [NSString stringWithFormat:@"소스 HTTP %ld 또는 불완전하거나 너무 큰 응답", (long)transfer.status];
         else sg_failure = @"소스 연결 실패 또는 시간 초과";
     }
