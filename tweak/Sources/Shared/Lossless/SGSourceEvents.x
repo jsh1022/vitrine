@@ -12,6 +12,9 @@
 #import "SGAnchor.h"
 
 static void event(NSString *kind, NSString *evidence) {
+    if ([kind isEqual:@"track"] || [kind isEqual:@"skip"] || [kind isEqual:@"stop"] ||
+        [kind isEqual:@"route"] || [kind hasPrefix:@"sing_"])
+        SGLosslessForgetAlignment();
     SGPlayerInvalidateSource();
     uint64_t epoch = SGPlayerSourceEpoch(), host = mach_absolute_time();
     dispatch_block_t log = ^{ SGAnchorLog(kind, evidence, epoch, host); };

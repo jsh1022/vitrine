@@ -3,6 +3,7 @@
 #import "Core/SGCore.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <mach/mach_time.h>
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Sing/Sing.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -234,18 +235,22 @@ static dispatch_queue_t sg_storeQueue;
     NSString *path = _path;
     uint64_t occurrence = _occurrence;
     double hint = state.position;
+    uint64_t hintHost = mach_absolute_time();
+    NSString *identity = [NSString stringWithFormat:@"%@:%llu", track, (unsigned long long)occurrence];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSString *error;
         NSDictionary *anchored = nil;
         if (epoch != SGPlayerSourceEpoch()) error = @"the source changed before preparation";
         else {
             SGWiredOutputPrepare(path);
-            anchored = SGLosslessAnchorWithProgress(path,hint,^(SGLosslessPreparationPhase phase) {
+            anchored = SGLosslessAnchorForTrack(path,identity,hint,hintHost,^(SGLosslessPreparationPhase phase) {
                 uint64_t source=SGPlayerSourceEpoch();
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (occurrence!=self->_occurrence || ![path isEqual:self->_path] || source!=SGPlayerSourceEpoch()) return;
                     if (phase==SGLosslessPhaseDecode)
                         SGAddonSetPreparationStage(SGAddonPreparationDecoding,@"재생 위치 주변 음원 디코딩 중");
+                    else if (phase==SGLosslessPhaseReconnect)
+                        SGAddonSetPreparationStage(SGAddonPreparationAligning,@"기존 정렬 위치 확인 중");
                     else if (phase==SGLosslessPhaseCapture)
                         SGAddonSetPreparationStage(SGAddonPreparationAligning,@"정렬 중 · Spotify 소리 수집 및 연속 구간 확인 중");
                     else SGAddonSetPreparationStage(SGAddonPreparationAligning,@"정렬 중 · Spotify 소리와 음원 비교 중");

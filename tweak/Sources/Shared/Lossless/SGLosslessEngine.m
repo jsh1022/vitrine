@@ -15,6 +15,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <stdatomic.h>
 #import <mach/mach_time.h>
+#import <sys/stat.h>
 
 enum { kIdle, kArmed, kFull };
 enum { kCoarse = 16 };                      // decimation for the coarse search
@@ -32,7 +33,7 @@ static _Atomic uint32_t sg_capFill;
 static _Atomic int sg_capState;
 static atomic_uint sg_captureReaders;
 static atomic_flag sg_captureWriter = ATOMIC_FLAG_INIT;
-static uint64_t sg_capStart, sg_capEpoch, sg_capNext;
+static uint64_t sg_capStart, sg_capEpoch, sg_capNext, sg_capHost;
 static AudioUnit sg_capUnit;
 static double sg_capRate, sg_captureSeconds, sg_capReusedSeconds;
 // Float bit patterns are atomic: a worker never races ordinary sample storage.
@@ -75,7 +76,7 @@ static void capture(AudioUnit output, uint64_t epoch, double sourceFrame, double
     uint32_t fill=atomic_load(&sg_capFill);
     if (fill && ((uint64_t)sourceFrame!=sg_capNext || epoch!=sg_capEpoch || output!=sg_capUnit || rate!=sg_capRate)) fill=0;
     if (!fill) {
-        sg_capStart=(uint64_t)sourceFrame; sg_capEpoch=epoch; sg_capUnit=output; sg_capRate=rate;
+        sg_capStart=(uint64_t)sourceFrame; sg_capEpoch=epoch; sg_capUnit=output; sg_capRate=rate; sg_capHost=mach_absolute_time();
         sg_capLength=(uint32_t)llround(sg_captureSeconds*rate);
         sg_capReusedSeconds=0;
     }
@@ -112,7 +113,9 @@ static BOOL recentCapture(double seconds) {
         uint64_t latest=atomic_load(&sg_historyEnd);
         if ((sequence&1) || (count<needed && latest!=end) || run!=atomic_load(&sg_historyRun) || epoch!=SGPlayerSourceEpoch() ||
             latest<end || latest-start>kHistoryFrames || sequence!=atomic_load_explicit(&sg_historySequence,memory_order_acquire)) continue;
-        sg_capStart=start; sg_capNext=end; sg_capEpoch=epoch; sg_capUnit=unit; sg_capRate=rate; sg_capLength=needed;
+        sg_capStart=start; sg_capNext=end;
+        sg_capHost=host-(uint64_t)(((double)count/rate)/sg_tickSeconds);
+        sg_capEpoch=epoch; sg_capUnit=unit; sg_capRate=rate; sg_capLength=needed;
         sg_capReusedSeconds=(double)count/rate;
         atomic_store(&sg_capFill,count);
         atomic_store(&sg_capState,count==needed ? kFull : kArmed);
@@ -144,11 +147,13 @@ static bool ringRead(uint64_t at, UInt32 frames, float *l, float *r) {
 
 #pragma mark - what plays (set off render only while no reader is admitted)
 
+static _Atomic uint64_t sg_generation; // also revokes blocked growing-file reads
 static atomic_bool sg_live;
 static atomic_uint sg_readers;
 static uint64_t sg_playEpoch, sg_playSource, sg_playAsset;
 static AudioUnit sg_playUnit;
 static double sg_playRate;
+static atomic_uint_fast64_t sg_playGeneration;
 static _Atomic uint32_t sg_gainBits;
 static _Atomic uint64_t sg_replaced;
 static _Atomic uint64_t sg_renderedAt;
@@ -160,7 +165,7 @@ static void selector(AudioUnit output, uint64_t epoch, double sourceFrame, doubl
     capture(output, epoch, sourceFrame, rate, frames, data);
     atomic_fetch_add(&sg_readers, 1);
     if (atomic_load(&sg_live) && epoch == sg_playEpoch && epoch == SGPlayerSourceEpoch() && output == sg_playUnit
-        && rate == sg_playRate && sourceFrame >= sg_playSource) {
+        && rate == sg_playRate && atomic_load(&sg_playGeneration)==atomic_load(&sg_generation) && sourceFrame >= sg_playSource) {
         uint64_t at = sg_playAsset + ((uint64_t)sourceFrame - sg_playSource);
         float *l = data->mBuffers[0].mData, *r = data->mBuffers[1].mData;
         if (ringRead(at, frames, l, r)) {
@@ -186,14 +191,31 @@ static void quiesce(void) {
 
 #pragma mark - the file
 
-static _Atomic uint64_t sg_generation; // also revokes blocked growing-file reads
 
+typedef struct {
+    BOOL valid, progressive;
+    uint64_t device, inode, size;
+    int64_t seconds, nanos;
+    uintptr_t rendition;
+} SGFileIdentity;
+static SGFileIdentity fileIdentity(NSString *path) {
+    struct stat info;
+    if (stat(path.fileSystemRepresentation,&info)) return (SGFileIdentity){0};
+    NSDictionary *progressive=SGProgressiveFLACInfo(path);
+    return (SGFileIdentity){YES,progressive!=nil,(uint64_t)info.st_dev,(uint64_t)info.st_ino,
+        (uint64_t)info.st_size,info.st_mtimespec.tv_sec,info.st_mtimespec.tv_nsec,(uintptr_t)(__bridge void *)progressive};
+}
+static BOOL sameFile(SGFileIdentity a, SGFileIdentity b) {
+    return a.valid && b.valid && a.device==b.device && a.inode==b.inode && a.progressive==b.progressive &&
+        (a.progressive ? a.rendition==b.rendition : (a.size==b.size && a.seconds==b.seconds && a.nanos==b.nanos));
+}
 typedef struct {
     ExtAudioFileRef file;
     CFTypeRef owner;
     double fileRate, rate;
     uint64_t frames;                        // at the client rate
     uint64_t epoch, generation;
+    SGFileIdentity identity;
 } Reader;
 
 static void closeReader(Reader *reader) {
@@ -204,6 +226,7 @@ static void closeReader(Reader *reader) {
 
 static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **error) {
     closeReader(reader);
+    SGFileIdentity identity=fileIdentity(path);
     ExtAudioFileRef file=NULL; CFTypeRef owner=NULL;
     BOOL growing=SGProgressiveFLACRegistered(path);
     uint64_t epoch=SGPlayerSourceEpoch(), generation=atomic_load(&sg_generation);
@@ -221,13 +244,13 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
         kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved, 4, 1, 4, 2, 32, 0};
     if (!status && lossless && source.mChannelsPerFrame == 2 && frames > 0)
         status = ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, sizeof client, &client);
-    if (status || !lossless || source.mChannelsPerFrame != 2 || frames <= 0) {
+    if (status || !lossless || source.mChannelsPerFrame != 2 || frames <= 0 || !sameFile(identity,fileIdentity(path))) {
         ExtAudioFileDispose(file);
         if (owner) CFRelease(owner);
         *error = @"not supported stereo FLAC, ALAC or WAV/AIFF PCM";
         return NO;
     }
-    *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate), epoch, generation};
+    *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate), epoch, generation, identity};
     return YES;
 }
 
@@ -270,6 +293,15 @@ static uint64_t sg_coarseCount, sg_coarseStart;
 static uint64_t sg_decodedFrames;
 static BOOL sg_predecoded;
 static _Atomic uint64_t sg_anchorEpoch;
+static dispatch_queue_t queue(void);
+static atomic_uint_fast64_t sg_proofRevision;
+static NSString *sg_proofTrack, *sg_proofPath;
+static SGFileIdentity sg_proofFile;
+static uint64_t sg_proofAtRevision;
+static double sg_proofOffset, sg_proofRate;
+static float sg_proofGain;
+static NSString *sg_requestTrack;
+static uint64_t sg_requestHost, sg_requestRevision;
 static atomic_uint sg_writers;              // writers still running
 
 static void drop(void) {
@@ -380,7 +412,7 @@ static BOOL takeWarm(NSString *path, double rate) {
     SGWarmLossless *selected=nil;
     @synchronized(warmLock()) {
         for (SGWarmLossless *item in [sg_warm copy]) {
-            if ([item.path isEqual:path] && item->reader.rate==rate) { selected=item; [sg_warm removeObject:item]; break; }
+            if ([item.path isEqual:path] && item->reader.rate==rate && sameFile(item->reader.identity,fileIdentity(path))) { selected=item; [sg_warm removeObject:item]; break; }
         }
     }
     if (!selected) return NO;
@@ -393,7 +425,7 @@ static BOOL takeWarm(NSString *path, double rate) {
 }
 static BOOL loadWindow(NSString *path, double rate, double fromSeconds, double toSeconds, NSString **error) {
     if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseDecode);
-    BOOL same=sg_reader.file && [sg_path isEqual:path] && sg_reader.rate==rate;
+    BOOL same=sg_reader.file && [sg_path isEqual:path] && sg_reader.rate==rate && sameFile(sg_reader.identity,fileIdentity(path));
     if (same && sg_reader.owner && (sg_reader.epoch!=SGPlayerSourceEpoch() || sg_reader.generation!=atomic_load(&sg_generation))) same=NO;
     if (!same && !takeWarm(path,rate)) {
         drop();
@@ -449,9 +481,10 @@ static uint64_t refine(int64_t from, int64_t to, float *score, float *gain) {
 }
 
 // Coarse search of file frames [from, to), then exact around the winner.
-static uint64_t search(uint64_t from, uint64_t to, float *score, float *gain) {
+static uint64_t search(uint64_t from, uint64_t to, float *score, float *gain, float *gap) {
     uint64_t lo = MAX(from / kCoarse,sg_coarseStart), hi = MIN(to / kCoarse, sg_coarseStart+sg_coarseCount);
     vDSP_Length capN = sg_capLength / kCoarse;
+    if (gap) *gap=0;
     if (hi <= lo || hi - lo <= capN) { *score = 0; return 0; }
     float *cap = malloc(capN * sizeof(float));
     float filter[kCoarse], one = 1.0f / kCoarse;
@@ -464,18 +497,26 @@ static uint64_t search(uint64_t from, uint64_t to, float *score, float *gain) {
     double running = 0;
     for (vDSP_Length i = 0; i < capN; i++) running += (double)file[i] * file[i];
     vDSP_Length coarse = 0;
+    float capNorm=sqrtf(dot(cap,cap,capN));
     float best = -INFINITY;
     for (vDSP_Length i = 0; i < lags; i++) {
-        float s = running > 1e-9 ? corr[i] / sqrtf((float)running) : 0;
+        float s = running > 1e-9 && capNorm>0 ? corr[i] / (sqrtf((float)running)*capNorm) : 0;
+        corr[i]=s;
         if (s > best) { best = s; coarse = i; }
         if (i + capN < fileN) running += (double)file[i + capN] * file[i + capN] - (double)file[i] * file[i];
+    }
+    if (gap) {
+        float second=-INFINITY;
+        uint64_t separate=(uint64_t)ceil(sg_reader.rate*.05/kCoarse);
+        for (vDSP_Length i=0;i<lags;++i) if ((i>coarse ? i-coarse : coarse-i)>=separate) second=MAX(second,corr[i]);
+        *gap=isfinite(second) ? best-second : 0;
     }
     free(cap); free(corr);
     int64_t center = (int64_t)(lo + coarse) * kCoarse;
     return refine(center - 2 * kCoarse, center + 2 * kCoarse, score, gain);
 }
 
-// Four seconds of continuous source audio are still required, even when reused.
+// Collect the requested continuous source window; initial alignment always requests four seconds.
 static BOOL record(double seconds, NSString **error) {
     static float *storage;
     if (!storage) storage=malloc((size_t)(kAnchorSeconds*kMaxCaptureRate)*sizeof(float));
@@ -550,41 +591,93 @@ static void stopPlaying(void) {
     atomic_store(&sg_anchorEpoch, 0);
 }
 
+// Existing four-second proof is reusable only after an unambiguous fresh waveform
+// confirms the proposed position. Position reports never activate the replacement alone.
+static BOOL confirmReconnect(uint64_t lag, float score, float gain, float gap) {
+    if (score<.98f || gap<.025f || !isfinite(gain) || sg_proofGain<=0 || fabsf(gain-sg_proofGain)>MAX(.0001f,fabsf(sg_proofGain)*.05f)) return NO;
+    float *window=readMono(&sg_reader,(int64_t)lag,sg_capLength);
+    if (!window) return NO;
+    BOOL accepted=YES;
+    uint32_t part=sg_capLength/4;
+    for (unsigned i=0;i<4 && accepted;++i) {
+        float level=0;
+        float local=match(sg_cap+i*part,window+i*part,part,&level);
+        accepted=local>=.96f && isfinite(level) && fabsf(level-gain)<=MAX(.0001f,fabsf(gain)*.05f);
+    }
+    free(window); return accepted;
+}
+static double reportAtCapture(double hint) {
+    double elapsed=sg_capHost>=sg_requestHost ? (sg_capHost-sg_requestHost)*sg_tickSeconds : -(double)(sg_requestHost-sg_capHost)*sg_tickSeconds;
+    return hint+elapsed;
+}
 static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     SGLosslessBeginCapture();
     stopPlaying();
-    if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseCapture);
-    if (!record(kAnchorSeconds, error)) return nil;
-    if (sg_capEpoch!=SGPlayerSourceEpoch()) { *error=@"the source changed before decoding"; return nil; }
-    double rate=sg_capRate;
+    uint64_t workGeneration=atomic_load(&sg_generation);
     sg_decodedFrames=0; sg_predecoded=NO;
-    double captureHint=isfinite(hint) && hint>=0 ? MAX(0,hint-sg_capReusedSeconds) : -1;
-    double fromSeconds=captureHint>=0 ? MAX(0,captureHint-kHintWindow) : 0;
-    double toSeconds=captureHint>=0 ? captureHint+kHintWindow+kAnchorSeconds : -1;
-    if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
-    if (sg_reader.frames<=sg_capLength) { *error=@"the file is shorter than the capture"; return nil; }
-    CFAbsoluteTime start=CFAbsoluteTimeGetCurrent();
-    uint64_t from=(uint64_t)(fromSeconds*rate),to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
-    if (from+sg_capLength>=sg_reader.frames) { *error=@"Spotify plays past the end of the file"; return nil; }
+    BOOL reused=NO;
+    double rate=0;
     float score=0,gain=0;
-    NSString *scope=captureHint>=0 ? @"hint" : @"wide";
-    if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
-    uint64_t lag=search(from,to,&score,&gain);
-    if (score<kMinMatch && captureHint>=0 && sg_capEpoch==SGPlayerSourceEpoch()) {
-        // Complete files may search globally; a growing source expands only around the hint.
-        BOOL growing=SGProgressiveFLACRegistered(path) && !SGProgressiveFLACComplete(path);
-        fromSeconds=growing ? MAX(0,captureHint-4*kHintWindow) : 0;
-        toSeconds=growing ? captureHint+4*kHintWindow+kAnchorSeconds : -1;
-        if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
-        from=(uint64_t)(fromSeconds*rate); to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
-        if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
-        lag=search(from,to,&score,&gain); scope=@"wide";
+    uint64_t lag=0;
+    NSString *scope=@"hint";
+    CFAbsoluteTime start=CFAbsoluteTimeGetCurrent();
+    BOOL cached=sg_requestTrack.length && [sg_requestTrack isEqual:sg_proofTrack] && [path isEqual:sg_proofPath]
+        && sg_proofAtRevision==sg_requestRevision && sg_requestRevision==atomic_load(&sg_proofRevision)
+        && isfinite(hint) && hint>=0 && sg_requestHost && sameFile(sg_proofFile,fileIdentity(path));
+    if (cached) {
+        if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseReconnect);
+        NSString *failure=nil;
+        if (record(kCheckSeconds,&failure) && sg_capEpoch==SGPlayerSourceEpoch() && sg_capRate==sg_proofRate &&
+            workGeneration==atomic_load(&sg_generation) && sg_requestRevision==atomic_load(&sg_proofRevision)) {
+            rate=sg_capRate;
+            double proposed=reportAtCapture(hint)+sg_proofOffset;
+            if (isfinite(proposed) && proposed>=0 && loadWindow(path,rate,MAX(0,proposed-1.5),proposed+1.5+kCheckSeconds,&failure)) {
+                float gap=0;
+                lag=search((uint64_t)(MAX(0,proposed-1.5)*rate),(uint64_t)((proposed+1.5+kCheckSeconds)*rate),&score,&gain,&gap);
+                reused=confirmReconnect(lag,score,gain,gap);
+            }
+        }
     }
-    double took = CFAbsoluteTimeGetCurrent() - start;
-    SGLog(@"lossless: match %.4f at file %.3f s (hint %.1f s), gain %.3f, search %.2f s", score, lag / rate, hint, gain, took);
-    if (score < kMinMatch) { *error = [NSString stringWithFormat:@"no match (%.3f)", score]; return nil; }
-    if (sg_capEpoch != SGPlayerSourceEpoch()) { *error = @"the source changed while matching"; return nil; }
-
+    if (!reused) {
+        // A refused reconnect cannot leave an older proof available for a different recording/master.
+        sg_proofTrack=nil;
+        if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseCapture);
+        if (!record(kAnchorSeconds,error)) return nil;
+        if (sg_capEpoch!=SGPlayerSourceEpoch() || workGeneration!=atomic_load(&sg_generation) || sg_requestRevision!=atomic_load(&sg_proofRevision)) {
+            *error=@"the source changed before decoding"; return nil;
+        }
+        rate=sg_capRate;
+        double captureHint=isfinite(hint) && hint>=0 ? MAX(0,hint-sg_capReusedSeconds) : -1;
+        double fromSeconds=captureHint>=0 ? MAX(0,captureHint-kHintWindow) : 0;
+        double toSeconds=captureHint>=0 ? captureHint+kHintWindow+kAnchorSeconds : -1;
+        if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
+        if (sg_reader.frames<=sg_capLength) { *error=@"the file is shorter than the capture"; return nil; }
+        uint64_t from=(uint64_t)(fromSeconds*rate),to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
+        if (from+sg_capLength>=sg_reader.frames) { *error=@"Spotify plays past the end of the file"; return nil; }
+        scope=captureHint>=0 ? @"hint" : @"wide";
+        if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
+        lag=search(from,to,&score,&gain,NULL);
+        if (score<kMinMatch && captureHint>=0 && sg_capEpoch==SGPlayerSourceEpoch()) {
+            BOOL growing=SGProgressiveFLACRegistered(path) && !SGProgressiveFLACComplete(path);
+            fromSeconds=growing ? MAX(0,captureHint-4*kHintWindow) : 0;
+            toSeconds=growing ? captureHint+4*kHintWindow+kAnchorSeconds : -1;
+            if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
+            from=(uint64_t)(fromSeconds*rate); to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
+            if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
+            lag=search(from,to,&score,&gain,NULL); scope=@"wide";
+        }
+    }
+    if (score<kMinMatch) { *error=[NSString stringWithFormat:@"no match (%.3f)",score]; return nil; }
+    if (sg_capEpoch!=SGPlayerSourceEpoch() || workGeneration!=atomic_load(&sg_generation) || sg_requestRevision!=atomic_load(&sg_proofRevision) || !sameFile(sg_reader.identity,fileIdentity(path))) {
+        *error=@"the source changed while matching"; return nil;
+    }
+    if (!reused && sg_requestTrack.length && score>=.98f && isfinite(hint) && hint>=0 && sg_requestHost) {
+        sg_proofTrack=[sg_requestTrack copy]; sg_proofPath=[path copy]; sg_proofFile=sg_reader.identity;
+        sg_proofAtRevision=sg_requestRevision; sg_proofRate=rate; sg_proofGain=gain;
+        sg_proofOffset=(double)lag/rate-reportAtCapture(hint);
+    }
+    double took=CFAbsoluteTimeGetCurrent()-start;
+    SGLog(@"lossless: %@ match %.4f at %.3f s, gain %.3f",reused ? @"reconnect" : @"full",score,(double)lag/rate,gain);
     float alignmentGain = gain;
     if (SGWiredOutputPreserveLevel()) gain = 1;
     uint32_t bits;
@@ -604,7 +697,8 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     atomic_store(&sg_ringStart, now);
     atomic_store(&sg_ringEnd, now);
     atomic_store(&sg_readAt, now);
-    uint64_t generation = atomic_load(&sg_generation), epoch = sg_playEpoch;
+    uint64_t generation = workGeneration, epoch = sg_playEpoch;
+    atomic_store(&sg_playGeneration,workGeneration);
     atomic_fetch_add(&sg_writers, 1);
     // Its own thread: it runs for the rest of the song, which would hold a shared queue's thread that long.
     NSThread *writer = [[NSThread alloc] initWithBlock:^{ fill(path, rate, now, generation, epoch); }];
@@ -615,7 +709,8 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     atomic_store(&sg_live, true);
     return @{@"rate" : @(rate), @"source_frame":@(sg_capStart), @"file_frame" : @(lag), @"file_seconds" : @(lag / rate), @"match" : @(score),
              @"gain" : @(gain), @"search_s" : @(took), @"capture_reused_s":@(sg_capReusedSeconds),
-             @"decoded_frames":@(sg_decodedFrames), @"predecoded":@(sg_predecoded), @"search_scope":scope};
+             @"decoded_frames":@(sg_decodedFrames), @"predecoded":@(sg_predecoded), @"search_scope":scope,
+             @"reused_alignment":@(reused), @"validation_s":@(reused ? kCheckSeconds : kAnchorSeconds)};
 }
 
 static NSDictionary *check(NSString **error) {
@@ -656,19 +751,29 @@ void SGLosslessBeginCapture(void) {
     });
 }
 
-NSDictionary *SGLosslessAnchorWithProgress(NSString *path, double hintSeconds,
-    void (^progress)(SGLosslessPreparationPhase), NSString **error) {
+NSDictionary *SGLosslessAnchorForTrack(NSString *path, NSString *trackIdentity, double hintSeconds,
+    uint64_t hintHostTime, void (^progress)(SGLosslessPreparationPhase), NSString **error) {
     __block NSDictionary *result;
     __block NSString *failure;
+    uint64_t revision=atomic_load(&sg_proofRevision);
     dispatch_sync(queue(), ^{
-        sg_anchorProgress=[progress copy];
+        sg_anchorProgress=[progress copy]; sg_requestTrack=[trackIdentity copy];
+        sg_requestHost=hintHostTime; sg_requestRevision=revision;
         @try { NSString *e=nil; result=anchor(path,hintSeconds,&e); failure=e; }
-        @finally { sg_anchorProgress=nil; }
+        @finally { sg_anchorProgress=nil; sg_requestTrack=nil; }
     });
     *error=failure; return result;
 }
+NSDictionary *SGLosslessAnchorWithProgress(NSString *path, double hintSeconds,
+    void (^progress)(SGLosslessPreparationPhase), NSString **error) {
+    return SGLosslessAnchorForTrack(path,@"",hintSeconds,mach_absolute_time(),progress,error);
+}
 NSDictionary *SGLosslessAnchor(NSString *path, double hintSeconds, NSString **error) {
     return SGLosslessAnchorWithProgress(path,hintSeconds,nil,error);
+}
+void SGLosslessForgetAlignment(void) {
+    atomic_fetch_add(&sg_proofRevision,1);
+    dispatch_async(queue(), ^{ sg_proofTrack=nil; sg_proofPath=nil; });
 }
 
 NSDictionary *SGLosslessCheck(NSString **error) {
@@ -684,12 +789,12 @@ void SGLosslessStop(BOOL release) {
     atomic_fetch_add(&sg_generation, 1);
     atomic_store(&sg_live, false);
     atomic_store(&sg_anchorEpoch, 0);
-    if (release) dispatch_async(queue(), ^{ drop(); });
+    if (release) { SGLosslessForgetAlignment(); dispatch_async(queue(), ^{ drop(); }); }
 }
 
 BOOL SGLosslessPlaying(void) {
     uint64_t epoch = atomic_load(&sg_anchorEpoch);
-    return epoch && epoch == SGPlayerSourceEpoch();
+    return epoch && epoch == SGPlayerSourceEpoch() && atomic_load(&sg_playGeneration)==atomic_load(&sg_generation);
 }
 
 NSDictionary *SGLosslessSourceInfo(void) {
