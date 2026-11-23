@@ -70,10 +70,10 @@ void SGAddonFinishPlaybackWait(void) { [sg_wait finish]; }
     atomic_fetch_add(&sg_transportCommands, 1); return %orig;
 }
 - (id)skipToNextTrackWithOptions:(id)options track:(id)track loggingParams:(id)params {
-    atomic_fetch_add(&sg_transportCommands, 1); SGAddonInvalidateRequests(); return %orig;
+    atomic_fetch_add(&sg_transportCommands, 1); SGAddonWillChangeTrack(); return %orig;
 }
 - (id)skipToPreviousTrackWithOptions:(id)options track:(id)track loggingParams:(id)params {
-    atomic_fetch_add(&sg_transportCommands, 1); SGAddonInvalidateRequests(); return %orig;
+    atomic_fetch_add(&sg_transportCommands, 1); SGAddonWillChangeTrack(); return %orig;
 }
 - (id)stop { atomic_fetch_add(&sg_transportCommands, 1); SGAddonInvalidateRequests(); return %orig; }
 %end

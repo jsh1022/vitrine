@@ -28,6 +28,10 @@ BOOL SGAddonAddSource(NSString *input);
 BOOL SGAddonRemoveSource(NSString *identifier);
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *status));
 void SGAddonCancel(void);
+// Main: preserve only the new current track's active prefetch; otherwise cancel.
+void SGAddonTrackChanged(NSString *uri);
+// Any thread: bounded skip handoff until a state report identifies the target.
+void SGAddonWillChangeTrack(void);
 // Any thread. Revoke in-flight I/O before a skip/stop is reported on main.
 void SGAddonInvalidateRequests(void);
 void SGAddonRetryCurrentTrack(void);

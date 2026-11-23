@@ -130,7 +130,7 @@ static dispatch_queue_t sg_storeQueue;
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     NSString *track = SGURIString(state.track.URI);
     if (![track isEqualToString:_track]) {
-        SGAddonCancel();
+        SGAddonTrackChanged(track);
         ++_occurrence;
         _addonAsked = NO;
         if (_path) {

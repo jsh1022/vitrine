@@ -21,7 +21,7 @@ enum { kIdle, kArmed, kFull };
 enum { kCoarse = 16 };                      // decimation for the coarse search
 enum { kRing = 1 << 19 };                   // frames the ring holds, about 12 s at 44.1 kHz
 enum { kChunk = 8192 };                     // frames per read
-static const double kAnchorSeconds = 4, kCheckSeconds = 1, kHintWindow = 8;
+static const double kAnchorSeconds = 3, kCheckSeconds = 1, kHintWindow = 8;
 static const float kMinMatch = 0.8f;        // normalized correlation below this is another recording or master
 
 #pragma mark - capture (original Spotify PCM only, before replacement)
@@ -516,7 +516,7 @@ static uint64_t search(uint64_t from, uint64_t to, float *score, float *gain, fl
     return refine(center - 2 * kCoarse, center + 2 * kCoarse, score, gain);
 }
 
-// Collect the requested continuous source window; initial alignment always requests four seconds.
+// Collect the requested continuous source window; initial alignment requests three seconds.
 static BOOL record(double seconds, NSString **error) {
     static float *storage;
     if (!storage) storage=malloc((size_t)(kAnchorSeconds*kMaxCaptureRate)*sizeof(float));
@@ -591,7 +591,7 @@ static void stopPlaying(void) {
     atomic_store(&sg_anchorEpoch, 0);
 }
 
-// Existing four-second proof is reusable only after an unambiguous fresh waveform
+// Existing full-window proof is reusable only after an unambiguous fresh waveform
 // confirms the proposed position. Position reports never activate the replacement alone.
 static BOOL confirmReconnect(uint64_t lag, float score, float gain, float gap) {
     if (score<.98f || gap<.025f || !isfinite(gain) || sg_proofGain<=0 || fabsf(gain-sg_proofGain)>MAX(.0001f,fabsf(sg_proofGain)*.05f)) return NO;
@@ -648,15 +648,22 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
         }
         rate=sg_capRate;
         double captureHint=isfinite(hint) && hint>=0 ? MAX(0,hint-sg_capReusedSeconds) : -1;
-        double fromSeconds=captureHint>=0 ? MAX(0,captureHint-kHintWindow) : 0;
-        double toSeconds=captureHint>=0 ? captureHint+kHintWindow+kAnchorSeconds : -1;
+        double fromSeconds=captureHint>=0 ? MAX(0,captureHint-2) : 0;
+        double toSeconds=captureHint>=0 ? captureHint+2+kAnchorSeconds : -1;
         if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
         if (sg_reader.frames<=sg_capLength) { *error=@"the file is shorter than the capture"; return nil; }
         uint64_t from=(uint64_t)(fromSeconds*rate),to=toSeconds<0 ? sg_reader.frames : (uint64_t)(toSeconds*rate);
-        if (from+sg_capLength>=sg_reader.frames) { *error=@"Spotify plays past the end of the file"; return nil; }
-        scope=captureHint>=0 ? @"hint" : @"wide";
+        scope=captureHint>=0 ? @"near" : @"wide";
         if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
         lag=search(from,to,&score,&gain,NULL);
+        if (score<kMinMatch && captureHint>=0 && sg_capEpoch==SGPlayerSourceEpoch()) {
+            fromSeconds=MAX(0,captureHint-kHintWindow);
+            toSeconds=captureHint+kHintWindow+kAnchorSeconds;
+            if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
+            from=(uint64_t)(fromSeconds*rate); to=(uint64_t)(toSeconds*rate);
+            if (sg_anchorProgress) sg_anchorProgress(SGLosslessPhaseMatch);
+            lag=search(from,to,&score,&gain,NULL); scope=@"hint";
+        }
         if (score<kMinMatch && captureHint>=0 && sg_capEpoch==SGPlayerSourceEpoch()) {
             BOOL growing=SGProgressiveFLACRegistered(path) && !SGProgressiveFLACComplete(path);
             fromSeconds=growing ? MAX(0,captureHint-4*kHintWindow) : 0;

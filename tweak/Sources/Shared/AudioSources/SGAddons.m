@@ -36,6 +36,21 @@ static double sg_progressiveDuration;
 static BOOL sg_progressiveOffered;
 static NSString *sg_progressiveName;
 static NSString *sg_progressivePath; // main only
+// Cross-thread handoff identity. The serial worker still owns all transfer/file state.
+static NSObject *handoffLock(void) {
+    static NSObject *lock; static dispatch_once_t once;
+    dispatch_once(&once, ^{ lock=[NSObject new]; }); return lock;
+}
+static NSString *sg_inflightURI;
+static uint64_t sg_inflightGeneration, sg_inflightSerial;
+static BOOL sg_inflightPromoted, sg_inflightPending;
+static void (^sg_inflightReady)(NSString *,NSDictionary *);
+static BOOL keepingInflight(uint64_t generation) {
+    @synchronized(handoffLock()) {
+        return sg_inflightURI.length && sg_inflightGeneration==generation &&
+            (sg_inflightPromoted || sg_inflightPending);
+    }
+}
 static void discard(NSDictionary *entry);
 static void clearLookupCache(void);
 static dispatch_queue_t worker(void) {
@@ -115,8 +130,48 @@ void SGAddonSetPlaybackStatus(NSString *status, BOOL aligned) {
 }
 NSDictionary *SGAddonMediaInfo(void) { return sg_media ?: @{}; }
 void SGAddonInvalidateRequests(void) {
-    atomic_fetch_add(&sg_generation, 1);
-    atomic_fetch_add(&sg_prefetchGeneration, 1);
+    @synchronized(handoffLock()) {
+        atomic_fetch_add(&sg_generation, 1);
+        atomic_fetch_add(&sg_prefetchGeneration, 1);
+        sg_inflightPromoted=NO; sg_inflightPending=NO; sg_inflightReady=nil;
+    }
+}
+void SGAddonWillChangeTrack(void) {
+    // Skip targets may be absent from command arguments. Keep just the active candidate
+    // until the next state report identifies the new track; stop/settings always revoke.
+    __block uint64_t serial=0;
+    @synchronized(handoffLock()) {
+        if (sg_inflightURI.length && sg_inflightGeneration==atomic_load(&sg_generation)) {
+            sg_inflightPending=YES; serial=sg_inflightSerial;
+        }
+    }
+    if (!serial) { SGAddonInvalidateRequests(); return; }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
+        @synchronized(handoffLock()) {
+            if (serial==sg_inflightSerial && sg_inflightPending) {
+                sg_inflightPending=NO;
+                SGAddonInvalidateRequests();
+            }
+        }
+    });
+}
+void SGAddonTrackChanged(NSString *uri) {
+    BOOL retained=NO;
+    @synchronized(handoffLock()) {
+        retained=uri.length && [uri isEqual:sg_inflightURI] &&
+            sg_inflightGeneration==atomic_load(&sg_generation) && SGFlag(SGKeyAddons,NO) &&
+            SGAddonPlaybackMode()==SGAddonPlaybackContinuous;
+        if (retained) { sg_inflightPromoted=YES; sg_inflightPending=NO; }
+    }
+    if (!retained) { SGAddonCancel(); return; }
+    // The old current-track file is released by the coordinator. Keep this candidate's
+    // HTTP task, generation and received bytes, while cancelling the rest of its plan.
+    atomic_fetch_add(&sg_prefetchGeneration,1);
+    // No progressive callback has been attached to this background candidate yet.
+    SGProgressiveFLACForgetAll();
+    sg_upcomingPlan=nil; sg_progressivePath=nil; sg_media=nil;
+    sg_status=@"사전 준비 중인 음원을 이어받는 중";
+    sg_preparation=SGAddonPreparationDownloading;
 }
 void SGAddonCancel(void) {
     SGAddonInvalidateRequests();
@@ -256,7 +311,7 @@ static double retryAfterSeconds(NSString *header) {
 }
 static BOOL superseded(uint64_t generation) {
     return generation != atomic_load(&sg_generation) ||
-        (sg_background && (sg_activePlan != atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending) > 0));
+        (sg_background && !keepingInflight(generation) && (sg_activePlan != atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending) > 0));
 }
 static void foregroundFinished(void) {
     atomic_fetch_sub(&sg_foregroundPending, 1);
@@ -354,7 +409,11 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
     BOOL offered = NO;
     double nextProbe=0;
     while (dispatch_semaphore_wait(transfer.done, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10))) {
-        if (!offered && transfer.progressive && sg_progressiveReady && CFAbsoluteTimeGetCurrent()>=nextProbe && CFAbsoluteTimeGetCurrent()<deadline && !superseded(generation)) {
+        void (^ready)(NSString *,NSDictionary *)=sg_progressiveReady;
+        if (!ready && sg_background && keepingInflight(generation)) {
+            @synchronized(handoffLock()) { ready=[sg_inflightReady copy]; }
+        }
+        if (!offered && transfer.progressive && ready && CFAbsoluteTimeGetCurrent()>=nextProbe && CFAbsoluteTimeGetCurrent()<deadline && !superseded(generation)) {
             nextProbe=CFAbsoluteTimeGetCurrent()+1;
             NSDictionary *info=[transfer.progressive probeDuration:sg_progressiveDuration];
             if (info && CFAbsoluteTimeGetCurrent()<deadline && !superseded(generation)) {
@@ -362,7 +421,7 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
                 sg_progressiveOffered=YES;
                 // The preparation wait ends once handed off; the bounded HTTP download continues.
                 deadline=fullDeadline; sg_requestDeadline=0;
-                sg_progressiveReady(path,info);
+                ready(path,info);
             }
         }
         deadlineExpired = CFAbsoluteTimeGetCurrent() > deadline;
@@ -391,7 +450,7 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
 static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume) {
     return fetchBounded(url,path,identifier,generation,resume,nil,path ? (sg_prefix ? 2*1024*1024 : 128*1024*1024) : 1024*1024,
                         path ? @"audio/*,application/octet-stream" : @"application/json",
-                        path && !sg_prefix && !sg_background && sg_progressiveReady!=nil);
+                        path && !sg_prefix && (sg_background || sg_progressiveReady!=nil));
 }
 
 // Called by the serial addon worker. Old requests and background preparation must
@@ -678,6 +737,24 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
     atomic_fetch_add(&sg_foregroundPending, 1);
     sg_status = @"일치하는 녹음 검색 중";
     sg_preparation = SGAddonPreparationSearching;
+    __block BOOL delivered=NO;
+    __block NSString *earlyPath=nil;
+    void (^ready)(NSString *,NSDictionary *)=^(NSString *path, NSDictionary *measured) {
+        if (delivered) return;
+        delivered=YES; earlyPath=path;
+        NSMutableDictionary *info=[measured mutableCopy]; info[@"trackURI"]=uri; info[@"sourceName"]=sg_progressiveName ?: @"Addon";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation!=atomic_load(&sg_generation)) { completion(nil); return; }
+            sg_progressivePath=path; sg_media=info;
+            sg_status=@"FLAC 다운로드 진행 중 · 받은 구간 디코딩 대기 중";
+            sg_preparation=SGAddonPreparationDecoding;
+            completion(path);
+        });
+    };
+    @synchronized(handoffLock()) {
+        if (lookup && sg_inflightPromoted && [sg_inflightURI isEqual:uri] && sg_inflightGeneration==generation)
+            sg_inflightReady=[ready copy];
+    }
     dispatch_async(worker(), ^{
         if (generation != atomic_load(&sg_generation)) { foregroundFinished(); dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); }); return; }
         NSDictionary *entry = sg_prepared[uri];
@@ -690,22 +767,9 @@ void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double dur
         }
         sg_background = NO; sg_prefix = NO;
         sg_requestDeadline = wait > 0 ? CFAbsoluteTimeGetCurrent() + wait : 0;
-        __block BOOL delivered=NO;
-        __block NSString *earlyPath=nil;
         sg_progressiveDuration=duration;
-        sg_progressiveReady=^(NSString *path, NSDictionary *measured) {
-            if (delivered) return;
-            delivered=YES; earlyPath=path;
-            NSMutableDictionary *info=[measured mutableCopy]; info[@"trackURI"]=uri; info[@"sourceName"]=sg_progressiveName ?: @"Addon";
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (generation!=atomic_load(&sg_generation)) { completion(nil); return; }
-                sg_progressivePath=path; sg_media=info;
-                sg_status=@"FLAC 다운로드 진행 중 · 받은 구간 디코딩 대기 중";
-                sg_preparation=SGAddonPreparationDecoding;
-                completion(path);
-            });
-        };
-        if (!entry && lookup) entry = prepare(uri, title, artist, duration, sources, generation, prefixEntry);
+        sg_progressiveReady=ready;
+        if (!entry && lookup && !delivered) entry = prepare(uri, title, artist, duration, sources, generation, prefixEntry);
         sg_progressiveReady=nil; sg_progressiveName=nil;
         discard(prefixEntry);
         sg_requestDeadline = 0;
@@ -779,14 +843,27 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
             }
             sg_prefix = !whole;
             sg_requestDeadline = CFAbsoluteTimeGetCurrent() + 120;
+            @synchronized(handoffLock()) {
+                // Do not expose a job already invalidated before it starts.
+                if (generation!=atomic_load(&sg_generation) || plan!=atomic_load(&sg_prefetchGeneration)) break;
+                sg_inflightURI=[uri copy]; sg_inflightGeneration=generation;
+                ++sg_inflightSerial; sg_inflightPromoted=NO; sg_inflightPending=NO; sg_inflightReady=nil;
+            }
+            sg_progressiveDuration=[track[@"duration"] doubleValue];
             NSDictionary *entry = prepare(uri, track[@"title"], track[@"artist"], [track[@"duration"] doubleValue], sources, generation, cached);
             discard(cached);
-            if (plan == atomic_load(&sg_prefetchGeneration) && generation == atomic_load(&sg_generation) && entry) {
+            BOOL promoted=NO;
+            @synchronized(handoffLock()) {
+                promoted=sg_inflightPromoted || sg_inflightPending;
+                sg_inflightURI=nil; sg_inflightPromoted=NO; sg_inflightPending=NO; sg_inflightReady=nil;
+            }
+            if ((promoted || plan == atomic_load(&sg_prefetchGeneration)) && generation == atomic_load(&sg_generation) && entry) {
                 sg_prepared[uri] = entry;
-                if (index==1 && ![entry[@"info"][@"partial"] boolValue])
+                if (!promoted && index==1 && ![entry[@"info"][@"partial"] boolValue])
                     SGLosslessPrepareNext(entry[@"path"],predecodeRate>0 ? predecodeRate : [entry[@"info"][@"rate"] doubleValue]);
             }
             else discard(entry);
+            if (promoted) break;
         }
         sg_background = NO; sg_prefix = NO; sg_requestDeadline = 0;
         // Retry only a failed plan with a real cooldown. A successful/unchanged

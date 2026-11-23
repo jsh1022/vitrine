@@ -13,8 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 void SGLosslessBeginCapture(void);
 // Asynchronous bounded prefix predecode of one complete, immutable upcoming file.
 void SGLosslessPrepareNext(NSString *_Nullable path, double rate);
-// Off main/render. Reuses recent uninterrupted original audio, collecting only the missing part of 4 s.
-// Decodes the hint's +/-8 s neighborhood first; failed correlation widens the search. Complete files may
+// Off main/render. Reuses recent uninterrupted original audio, collecting only the missing part of 3 s.
+// Decodes the hint's +/-2 s neighborhood first; failure widens to +/-8 s, then the existing broad search. Complete files may
 // search globally; growing FLAC expands only to +/-32 s. Retains the decoded window until another path or Stop(YES). Nil with *error when Spotify's sound does not match the file or the source changed.
 NSDictionary *_Nullable SGLosslessAnchor(NSString *path, double hintSeconds, NSString *_Nullable *_Nonnull error);
 typedef NS_ENUM(NSInteger, SGLosslessPreparationPhase) {

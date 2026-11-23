@@ -174,8 +174,8 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     require(fabs([result[@"file_frame"] doubleValue] - (fixtureStart + [result[@"source_frame"] doubleValue])) < 2.0,
             @"known recording offset is recovered within two frames");
     require(fabs([result[@"gain"] doubleValue] - fixtureScale) < 0.02, @"alignment gain matches the virtual output level");
-    require([result[@"capture_reused_s"] doubleValue] >= 3.9, @"anchor reuses the rolling native capture instead of recording another four seconds");
-    require([result[@"search_scope"] isEqual:@"hint"], @"hinted match stays in the local search window");
+    require([result[@"capture_reused_s"] doubleValue] >= 2.9, @"anchor reuses at least three seconds of rolling native capture");
+    require([result[@"search_scope"] isEqual:@"near"], @"initial hinted match uses the near search window");
     require([lastPhases isEqual:@[@(SGLosslessPhaseCapture),@(SGLosslessPhaseDecode),@(SGLosslessPhaseMatch)]],
             @"progress reports real capture, decode and correlation phases in order");
     require(!progressOnMain,@"preparation progress never runs on main or changes the audio render callback");
@@ -235,8 +235,8 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     NSLog(@"RESULT track-initial: %@ error=%@", initialTrack, error);
     require(initialTrack && ![initialTrack[@"reused_alignment"] boolValue],
             @"first track-A alignment is computed from the full capture");
-    require([initialTrack[@"validation_s"] doubleValue] == 4.0,
-            @"first track-A alignment validates with the four-second window");
+    require([initialTrack[@"validation_s"] doubleValue] == 3.0,
+            @"first track-A alignment validates with the three-second window");
     require(fabs([initialTrack[@"file_frame"] doubleValue] -
                  (fixtureStart + [initialTrack[@"source_frame"] doubleValue])) <= 2.0,
             @"initial track-A alignment recovers the known offset within two frames");
@@ -256,7 +256,7 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     require(resumedTrack && [resumedTrack[@"reused_alignment"] boolValue],
             @"same track reuses alignment after pause/resume");
     require([resumedTrack[@"validation_s"] doubleValue] == 1.0,
-            @"pause/resume reuse validates with one second, without a four-second capture");
+            @"pause/resume reuse validates with one second, without a full-window capture");
     require(fabs([resumedTrack[@"file_frame"] doubleValue] -
                  (fixtureStart + [resumedTrack[@"source_frame"] doubleValue])) <= 2.0,
             @"pause/resume alignment tracks the continued file position within two frames");
@@ -315,8 +315,12 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
                                                  badHintHostTime, &error);
     NSLog(@"RESULT track-bad-hint: %@ error=%@", badHintTrack, error);
     require(badHintTrack != nil, @"bad cached-location hint falls back to a full track verification");
-    require([badHintTrack[@"validation_s"] doubleValue] == 4.0,
-            @"failed one-second validation retries with the full four-second window");
+    require([badHintTrack[@"validation_s"] doubleValue] == 3.0,
+            @"failed near validation retries with the full three-second window");
+    require([badHintTrack[@"search_scope"] isEqual:@"hint"],
+            @"five-second bad hint recovers through the wider plus-or-minus-eight-second hint search");
+    require([badHintTrack[@"match"] doubleValue] >= 0.8,
+            @"wider hinted fallback retains the production correlation threshold");
     require(fabs([badHintTrack[@"file_frame"] doubleValue] -
                  (fixtureStart + [badHintTrack[@"source_frame"] doubleValue])) <= 2.0,
             @"full verification recovers the actual lag despite the inaccurate hint");
@@ -354,7 +358,7 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     NSDictionary *differentTrack = trackAnchorAtCurrentOutput(path, @"track-B", &error);
     NSLog(@"RESULT track-B: %@ error=%@", differentTrack, error);
     require(differentTrack && ![differentTrack[@"reused_alignment"] boolValue] &&
-            [differentTrack[@"validation_s"] doubleValue] == 4.0,
+            [differentTrack[@"validation_s"] doubleValue] == 3.0,
             @"a different track identity cannot reuse track-A alignment");
 
     stopDriver();
@@ -367,7 +371,7 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     NSDictionary *forgottenTrack = trackAnchorAtCurrentOutput(path, @"track-A", &error);
     NSLog(@"RESULT track-after-forget: %@ error=%@", forgottenTrack, error);
     require(forgottenTrack && ![forgottenTrack[@"reused_alignment"] boolValue] &&
-            [forgottenTrack[@"validation_s"] doubleValue] == 4.0,
+            [forgottenTrack[@"validation_s"] doubleValue] == 3.0,
             @"forgetting alignment forces a full validation when returning to track-A");
 
     stopDriver();
