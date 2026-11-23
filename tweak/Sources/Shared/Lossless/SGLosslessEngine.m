@@ -216,6 +216,7 @@ typedef struct {
     uint64_t frames;                        // at the client rate
     uint64_t epoch, generation;
     SGFileIdentity identity;
+    BOOL needsSeek;
 } Reader;
 
 static void closeReader(Reader *reader) {
@@ -250,13 +251,44 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
         *error = @"not supported stereo FLAC, ALAC or WAV/AIFF PCM";
         return NO;
     }
-    *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate), epoch, generation, identity};
+    *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate), epoch, generation, identity, NO};
     return YES;
 }
 
+// Immutable stereo PCM prepared before a wired rate transition. Queue-owned; never read on render.
+@interface SGOutputPCM : NSObject {
+@public
+    float *left, *right;
+    uint64_t from, count;
+    double rate;
+    SGFileIdentity identity;
+}
+@property(nonatomic,copy) NSString *path;
+@end
+@implementation SGOutputPCM
+- (void)dealloc { free(left); free(right); }
+@end
+static SGOutputPCM *sg_outputPCM;
+static uint64_t sg_outputPreparedFrames;
+static Reader sg_reader;
+static UInt32 preparedRead(Reader *reader, uint64_t at, UInt32 count, float *l, float *r) {
+    if (reader!=&sg_reader) return 0;
+    SGOutputPCM *pcm=sg_outputPCM;
+    if (!pcm || reader->rate!=pcm->rate || !sameFile(reader->identity,pcm->identity) ||
+        at<pcm->from || at-pcm->from>pcm->count || count>pcm->count-(at-pcm->from)) return 0;
+    memcpy(l,pcm->left+at-pcm->from,count*sizeof(float));
+    memcpy(r,pcm->right+at-pcm->from,count*sizeof(float));
+    sg_outputPreparedFrames+=count;
+    return count;
+}
 // Up to `count` frames from file frame `at` into l and r; the frames read (0 at the end).
 static UInt32 readAt(Reader *reader, uint64_t at, UInt32 count, float *l, float *r, BOOL seek) {
-    if (seek && ExtAudioFileSeek(reader->file, (SInt64)llround(at * reader->fileRate / reader->rate))) return 0;
+    if (preparedRead(reader,at,count,l,r)) {
+        reader->needsSeek=YES;
+        return count;
+    }
+    if ((seek || reader->needsSeek) && ExtAudioFileSeek(reader->file, (SInt64)llround(at * reader->fileRate / reader->rate))) return 0;
+    reader->needsSeek=NO;
     struct { AudioBufferList list; AudioBuffer second; } buffers = {{2, {{1, count * 4, l}}}, {1, count * 4, r}};
     UInt32 frames = count;
     if (ExtAudioFileRead(reader->file, &frames, &buffers.list)) return 0;
@@ -287,7 +319,7 @@ static float *readMono(Reader *reader, int64_t from, uint32_t count) {
 static dispatch_queue_t sg_queue;
 static void (^sg_anchorProgress)(SGLosslessPreparationPhase);
 static NSString *sg_path;
-static Reader sg_reader;                    // for searches and checks
+// sg_reader serves searches and checks; its declaration precedes preparedRead().
 static float *sg_coarse;                    // the file's mono at 1/kCoarse of the rate
 static uint64_t sg_coarseCount, sg_coarseStart;
 static uint64_t sg_decodedFrames;
@@ -407,6 +439,39 @@ void SGLosslessPrepareNext(NSString *path, double rate) {
             while (sg_warm.count>2) [sg_warm removeObjectAtIndex:0];
         }
     });
+}
+BOOL SGLosslessPrepareOutputBuffer(NSString *path, double rate, double hint, uint64_t expectedEpoch) {
+    if (!path.length || !isfinite(rate) || rate<44100 || rate>192000 || !isfinite(hint) || hint<0) return NO;
+    __block BOOL ready=NO;
+    dispatch_sync(queue(), ^{
+        uint64_t revision=atomic_load(&sg_proofRevision), generation=atomic_load(&sg_generation);
+        if (SGPlayerSourceEpoch()!=expectedEpoch) return;
+        uint64_t from=(uint64_t)floor(MAX(0,hint-2)*rate/kCoarse)*kCoarse;
+        uint64_t to=(uint64_t)ceil((hint+2+kAnchorSeconds)*rate/kCoarse)*kCoarse;
+        SGFileIdentity identity=fileIdentity(path);
+        SGOutputPCM *cached=sg_outputPCM;
+        if (cached && [cached.path isEqual:path] && cached->rate==rate && sameFile(cached->identity,identity) &&
+            cached->from<=from && cached->from+cached->count>=to) { ready=YES; return; }
+        Reader reader={0}; NSString *error=nil;
+        if (!openReader(&reader,path,rate,&error)) return;
+        SGOutputPCM *pcm=[SGOutputPCM new]; pcm.path=path; pcm->rate=rate; pcm->identity=reader.identity;
+        pcm->from=from; to=MIN(to,reader.frames); pcm->count=to>from ? to-from : 0;
+        if (!pcm->count || pcm->count>(uint64_t)(8*rate)) { closeReader(&reader); return; }
+        pcm->left=malloc(pcm->count*sizeof(float)); pcm->right=malloc(pcm->count*sizeof(float));
+        uint64_t at=from;
+        if (pcm->left && pcm->right) while (at<to && SGPlayerSourceEpoch()==expectedEpoch &&
+            generation==atomic_load(&sg_generation) && revision==atomic_load(&sg_proofRevision)) {
+            UInt32 got=readAt(&reader,at,(UInt32)MIN((uint64_t)kChunk,to-at),pcm->left+at-from,pcm->right+at-from,at==from);
+            if (!got) break;
+            at+=got;
+        }
+        closeReader(&reader);
+        if (at==to && SGPlayerSourceEpoch()==expectedEpoch && generation==atomic_load(&sg_generation) &&
+            revision==atomic_load(&sg_proofRevision) && sameFile(identity,fileIdentity(path))) {
+            sg_outputPCM=pcm; ready=YES;
+        }
+    });
+    return ready;
 }
 static BOOL takeWarm(NSString *path, double rate) {
     SGWarmLossless *selected=nil;
@@ -614,7 +679,7 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     SGLosslessBeginCapture();
     stopPlaying();
     uint64_t workGeneration=atomic_load(&sg_generation);
-    sg_decodedFrames=0; sg_predecoded=NO;
+    sg_decodedFrames=0; sg_predecoded=NO; sg_outputPreparedFrames=0;
     BOOL reused=NO;
     double rate=0;
     float score=0,gain=0;
@@ -647,7 +712,7 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
             *error=@"the source changed before decoding"; return nil;
         }
         rate=sg_capRate;
-        double captureHint=isfinite(hint) && hint>=0 ? MAX(0,hint-sg_capReusedSeconds) : -1;
+        double captureHint=isfinite(hint) && hint>=0 ? MAX(0,reportAtCapture(hint)) : -1;
         double fromSeconds=captureHint>=0 ? MAX(0,captureHint-2) : 0;
         double toSeconds=captureHint>=0 ? captureHint+2+kAnchorSeconds : -1;
         if (!loadWindow(path,rate,fromSeconds,toSeconds,error)) return nil;
@@ -704,11 +769,27 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     atomic_store(&sg_ringStart, now);
     atomic_store(&sg_ringEnd, now);
     atomic_store(&sg_readAt, now);
+    // Decode a short startup buffer before publishing the anchor. Unready frames never
+    // interrupt Spotify. The writer starts after this prefix rather than decoding it twice.
+    UInt32 startup=(UInt32)MIN((uint64_t)kChunk,sg_reader.frames>now ? sg_reader.frames-now : 0);
+    float *startupL=malloc(kChunk*sizeof(float)), *startupR=malloc(kChunk*sizeof(float));
+    UInt32 buffered=startup && startupL && startupR ? readAt(&sg_reader,now,startup,startupL,startupR,YES) : 0;
+    if (buffered && workGeneration==atomic_load(&sg_generation) && sg_capEpoch==SGPlayerSourceEpoch()) {
+        uint64_t slot=now%kRing; UInt32 first=(UInt32)MIN((uint64_t)buffered,kRing-slot);
+        memcpy(sg_ringL+slot,startupL,first*sizeof(float)); memcpy(sg_ringR+slot,startupR,first*sizeof(float));
+        memcpy(sg_ringL,startupL+first,(buffered-first)*sizeof(float)); memcpy(sg_ringR,startupR+first,(buffered-first)*sizeof(float));
+        atomic_store(&sg_ringEnd,now+buffered);
+    }
+    free(startupL); free(startupR);
+    if (!buffered) { *error=@"the startup playback buffer is not ready"; return nil; }
+    if (workGeneration!=atomic_load(&sg_generation) || sg_capEpoch!=SGPlayerSourceEpoch() || !sameFile(sg_reader.identity,fileIdentity(path))) {
+        *error=@"the source changed while preparing the playback buffer"; return nil;
+    }
     uint64_t generation = workGeneration, epoch = sg_playEpoch;
     atomic_store(&sg_playGeneration,workGeneration);
     atomic_fetch_add(&sg_writers, 1);
     // Its own thread: it runs for the rest of the song, which would hold a shared queue's thread that long.
-    NSThread *writer = [[NSThread alloc] initWithBlock:^{ fill(path, rate, now, generation, epoch); }];
+    NSThread *writer = [[NSThread alloc] initWithBlock:^{ fill(path, rate, now+buffered, generation, epoch); }];
     writer.qualityOfService = NSQualityOfServiceUserInitiated;
     writer.name = @"spotifyglass.lossless.writer";
     [writer start];
@@ -717,7 +798,8 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
     return @{@"rate" : @(rate), @"source_frame":@(sg_capStart), @"file_frame" : @(lag), @"file_seconds" : @(lag / rate), @"match" : @(score),
              @"gain" : @(gain), @"search_s" : @(took), @"capture_reused_s":@(sg_capReusedSeconds),
              @"decoded_frames":@(sg_decodedFrames), @"predecoded":@(sg_predecoded), @"search_scope":scope,
-             @"reused_alignment":@(reused), @"validation_s":@(reused ? kCheckSeconds : kAnchorSeconds)};
+             @"reused_alignment":@(reused), @"validation_s":@(reused ? kCheckSeconds : kAnchorSeconds),
+             @"startup_frames":@(buffered), @"output_prepared_frames":@(sg_outputPreparedFrames)};
 }
 
 static NSDictionary *check(NSString **error) {
@@ -796,7 +878,7 @@ void SGLosslessStop(BOOL release) {
     atomic_fetch_add(&sg_generation, 1);
     atomic_store(&sg_live, false);
     atomic_store(&sg_anchorEpoch, 0);
-    if (release) { SGLosslessForgetAlignment(); dispatch_async(queue(), ^{ drop(); }); }
+    if (release) { SGLosslessForgetAlignment(); dispatch_async(queue(), ^{ drop(); sg_outputPCM=nil; }); }
 }
 
 BOOL SGLosslessPlaying(void) {

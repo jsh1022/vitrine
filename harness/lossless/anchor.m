@@ -153,6 +153,18 @@ static NSDictionary *trackAnchorAtCurrentOutput(NSString *path, NSString *trackI
     return anchorForTrack(path, trackIdentity, hint, hintHostTime, error);
 }
 
+static BOOL prepareOutputBuffer(NSString *path, double hint, uint64_t expectedEpoch) {
+    __block BOOL ready = NO;
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        ready = SGLosslessPrepareOutputBuffer(path, 44100, hint, expectedEpoch);
+        dispatch_semaphore_signal(done);
+    });
+    require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 12 * NSEC_PER_SEC)) == 0,
+            @"output PCM prebuffer finishes within the bounded simulator run");
+    return ready;
+}
+
 int main(int argc, const char *argv[]) { @autoreleasepool {
     require(argc == 3, @"usage: anchor-sim fixture.flac wrong.flac");
     NSString *path = @(argv[1]), *wrong = @(argv[2]);
@@ -302,6 +314,49 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
             @"post-pause forward seek alignment retains the measured output gain");
 
     stopDriver();
+    // Verify source-epoch fencing, then reuse valid predecoded PCM after a simulated output restart.
+    fixtureStart = 10 * 44100;
+    SGPlayerInvalidateSource();
+    SGLosslessBeginCapture();
+    startDriver();
+    usleep(1100000);
+    double outputHint = (double)(fixtureStart + atomic_load(&fedFrames)) / 44100.0;
+    uint64_t staleOutputEpoch = SGPlayerSourceEpoch();
+    SGPlayerInvalidateSource();
+    require(!prepareOutputBuffer(path, outputHint, staleOutputEpoch),
+            @"output PCM prebuffer rejects a stale expected source epoch");
+    stopDriver();
+
+    SGLosslessBeginCapture();
+    startDriver();
+    usleep(1100000);
+    outputHint = (double)(fixtureStart + atomic_load(&fedFrames)) / 44100.0;
+    uint64_t outputEpoch = SGPlayerSourceEpoch();
+    require(prepareOutputBuffer(path, outputHint, outputEpoch),
+            @"valid source-rate stereo PCM prebuffer succeeds off the main thread");
+    SGPlayerInvalidateSource();
+    stopDriver();
+    SGLosslessBeginCapture();
+    startDriver();
+    waitForHistory();
+    outputHint = (double)(fixtureStart + atomic_load(&fedFrames)) / 44100.0;
+    error = nil;
+    NSDictionary *outputPreparedAnchor = anchor(path, outputHint, &error);
+    NSLog(@"RESULT output-prepared-anchor: %@ error=%@", outputPreparedAnchor, error);
+    require(outputPreparedAnchor != nil, @"prebuffered PCM anchor succeeds after output restart");
+    require([outputPreparedAnchor[@"match"] doubleValue] >= 0.8,
+            @"output-prepared anchor meets the production correlation threshold");
+    require(fabs([outputPreparedAnchor[@"file_frame"] doubleValue] -
+                 (fixtureStart + [outputPreparedAnchor[@"source_frame"] doubleValue])) <= 2.0,
+            @"output-prepared anchor recovers actual file lag within two frames");
+    require(fabs([outputPreparedAnchor[@"gain"] doubleValue] - fixtureScale) < 0.02,
+            @"output-prepared anchor preserves measured output gain");
+    require([outputPreparedAnchor[@"startup_frames"] unsignedLongLongValue] > 0,
+            @"anchor fills startup PCM before output activation");
+    require([outputPreparedAnchor[@"output_prepared_frames"] unsignedLongLongValue] > 0,
+            @"anchor reads frames from the output-prepared PCM cache");
+
+    stopDriver();
     // Deliberately put the hint outside the cached alignment's local verification window.
     fixtureStart = 11 * 44100;
     SGPlayerInvalidateSource();
@@ -330,6 +385,9 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     stopDriver();
     // Keep the same path and track key while atomically substituting unrelated file contents.
     NSString *replacementPath = [trackPath stringByAppendingString:@".replacement"];
+    double replacementHint = (double)(fixtureStart + atomic_load(&fedFrames)) / 44100.0;
+    require(prepareOutputBuffer(trackPath, replacementHint, SGPlayerSourceEpoch()),
+            @"prebuffer isolated track file before same-path replacement");
     require([[NSFileManager defaultManager] copyItemAtPath:wrong toPath:replacementPath error:nil],
             @"stage unrelated fixture contents without touching the source fixtures");
     require([[NSFileManager defaultManager] removeItemAtPath:trackPath error:nil],

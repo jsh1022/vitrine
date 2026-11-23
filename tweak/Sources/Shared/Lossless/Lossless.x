@@ -135,9 +135,8 @@ static dispatch_queue_t sg_storeQueue;
         _addonAsked = NO;
         if (_path) {
             SGLosslessStop(YES);
-            // Restore before the next local lookup completes, including a next song with no
-            // replacement file. The main thread never waits for Core Audio reconfiguration.
-            dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
+            // Keep the negotiated rate until the new file lookup completes. Restoring here
+            // would stop the output twice when the next recording uses another source rate.
         }
         if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"vitrine-addons"])
             [NSFileManager.defaultManager removeItemAtPath:_path error:NULL];
@@ -146,6 +145,10 @@ static dispatch_queue_t sg_storeQueue;
         _looked = NO;
         _failures = 0;
         _gaveUpEpoch = 0;
+        if (!track.length) {
+            uint64_t epoch=SGPlayerSourceEpoch();
+            dispatch_async(sg_storeQueue, ^{ if (epoch==SGPlayerSourceEpoch()) SGWiredOutputPrepare(nil); });
+        }
     }
     // A track's first report can come before its title and length: look again until both are known.
     if (track && !_looked && !_looking) {
@@ -162,6 +165,10 @@ static dispatch_queue_t sg_storeQueue;
                     self->_looked = path || (title.length && duration > 0);
                     // Not looked yet: the next tick looks again, not this one.
                     if (!self->_looked) return;
+                    if (!path && (!SGFlag(SGKeyAddons,NO) || SGAddonPlaybackMode()==SGAddonPlaybackFast || !SGAddonEnabledSources().count)) {
+                        uint64_t epoch=SGPlayerSourceEpoch();
+                        dispatch_async(sg_storeQueue, ^{ if (epoch==SGPlayerSourceEpoch()) SGWiredOutputPrepare(nil); });
+                    }
                     SGLog(@"lossless: %@ (%.1f s): %@", track, duration, path.lastPathComponent ?: @"no file");
                 }
                 [self tick];
@@ -209,6 +216,10 @@ static dispatch_queue_t sg_storeQueue;
             }
             SGAddonFinishPlaybackWait();
             if (path) { self->_path = path; [self tick]; }
+            else {
+                uint64_t epoch=SGPlayerSourceEpoch();
+                dispatch_async(sg_storeQueue, ^{ if (epoch==SGPlayerSourceEpoch()) SGWiredOutputPrepare(nil); });
+            }
         });
     }
     // Use Spotify's already shuffled/queued order; never infer a playlist order ourselves.
@@ -242,7 +253,7 @@ static dispatch_queue_t sg_storeQueue;
         NSDictionary *anchored = nil;
         if (epoch != SGPlayerSourceEpoch()) error = @"the source changed before preparation";
         else {
-            SGWiredOutputPrepare(path);
+            SGWiredOutputPrepareForPosition(path,hint,epoch);
             anchored = SGLosslessAnchorForTrack(path,identity,hint,hintHost,^(SGLosslessPreparationPhase phase) {
                 uint64_t source=SGPlayerSourceEpoch();
                 dispatch_async(dispatch_get_main_queue(), ^{

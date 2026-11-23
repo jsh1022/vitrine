@@ -1,5 +1,6 @@
 #import "SGWiredOutput.h"
 #import "SGSourceFileFormat.h"
+#import "SGLossless.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/AudioSources/SGAddons.h"
 #import "Shared/AudioSources/SGProgressiveFLAC.h"
@@ -12,7 +13,7 @@ static NSObject *control(void) {
     dispatch_once(&once, ^{ lock = [NSObject new]; }); return lock;
 }
 static NSDictionary *sg_status;
-static double sg_previousPreference, sg_previousClient, sg_requested;
+static double sg_previousPreference, sg_previousClient, sg_requested, sg_pendingPreference;
 static AudioUnit sg_changedOutput;
 static uint64_t sg_changedIdentity;
 static NSString *sg_savedRoute;
@@ -47,7 +48,7 @@ static BOOL restore(void) {
     AudioStreamBasicDescription current = {0};
     if (sg_changedOutput && [wiredRoute() isEqualToString:sg_savedRoute]
         && SGPlayerMusicOutput() == sg_changedOutput && SGPlayerMusicOutputIdentity() == sg_changedIdentity && SGPlayerMusicClientFormat(&current)
-        && fabs(current.mSampleRate - sg_requested) < 0.5) {
+        && fabs(current.mSampleRate - sg_requested) < 0.5 && fabs(current.mSampleRate-sg_previousClient)>=0.5) {
         NSString *reason;
         if (!SGPlayerTryMusicSampleRate(sg_previousClient, sg_changedIdentity, &reason)) {
             status(@"Restore pending", [NSString stringWithFormat:@"Resume playback to retry restoring the previous app rate, or restart Spotify. %@", reason ?: @""]);
@@ -56,12 +57,13 @@ static BOOL restore(void) {
     }
     // Restore only a preference we still own. This releases the wired preference when a route
     // goes away; it does not choose a Bluetooth codec, rate or output device.
-    if (sg_requested > 0 && fabs(session.preferredSampleRate - sg_requested) < 0.5
-        && ![session setPreferredSampleRate:sg_previousPreference error:NULL]) {
+    double ownedPreference=sg_pendingPreference>0 ? sg_pendingPreference : sg_requested;
+    if (ownedPreference > 0 && fabs(session.preferredSampleRate - ownedPreference) < 0.5
+        && fabs(session.preferredSampleRate-sg_previousPreference)>=0.5 && ![session setPreferredSampleRate:sg_previousPreference error:NULL]) {
         status(@"Restore pending", @"iOS did not restore the previous rate preference. Resume playback to retry, or restart Spotify.");
         return NO;
     }
-    sg_changedOutput = NULL; sg_changedIdentity = 0; sg_previousPreference = sg_previousClient = sg_requested = 0; sg_savedRoute = nil;
+    sg_changedOutput = NULL; sg_changedIdentity = 0; sg_previousPreference = sg_previousClient = sg_requested = sg_pendingPreference = 0; sg_savedRoute = nil;
     return YES;
 }
 static BOOL undoPreference(double previous, double requested) {
@@ -70,6 +72,7 @@ static BOOL undoPreference(double previous, double requested) {
         sg_previousPreference = previous; sg_requested = requested;
         sg_changedOutput = NULL; sg_changedIdentity = 0;
     }
+    sg_pendingPreference=requested;
     status(@"Restore pending", @"iOS did not release the requested rate. Resume playback to retry, or restart Spotify.");
     return NO;
 }
@@ -80,7 +83,7 @@ void SGWiredOutputRouteDidChange(void) {
         if (sg_requested > 0 && ![wiredRoute() isEqualToString:sg_savedRoute]) restore();
     }
 }
-void SGWiredOutputPrepare(NSString *path) {
+void SGWiredOutputPrepareForPosition(NSString *path, double hint, uint64_t expectedEpoch) {
     @synchronized (control()) {
         NSString *route = wiredRoute();
         if (!path || !route || !SGFlag(SGKeyWiredSourceOutput, NO)) {
@@ -88,6 +91,7 @@ void SGWiredOutputPrepare(NSString *path) {
             status(@"Waiting", @"Waiting for a local or addon lossless file");
             return;
         }
+        if (expectedEpoch!=SGPlayerSourceEpoch()) return;
         ExtAudioFileRef file = NULL;
         AudioStreamBasicDescription source = {0}; UInt32 size = sizeof source;
         CFTypeRef owner=NULL;
@@ -105,21 +109,28 @@ void SGWiredOutputPrepare(NSString *path) {
             status(@"Unavailable", @"This file cannot use wired source-rate output"); return;
         }
         AVAudioSession *session = AVAudioSession.sharedInstance;
-        if (sg_requested && (fabs(sg_requested - source.mSampleRate) >= 0.5 || ![route isEqualToString:sg_savedRoute]))
+        if (sg_requested && ![route isEqualToString:sg_savedRoute])
             if (!restore()) return;
         AudioStreamBasicDescription client = {0};
         if (!SGPlayerMusicClientFormat(&client)) { status(@"Waiting", @"Spotify has no active local output"); return; }
-        if (sg_requested && [route isEqualToString:sg_savedRoute] && fabs(client.mSampleRate - source.mSampleRate) < 0.5
+        if (fabs(client.mSampleRate - source.mSampleRate) < 0.5
             && fabs(session.sampleRate - source.mSampleRate) < 0.5) {
             status(@"Rate matched", [NSString stringWithFormat:@"Source, app and device: %.0f Hz. Source level is preserved. Bit transparency is not measured.", source.mSampleRate]);
             return;
+        }
+        // Keep Spotify running while decoding the measured target-rate PCM. If preparation
+        // fails, leave the output untouched rather than interrupting for an unready file.
+        if (!SGLosslessPrepareOutputBuffer(path,source.mSampleRate,hint,expectedEpoch) ||
+            expectedEpoch!=SGPlayerSourceEpoch() || ![route isEqualToString:wiredRoute()] || !SGFlag(SGKeyWiredSourceOutput,NO)) {
+            status(@"Waiting", @"Waiting for decoded source-rate playback data"); return;
         }
         // Category, activation, route selection and device volume remain Spotify/iOS owned.
         double previous = session.preferredSampleRate;
         NSError *error;
         if (![route isEqualToString:wiredRoute()]) return;
         status(@"Negotiating", @"Requesting the measured file rate from the wired device");
-        BOOL accepted = [session setPreferredSampleRate:source.mSampleRate error:&error];
+        BOOL preferenceMatches=fabs(session.preferredSampleRate-source.mSampleRate)<0.5;
+        BOOL accepted = preferenceMatches || [session setPreferredSampleRate:source.mSampleRate error:&error];
         if (!accepted || ![route isEqualToString:wiredRoute()] || fabs(session.sampleRate - source.mSampleRate) >= 0.5) {
             if (accepted && !undoPreference(previous, source.mSampleRate)) return;
             status(@"Device limit", [NSString stringWithFormat:@"Requested %.0f Hz; device uses %.0f Hz. Existing app format retained.", source.mSampleRate, session.sampleRate]);
@@ -151,13 +162,16 @@ void SGWiredOutputPrepare(NSString *path) {
             sg_previousClient = client.mSampleRate;
             sg_changedOutput = SGPlayerMusicOutput(); sg_changedIdentity = identity; sg_savedRoute = route;
         }
-        sg_requested = source.mSampleRate;
+        sg_requested = source.mSampleRate; sg_pendingPreference=0;
         BOOL exact = [route isEqualToString:wiredRoute()] && SGPlayerMusicClientFormat(&client)
             && fabs(client.mSampleRate - source.mSampleRate) < 0.5 && fabs(session.sampleRate - source.mSampleRate) < 0.5;
         status(exact ? @"Rate matched" : @"Not matched", exact
             ? [NSString stringWithFormat:@"Source, app and device: %.0f Hz. Source level is preserved. Bit transparency is not measured.", source.mSampleRate]
             : @"Output changed during negotiation; inspect the actual rates in Playback details");
     }
+}
+void SGWiredOutputPrepare(NSString *path) {
+    SGWiredOutputPrepareForPosition(path,0,SGPlayerSourceEpoch());
 }
 static void reset(void) {
     SGPlayerInvalidateSource();

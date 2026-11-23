@@ -11,6 +11,7 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
 "$OUT/protocol"
 bash "$ROOT/harness/audio-sources/progressive-check.sh"
 bash "$ROOT/harness/lossless/anchor-check.sh"
+bash "$ROOT/harness/lossless/wired-check.sh"
 # Compile the actual iOS sources using Apple's SDK, both with and without the tunnel.
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 LOGOS="${LOGOS:?Set LOGOS to a theos/logos checkout}"
