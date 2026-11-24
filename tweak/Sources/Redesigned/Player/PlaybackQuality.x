@@ -1,6 +1,7 @@
 // Three-second text shine follows the supplied BitChord PlayerControls.swift (GPL-3.0).
 // Text-only quality control; the overlay is outside the seek unit's gesture/hit-test bounds.
 #import "Core/SGCore.h"
+#import "Player.h"
 #import "Shared/AudioSources/SGPlaybackQuality.h"
 #import "Redesigned/Player/SGRLosslessIcon.h"
 #import <objc/runtime.h>
@@ -134,6 +135,7 @@
     centreY = MAX(centreY, CGRectGetMaxY(sliderTouch) + height / 2 + 2);
     self.button.frame = CGRectMake(x, centreY - height / 2, width, height);
     self.button.hidden = NO;
+    if (!SGRPlayerLyricsFadeView(self.button,YES)) self.button.alpha=1;
     self.button.shines = [info[@"shines"] boolValue] && !UIAccessibilityIsReduceMotionEnabled()
         && !NSProcessInfo.processInfo.lowPowerModeEnabled && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
     [self.button setNeedsLayout]; [self.button layoutIfNeeded];

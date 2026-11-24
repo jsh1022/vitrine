@@ -342,11 +342,15 @@ static CGFloat thumbRadius(SGRLyricsLayout l, BOOL open) {
 // units by name. Only views on screen are taken, and only the ones faded (sg_faded) come back, so nothing
 // Spotify keeps hidden is shown. Keeping the title, the header row, the thumbnail and the title row stay.
 static NSHashTable<UIView *> *sg_faded;
+// Mod controls outside Spotify's bottom stack participate in the same fade animation.
+static NSHashTable<UIView *> *sg_extraFadeViews;
 
 static NSArray<UIView *> *fadingViews(void) {
     BOOL keeps = keepsTitle();
     UIView *floating = sg_floating.viewIfLoaded, *info = keeps ? sg_info.viewIfLoaded : nil;
     NSMutableArray<UIView *> *views = [NSMutableArray array];
+    for (UIView *view in sg_extraFadeViews)
+        if (view.window && view.window==sg_host.window && !view.hidden && view.alpha>0.01) [views addObject:view];
     SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
     UIView *header = keeps ? nil : sg_header.viewIfLoaded, *thumb = keeps ? nil : overlay.thumb;
     if (header && !header.hidden && header.alpha > 0.01) [views addObject:header];
@@ -379,11 +383,14 @@ static NSArray<UIView *> *fadingViews(void) {
 
 BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
     if (!view) return NO;
+    if (!sg_extraFadeViews) sg_extraFadeViews=[NSHashTable weakObjectsHashTable];
     if (!fits) {
+        [sg_extraFadeViews removeObject:view];
         view.alpha = 0;
         [sg_faded removeObject:view];
         return YES;
     }
+    [sg_extraFadeViews addObject:view];
     if (!sg_alone) return NO;
     view.alpha = 0;
     if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
