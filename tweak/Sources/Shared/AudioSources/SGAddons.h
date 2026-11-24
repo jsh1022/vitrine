@@ -35,8 +35,12 @@ void SGAddonWillChangeTrack(void);
 // Any thread. Revoke in-flight I/O before a skip/stop is reported on main.
 void SGAddonInvalidateRequests(void);
 void SGAddonRetryCurrentTrack(void);
+// Main thread. Nil records a baseline; changed values only adjust the affected policy.
+void SGAddonSettingsChanged(NSString *key);
 #define SGAddonRetryNotification @"spotifyglass.addons.retry"
 #define SGAddonDownloadFinishedNotification @"spotifyglass.addons.downloadFinished"
+#define SGAddonDownloadFailedNotification @"spotifyglass.addons.downloadFailed"
+#define SGAddonSettingsNotification @"spotifyglass.addons.settingsChanged"
 void SGAddonPrepare(NSString *uri, NSString *title, NSString *artist, double duration,
                     void (^completion)(NSString *path));
 NSString *SGAddonStatus(void);

@@ -49,7 +49,7 @@ static OSStatus readBytes(void *context, SInt64 position, UInt32 requested, void
     while (!source.failed && !source.finished && !source.cancelled() && !(holder.cancelled && holder.cancelled()) &&
            source.available<MIN(end,source.total) && CFAbsoluteTimeGetCurrent()<limit)
         [source.condition waitUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
-    BOOL failed=source.failed || source.cancelled() || (holder.cancelled && holder.cancelled()) || (!source.finished && CFAbsoluteTimeGetCurrent()>=limit);
+    BOOL failed=source.failed || (!source.finished && source.cancelled()) || (holder.cancelled && holder.cancelled()) || (!source.finished && CFAbsoluteTimeGetCurrent()>=limit);
     uint64_t count=(uint64_t)position<source.available ? MIN((uint64_t)requested,source.available-(uint64_t)position) : 0;
     [source.condition unlock];
     if (failed) return kAudioFileUnspecifiedError;
@@ -64,15 +64,16 @@ static SInt64 sizeOfSource(void *context) {
     SGProgressiveFLAC *source=((__bridge SGProgressiveFLACOwner *)context).source;
     [source.condition lock]; uint64_t total=source.total; [source.condition unlock]; return (SInt64)total;
 }
-static BOOL openSource(SGProgressiveFLAC *source, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void)) {
+static BOOL openSource(SGProgressiveFLAC *source, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void), OSStatus *failure) {
+    if (failure) *failure=noErr;
     *file=NULL; *owner=NULL;
     SGProgressiveFLACOwner *holder=[SGProgressiveFLACOwner new]; holder.source=source; holder.cancelled=cancelled;
     AudioFileID audio=NULL;
     OSStatus status=AudioFileOpenWithCallbacks((__bridge void *)holder,readBytes,NULL,sizeOfSource,NULL,kAudioFileFLACType,&audio);
-    if (status) return NO;
+    if (status) { if (failure) *failure=status; return NO; }
     holder.audioFile=audio;
     status=ExtAudioFileWrapAudioFileID(audio,false,file);
-    if (status) return NO;
+    if (status) { if (failure) *failure=status; return NO; }
     *owner=CFBridgingRetain(holder); return YES;
 }
 @implementation SGProgressiveFLAC
@@ -122,7 +123,7 @@ static BOOL openSource(SGProgressiveFLAC *source, ExtAudioFileRef *file, CFTypeR
         (expected>0 && fabs(duration-expected)>30) || available-offset<32*1024) return nil;
     ExtAudioFileRef file=NULL; CFTypeRef owner=NULL;
     [_condition lock]; _probing=YES; _probeDeadline=CFAbsoluteTimeGetCurrent()+2; [_condition unlock];
-    BOOL opened=openSource(self,&file,&owner,nil);
+    BOOL opened=openSource(self,&file,&owner,nil,NULL);
     [_condition lock]; _probing=NO; [_condition unlock];
     if (!opened) return nil;
     AudioStreamBasicDescription format={0}; UInt32 size=sizeof(format);
@@ -136,8 +137,20 @@ static BOOL openSource(SGProgressiveFLAC *source, ExtAudioFileRef *file, CFTypeR
 }
 @end
 BOOL SGProgressiveFLACOpen(NSString *path, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void)) {
+    return SGProgressiveFLACOpenWithStatus(path,file,owner,cancelled,NULL);
+}
+BOOL SGProgressiveFLACOpenWithStatus(NSString *path, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void), OSStatus *failure) {
     SGProgressiveFLAC *source=sourceForPath(path);
-    return source && openSource(source,file,owner,cancelled);
+    if (!source) { *file=NULL; *owner=NULL; if (failure) *failure=kAudioFileFileNotFoundError; return NO; }
+    return openSource(source,file,owner,cancelled,failure);
+}
+NSDictionary *SGProgressiveFLACState(NSString *path) {
+    SGProgressiveFLAC *source=sourceForPath(path); if (!source) return @{};
+    [source.condition lock];
+    NSDictionary *state=@{@"receivedBytes":@(source.available),@"expectedBytes":@(source.total),
+        @"complete":@(source.finished && !source.failed),@"growing":@(!source.finished),
+        @"cancelled":@(!source.finished && source.cancelled())};
+    [source.condition unlock]; return state;
 }
 BOOL SGProgressiveFLACRegistered(NSString *path) { return sourceForPath(path)!=nil; }
 NSDictionary *SGProgressiveFLACInfo(NSString *path) { return sourceForPath(path).information; }

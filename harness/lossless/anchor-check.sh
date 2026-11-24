@@ -10,6 +10,7 @@ xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios16.0-simulator" 
   -isysroot "$SDK" -fobjc-arc -fblocks -O1 -Wall -Wextra -Werror -Wno-unused-parameter \
   -I"$SRC" "$ROOT/harness/lossless/anchor.m" \
   "$SRC/Shared/Lossless/SGLosslessEngine.m" \
+  "$SRC/Shared/AudioSources/SGAddonDiagnostics.m" \
   "$SRC/Shared/AudioSources/SGProgressiveFLAC.m" \
   -framework Foundation -framework UIKit -framework AudioToolbox -framework Accelerate \
   -o "$OUT/anchor-sim"

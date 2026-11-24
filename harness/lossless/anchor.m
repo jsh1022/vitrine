@@ -7,6 +7,7 @@
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/Lossless/SGLossless.h"
 #import "Shared/AudioSources/SGProgressiveFLAC.h"
+#import "Shared/AudioSources/SGAddonDiagnostics.h"
 
 // These APIs are implemented by SGLosslessEngine.m. They are deliberately kept in this harness
 // until the rolling-capture / upcoming-file API is ready to become part of the public header.
@@ -445,6 +446,38 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     require(!wrongTrackFile || ![wrongTrackFile[@"reused_alignment"] boolValue],
             @"a different file path cannot reuse the cached track alignment");
     require(!wrongTrackFile, @"wrong file path is not accepted for track-A");
+
+    // A missing private-looking path must yield sanitized diagnostics with the actual OSStatus.
+    NSString *privateToken = [@"private-looking-addon-token-" stringByAppendingString:NSUUID.UUID.UUIDString];
+    NSString *missingPath = [NSString stringWithFormat:
+        @"/private/var/mobile/Containers/Data/Application/%@/Library/Caches/%@.flac",
+        NSUUID.UUID.UUIDString, privateToken];
+    NSString *sourceID = NSUUID.UUID.UUIDString.lowercaseString;
+    SGAddonDiagnosticsBindFile(missingPath, sourceID);
+    error = nil;
+    NSDictionary *missingResult = anchor(missingPath, 0, &error);
+    NSLog(@"RESULT missing-file-anchor: %@ error=%@", missingResult, error);
+    require(!missingResult, @"missing file cannot produce a lossless anchor");
+    require(error != nil, @"missing file rejection reports an error");
+    NSDictionary *missingEvent = nil;
+    for (NSDictionary *event in [SGAddonDiagnosticEvents() reverseObjectEnumerator]) {
+        if ([event[@"source"] isEqual:sourceID]) { missingEvent = event; break; }
+    }
+    NSLog(@"RESULT missing-file-diagnostic: %@", missingEvent);
+    require([missingEvent[@"stage"] isEqual:@"파일 열기"],
+            @"missing file diagnostic records the file-open stage");
+    NSDictionary *missingDetails = missingEvent[@"details"];
+    require([missingDetails[@"fileExists"] isKindOfClass:NSNumber.class] &&
+            ![missingDetails[@"fileExists"] boolValue],
+            @"missing file diagnostic reports fileExists false");
+    require([missingDetails[@"errorCode"] intValue] != 0,
+            @"missing file diagnostic preserves the nonzero decoder OSStatus");
+    require([missingDetails[@"errorDomain"] isEqual:NSOSStatusErrorDomain],
+            @"missing file diagnostic identifies the NSOSStatusErrorDomain");
+    NSString *diagnosticSnapshot = SGAddonDiagnosticEvents().description;
+    require(![diagnosticSnapshot containsString:missingPath] &&
+            ![diagnosticSnapshot containsString:privateToken],
+            @"diagnostic event snapshot omits the private path and token");
     stopDriver();
     SGLosslessStop(YES);
     NSLog(@"PASS: actual lossless engine rolling capture, local correlation and prepared-file path");

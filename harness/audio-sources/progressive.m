@@ -48,6 +48,19 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     require(dispatch_semaphore_wait(finished,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))==0,@"reader completes after final bytes");
     require(SGProgressiveFLACComplete(path),@"complete transfer is recorded");
     ExtAudioFileDispose(file); CFRelease(owner);
+    // Network/profile edits may revoke HTTP work; a fully validated immutable rendition survives.
+    atomic_store(&cancelled,true);
+    file=NULL; owner=NULL; OSStatus openingStatus=noErr;
+    require(SGProgressiveFLACOpenWithStatus(path,&file,&owner,^BOOL { return NO; },&openingStatus) && !clientFormat(file),
+            @"completed rendition remains readable after its network generation is revoked");
+    frames=1024;
+    require(!ExtAudioFileRead(file,&frames,&buffers) && frames==1024,
+            @"retained completed rendition still decodes real PCM");
+    ExtAudioFileDispose(file); CFRelease(owner);
+    file=NULL; owner=NULL;
+    require(!SGProgressiveFLACOpenWithStatus(path,&file,&owner,^BOOL { return YES; },&openingStatus) && openingStatus!=noErr,
+            @"output epoch cancellation still rejects a reader of the completed rendition");
+    atomic_store(&cancelled,false);
     SGProgressiveFLACForgetAll();
     // Transfer truncation is a hard failure, not a successful short recording.
     require([[encoded subdataWithRange:NSMakeRange(0,split)] writeToFile:path atomically:NO],@"reset partial fixture");

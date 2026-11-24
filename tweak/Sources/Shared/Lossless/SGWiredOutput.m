@@ -178,7 +178,7 @@ static void reset(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         SGWiredOutputPrepare(nil);
         dispatch_async(dispatch_get_main_queue(), ^{
-            [NSNotificationCenter.defaultCenter postNotificationName:SGAddonRetryNotification object:nil];
+            [NSNotificationCenter.defaultCenter postNotificationName:SGWiredOutputChangedNotification object:nil];
         });
     });
 }

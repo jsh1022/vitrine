@@ -12,6 +12,8 @@
 #import "SGLosslessStore.h"
 #import "LosslessQuality.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGAddonDiagnostics.h"
+#import "Shared/AudioSources/SGProgressiveFLAC.h"
 
 static const int kTries = 3;            // failed anchors in a row before waiting for the next change of source
 static const double kRetrySeconds = 2;
@@ -35,7 +37,7 @@ static dispatch_queue_t sg_storeQueue;
     int _failures;
     uint64_t _gaveUpEpoch;
     double _retryAt;
-    BOOL _addonAsked;
+    BOOL _addonAsked, _keepAddonPlayback;
     uint64_t _occurrence;
 }
 // state.future is only a short window on Spotify 9.1.90. The complete native
@@ -95,11 +97,46 @@ static dispatch_queue_t sg_storeQueue;
         SGLosslessStop(YES);
         ++_occurrence;
         [NSFileManager.defaultManager removeItemAtPath:_path error:NULL];
-        _path = nil;
+        _path = nil; _keepAddonPlayback=NO;
         _failures = 0; _gaveUpEpoch = 0; _retryAt = 0;
         dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
     }
     _addonAsked = NO;
+    [self tick];
+}
+- (void)downloadFailed:(NSNotification *)note {
+    if (![_path isEqual:note.object]) return;
+    // A terminal download failure revokes the published path. Never re-align a deleted file.
+    ++_occurrence; _path=nil; _addonAsked=YES; _keepAddonPlayback=NO;
+    _failures=0; _gaveUpEpoch=SGPlayerSourceEpoch();
+    dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
+}
+- (void)addonSettingsChanged:(NSNotification *)note {
+    BOOL addonPath=[_path.stringByDeletingLastPathComponent.lastPathComponent isEqual:@"vitrine-addons"];
+    BOOL partial=addonPath && SGProgressiveFLACRegistered(_path) && !SGProgressiveFLACComplete(_path);
+    BOOL disabled=[note.userInfo[@"disabled"] boolValue], transport=[note.userInfo[@"transport"] boolValue];
+    if ((disabled || transport) && partial) {
+        ++_occurrence; _path=nil; _addonAsked=disabled; _keepAddonPlayback=NO;
+        SGPlayerInvalidateSource(); SGLosslessStop(NO);
+    }
+    if (disabled) {
+        _keepAddonPlayback=NO;
+        if (addonPath) { SGPlayerInvalidateSource(); SGLosslessStop(NO); }
+        if (addonPath || !_path) dispatch_async(sg_storeQueue, ^{ SGWiredOutputPrepare(nil); });
+    }
+    NSString *key=note.userInfo[@"key"];
+    if (!_path && (transport || [key isEqual:SGKeyAddons] || [key isEqual:SGKeyAddonAutoSwitch] || [key isEqual:SGKeyAddonPlaybackMode])) {
+        // Only a newly allowed/transport-replaced idle lookup is eligible. Display, source order,
+        // prefetch and wait-time edits do not restart a current lookup.
+        if (transport) { ++_occurrence; _addonAsked=NO; }
+        else if ([key isEqual:SGKeyAddons] && !disabled) _addonAsked=NO;
+        else if (!disabled && SGAddonAllowsCurrentLookup() && SGAddonPreparation()==SGAddonPreparationUnavailable) _addonAsked=NO;
+    }
+    [self tick];
+}
+- (void)outputSettingsChanged:(NSNotification *)note {
+    // Output rate/level changes require a fresh anchor, not a new URL or download.
+    _failures=0; _gaveUpEpoch=0; _retryAt=0;
     [self tick];
 }
 - (void)downloadFinished:(NSNotification *)note {
@@ -131,6 +168,7 @@ static dispatch_queue_t sg_storeQueue;
     NSString *track = SGURIString(state.track.URI);
     if (![track isEqualToString:_track]) {
         SGAddonTrackChanged(track);
+        _keepAddonPlayback=NO;
         ++_occurrence;
         _addonAsked = NO;
         if (_path) {
@@ -235,6 +273,8 @@ static dispatch_queue_t sg_storeQueue;
     }
     [self updateUpcoming:upcomingTracks state:state];
     if (!_path || _busy || SGLosslessPlaying()) return;
+    if ([_path.stringByDeletingLastPathComponent.lastPathComponent isEqual:@"vitrine-addons"] &&
+        (!SGFlag(SGKeyAddons,NO) || (!SGAddonAllowsCurrentLookup() && !_keepAddonPlayback))) return;
     if (!state.isPlaying || state.isPaused || fabs(state.playbackSpeed - 1) > 0.001 || SGSingOn()) return;
     uint64_t epoch = SGPlayerSourceEpoch();
     if (_gaveUpEpoch && _gaveUpEpoch == epoch) return;
@@ -258,6 +298,10 @@ static dispatch_queue_t sg_storeQueue;
                 uint64_t source=SGPlayerSourceEpoch();
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (occurrence!=self->_occurrence || ![path isEqual:self->_path] || source!=SGPlayerSourceEpoch()) return;
+                    SGAddonDiagnostic(SGAddonDiagnosticSourceForFile(path),@"정렬 진행",
+                        phase==SGLosslessPhaseDecode ? @"파일 열기 및 PCM 디코딩 시작" :
+                        phase==SGLosslessPhaseCapture ? @"Spotify 원래 소리 수집 시작" :
+                        phase==SGLosslessPhaseReconnect ? @"기존 정렬 위치 확인 시작" : @"오디오 상관 비교 시작",nil);
                     if (phase==SGLosslessPhaseDecode)
                         SGAddonSetPreparationStage(SGAddonPreparationDecoding,@"재생 위치 주변 음원 디코딩 중");
                     else if (phase==SGLosslessPhaseReconnect)
@@ -272,6 +316,7 @@ static dispatch_queue_t sg_storeQueue;
             self->_busy = NO;
             if (occurrence != self->_occurrence || ![track isEqualToString:self->_track]) return;
             if (anchored) {
+                self->_keepAddonPlayback=YES;
                 SGAddonSetPlaybackStatus(@"오디오 정렬 완료 · 상세 재생 정보에서 최근 외부 출력 프레임을 확인하세요", YES);
                 self->_failures = 0;
                 // Addon files are transient, not entries in Documents/Lossless's local index.
@@ -303,6 +348,9 @@ static dispatch_queue_t sg_storeQueue;
         coordinator = [SGLosslessCoordinator new];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(retryAddons:) name:SGAddonRetryNotification object:nil];
         [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(downloadFinished:) name:SGAddonDownloadFinishedNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(outputSettingsChanged:) name:SGWiredOutputChangedNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(downloadFailed:) name:SGAddonDownloadFailedNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:coordinator selector:@selector(addonSettingsChanged:) name:SGAddonSettingsNotification object:nil];
         SGAddPlayerStateObserver(coordinator);
     });
 }

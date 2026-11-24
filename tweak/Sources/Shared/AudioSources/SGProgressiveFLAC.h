@@ -13,6 +13,9 @@
 // Off render. Returns YES only for a registered in-flight rendition. The caller disposes the
 // ExtAudioFile before releasing owner, which owns its underlying AudioFile and read callbacks.
 BOOL SGProgressiveFLACOpen(NSString *path, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void));
+// Detailed status is internal numeric decoder data only; never includes a URL or path.
+BOOL SGProgressiveFLACOpenWithStatus(NSString *path, ExtAudioFileRef *file, CFTypeRef *owner, BOOL (^cancelled)(void), OSStatus *failure);
+NSDictionary *SGProgressiveFLACState(NSString *path);
 BOOL SGProgressiveFLACRegistered(NSString *path);
 NSDictionary *SGProgressiveFLACInfo(NSString *path);
 BOOL SGProgressiveFLACComplete(NSString *path);

@@ -139,6 +139,13 @@ int main(int argc, const char *argv[]) { @autoreleasepool {
     SGWiredOutputRouteDidChange();
     require(session.preferredSampleRate==32000 && clientRate==48000 && tryCalls==1,
             @"unplug restores only the owned preference and leaves the detached app output alone");
+    __block NSUInteger retryEvents=0, outputEvents=0;
+    [NSNotificationCenter.defaultCenter addObserverForName:SGAddonRetryNotification object:nil queue:nil usingBlock:^(NSNotification *note) { ++retryEvents; }];
+    [NSNotificationCenter.defaultCenter addObserverForName:SGWiredOutputChangedNotification object:nil queue:nil usingBlock:^(NSNotification *note) { ++outputEvents; }];
+    SGWiredOutputSettingsChanged();
+    NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:2];
+    while (!outputEvents && deadline.timeIntervalSinceNow>0) [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.01]];
+    require(outputEvents==1 && retryEvents==0,@"wired settings notify only output re-anchoring, never addon re-download");
     NSLog(@"RESULT wired source-rate orchestration passed");
     return 0;
 } }

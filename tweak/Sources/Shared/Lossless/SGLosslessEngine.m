@@ -8,6 +8,7 @@
 #import "SGWiredOutput.h"
 #import "SGSourceFileFormat.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGAddonDiagnostics.h"
 #import "Shared/AudioSources/SGProgressiveFLAC.h"
 #import "Core/SGCore.h"
 #import "Shared/Player/SpeedPitch.h"
@@ -231,8 +232,19 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
     ExtAudioFileRef file=NULL; CFTypeRef owner=NULL;
     BOOL growing=SGProgressiveFLACRegistered(path);
     uint64_t epoch=SGPlayerSourceEpoch(), generation=atomic_load(&sg_generation);
-    BOOL opened=growing ? SGProgressiveFLACOpen(path,&file,&owner,^BOOL { return epoch!=SGPlayerSourceEpoch() || generation!=atomic_load(&sg_generation); }) : !ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], &file);
-    if (!opened) { *error = @"the file does not open"; return NO; }
+    OSStatus openingStatus=noErr;
+    BOOL opened=growing ? SGProgressiveFLACOpenWithStatus(path,&file,&owner,^BOOL { return epoch!=SGPlayerSourceEpoch() || generation!=atomic_load(&sg_generation); },&openingStatus)
+        : (openingStatus=ExtAudioFileOpenURL((__bridge CFURLRef)[NSURL fileURLWithPath:path],&file))==noErr;
+    if (!opened) {
+        NSMutableDictionary *details=[SGProgressiveFLACState(path) mutableCopy];
+        details[@"fileExists"]=@(identity.valid); details[@"fileBytes"]=@(identity.size);
+        details[@"errorCode"]=@(openingStatus); details[@"errorDomain"]=NSOSStatusErrorDomain;
+        details[@"epochChanged"]=@(epoch!=SGPlayerSourceEpoch());
+        details[@"generationChanged"]=@(generation!=atomic_load(&sg_generation));
+        SGAddonDiagnostic(SGAddonDiagnosticSourceForFile(path),@"파일 열기",@"오디오 디코더가 파일을 열지 못함",details);
+        *error=[NSString stringWithFormat:@"파일 열기 실패 (오류 %d). 준비 상태를 눌러 상세 기록을 확인하세요.",(int)openingStatus];
+        return NO;
+    }
     AudioStreamBasicDescription source = {0};
     UInt32 size = sizeof source;
     SInt64 frames = 0;
@@ -248,7 +260,9 @@ static BOOL openReader(Reader *reader, NSString *path, double rate, NSString **e
     if (status || !lossless || source.mChannelsPerFrame != 2 || frames <= 0 || !sameFile(identity,fileIdentity(path))) {
         ExtAudioFileDispose(file);
         if (owner) CFRelease(owner);
-        *error = @"not supported stereo FLAC, ALAC or WAV/AIFF PCM";
+        SGAddonDiagnostic(SGAddonDiagnosticSourceForFile(path),@"디코더 형식 검사",@"무손실 스테레오 형식 또는 파일 일관성 검사 실패",
+            @{@"errorCode":@(status),@"errorDomain":NSOSStatusErrorDomain,@"fileExists":@(identity.valid),@"fileBytes":@(identity.size)});
+        *error = @"지원되는 스테레오 무손실 파일이 아니거나 파일이 변경되었습니다";
         return NO;
     }
     *reader = (Reader){file, owner, source.mSampleRate, rate, (uint64_t)floor(frames * rate / source.mSampleRate), epoch, generation, identity, NO};
@@ -739,7 +753,10 @@ static NSDictionary *anchor(NSString *path, double hint, NSString **error) {
             lag=search(from,to,&score,&gain,NULL); scope=@"wide";
         }
     }
-    if (score<kMinMatch) { *error=[NSString stringWithFormat:@"no match (%.3f)",score]; return nil; }
+    if (score<kMinMatch) {
+        SGAddonDiagnostic(SGAddonDiagnosticSourceForFile(path),@"오디오 상관 비교",@"일치 기준 미달",@{@"correlation":@(score)});
+        *error=[NSString stringWithFormat:@"소리 일치 기준 미달 (%.3f)",score]; return nil;
+    }
     if (sg_capEpoch!=SGPlayerSourceEpoch() || workGeneration!=atomic_load(&sg_generation) || sg_requestRevision!=atomic_load(&sg_proofRevision) || !sameFile(sg_reader.identity,fileIdentity(path))) {
         *error=@"the source changed while matching"; return nil;
     }
