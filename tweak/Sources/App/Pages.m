@@ -167,14 +167,19 @@ UIViewController *SGPlayerSettingsPage(void) {
         : @[SGHideRow(@"셔플", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"반복", nil, SGRKeyPlayerHideRepeat), video, tilt];
     [sections addObject:SGSection(native ? nil : @"플레이어에서 숨기기", hidden)];
 
-    [sections addObject:SGNotedSection(@"무손실", @[
+    // Lossless audio and source options have their own page directly below Player in Mod Settings.
+    // Keep these playback options together while leaving the Player page for screen-specific controls.
+    if (!native) return SGRPlayerSettingsPage(sections);
+    return [[SGModPage alloc] initWithTitle:@"플레이어" intro:SGRestartNote sections:sections footer:nil];
+}
+
+UIViewController *SGLosslessSettingsPage(void) {
+    NSArray<SGModSection *> *sections = @[
+        SGNotedSection(nil, @[
         SGOptionRow(@"무손실 파일", @"Spotify 스트림 대신 본인의 FLAC 파일 재생", SGKeyLossless),
         SGPageRow(@"무손실 소스", ^UIViewController *{ return SGAudioSourcesPage(); }),
         SGPageRow(@"상세 재생 정보", ^UIViewController *{ return SGPlaybackDetailsPage(); }),
-    ], @"파일 앱 › Spotify › Lossless에 FLAC 또는 ALAC 파일을 넣으세요. 제목과 길이가 일치하고 Spotify 오디오와 소리가 맞아야 재생합니다. 곡 시작이나 탐색 후 약 4초부터 전환됩니다. Spotify는 자체 스트림도 계속 받으며 다음 곡의 파일이 있으면 최저 품질을 사용합니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다. 재시작 후 적용됩니다.")];
-
-    // The redesign's page leads with a card of its player and the background's control, the background's
-    // rows and the Mini player section under it.
-    if (!native) return SGRPlayerSettingsPage(sections);
-    return [[SGModPage alloc] initWithTitle:@"플레이어" intro:SGRestartNote sections:sections footer:nil];
+        ], @"파일 앱 › Spotify › Lossless에 FLAC 또는 ALAC 파일을 넣으세요. 제목과 길이가 일치하고 Spotify 오디오와 소리가 맞아야 재생합니다. 곡 시작이나 탐색 후 약 4초부터 전환됩니다. Spotify는 자체 스트림도 계속 받으며 다음 곡의 파일이 있으면 최저 품질을 사용합니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다. 재시작 후 적용됩니다.")
+    ];
+    return [[SGModPage alloc] initWithTitle:@"무손실" intro:nil sections:sections footer:nil];
 }

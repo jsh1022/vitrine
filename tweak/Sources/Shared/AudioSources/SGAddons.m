@@ -1,6 +1,9 @@
 #import "SGAddons.h"
 #import "SGAddonDiagnostics.h"
 #import "SGAddonProtocol.h"
+#import "SGHostedLossless.h"
+#import "SGHostedMedia.h"
+#import "SGAddonSourceRace.h"
 #import "SGAddonSegments.h"
 #import "SGProgressiveFLAC.h"
 #import "SGSourceSecrets.h"
@@ -21,24 +24,61 @@ static _Atomic uint64_t sg_generation;
 static NSString *sg_status = @"대기 중";
 static SGAddonPreparationState sg_preparation;
 static NSDictionary *sg_media;
-static NSString *sg_failure; // worker-owned, fixed diagnostics only
-static NSString *sg_requestStage; // worker only; fixed local labels, never endpoint strings
-static BOOL sg_manualSourceCheck; // worker only; an explicit connection check may inspect a disabled source
+// The ordinary worker retains its state; concurrent source lookups each install a separate state.
+// URLSession delegates never read these properties, so request stages/deadlines cannot cross sources.
+@interface SGAddonWorkerState : NSObject
+@property(nonatomic,copy) NSString *failure, *requestStage, *lastURL, *lastETag, *progressiveName;
+@property(nonatomic) BOOL manualCheck, background, prefix, progressiveOffered, comparingQuality;
+@property(nonatomic) uint64_t activePlan;
+@property(nonatomic) double deadline, progressiveDuration;
+@property(nonatomic,copy) void (^progressiveReady)(NSString *,NSDictionary *);
+@property(nonatomic,copy) BOOL (^cancelled)(void);
+@property(nonatomic,copy) NSDictionary *mediaTransform;
+@end
+@implementation SGAddonWorkerState
+@end
+// A candidate keeps the original HTTP request alive while the caller compares its probe.
+// The request worker pauses at the probe; only the selected candidate is handed to playback.
+@interface SGAddonQualityTransfer : NSObject
+@property(nonatomic) dispatch_semaphore_t available, decision, finished;
+@property(atomic) BOOL rejected;
+@property(nonatomic,copy) NSDictionary *candidate, *result;
+@property(nonatomic,copy) NSString *failure;
+@end
+@implementation SGAddonQualityTransfer
+- (instancetype)init {
+    if ((self=[super init])) {
+        _available=dispatch_semaphore_create(0); _decision=dispatch_semaphore_create(0);
+        _finished=dispatch_semaphore_create(0);
+    }
+    return self;
+}
+@end
+static NSString *const sourceWorkerKey=@"spotifyglass.addons.workerState";
+static SGAddonWorkerState *workerState(void) {
+    SGAddonWorkerState *local=NSThread.currentThread.threadDictionary[sourceWorkerKey];
+    if(local)return local;
+    static SGAddonWorkerState *serial; static dispatch_once_t once;
+    dispatch_once(&once, ^{serial=[SGAddonWorkerState new];}); return serial;
+}
+#define sg_failure workerState().failure
+#define sg_requestStage workerState().requestStage
+#define sg_manualSourceCheck workerState().manualCheck
+#define sg_activePlan workerState().activePlan
+#define sg_lastMediaURL workerState().lastURL
+#define sg_lastMediaETag workerState().lastETag
+#define sg_background workerState().background
+#define sg_prefix workerState().prefix
+#define sg_requestDeadline workerState().deadline
+#define sg_progressiveReady workerState().progressiveReady
+#define sg_progressiveDuration workerState().progressiveDuration
+#define sg_progressiveOffered workerState().progressiveOffered
+#define sg_progressiveName workerState().progressiveName
 // Serial-worker owned cache; never contains playable partial files.
 static NSMutableDictionary<NSString *, NSDictionary *> *sg_prepared;
 static NSArray *sg_upcomingPlan;
 static _Atomic uint64_t sg_prefetchGeneration;
 static _Atomic NSUInteger sg_foregroundPending;
-static uint64_t sg_activePlan;
-static NSString *sg_lastMediaURL, *sg_lastMediaETag;
-static BOOL sg_background; // worker only
-static BOOL sg_prefix;     // media requests only, worker only
-static double sg_requestDeadline;
-// Worker only. Invoked once when a direct FLAC can be handed to the native growing-file reader.
-static void (^sg_progressiveReady)(NSString *, NSDictionary *);
-static double sg_progressiveDuration;
-static BOOL sg_progressiveOffered;
-static NSString *sg_progressiveName;
 static NSString *sg_progressivePath; // main only
 // Cross-thread handoff identity. The serial worker still owns all transfer/file state.
 static NSObject *handoffLock(void) {
@@ -67,7 +107,29 @@ static dispatch_queue_t worker(void) {
 NSArray<NSDictionary *> *SGAddonSources(void) {
     NSData *data = [SGSourceSecret(@"addons") dataUsingEncoding:NSUTF8StringEncoding];
     id result = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
-    return [result isKindOfClass:NSArray.class] ? result : @[];
+    if (![result isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray *sources=[NSMutableArray array]; BOOL removed=NO;
+    for (NSDictionary *source in result) {
+        if ([source[@"builtin"] isEqual:@"amazon"]) {removed=YES;continue;}
+        [sources addObject:source];
+    }
+    if (removed) {
+        NSData *filtered=[NSJSONSerialization dataWithJSONObject:sources options:0 error:NULL];
+        if (filtered) SGSaveSourceSecret(@"addons",[[NSString alloc] initWithData:filtered encoding:NSUTF8StringEncoding]);
+        SGSaveSourceSecret(@"hosted-lossless.amazon",nil);
+    }
+    return sources;
+}
+NSArray<NSString *> *SGAddonExpiredSourceNames(void) {
+    if (!SGFlag(SGKeyAddons,NO)) return @[];
+    NSMutableArray *names=[NSMutableArray array]; NSMutableSet *seen=[NSMutableSet set];
+    for (NSDictionary *source in SGAddonSources()) {
+        NSString *provider=source[@"builtin"];
+        if ([source[@"enabled"] isEqual:@NO] || !SGHostedProvider(provider) || [seen containsObject:provider]) continue;
+        [seen addObject:provider];
+        if (SGHostedAuthenticationExpired(provider)) [names addObject:SGHostedProviderName(provider)];
+    }
+    return names;
 }
 static BOOL save(NSArray *sources) {
     NSData *data = [NSJSONSerialization dataWithJSONObject:sources options:0 error:NULL];
@@ -95,6 +157,7 @@ BOOL SGAddonSetSourceEnabled(NSString *identifier, BOOL enabled) {
     NSMutableArray *sources = [SGAddonSources() mutableCopy];
     NSUInteger index = [sources indexOfObjectPassingTest:^BOOL(NSDictionary *source, NSUInteger i, BOOL *stop) { return [source[@"id"] isEqual:identifier]; }];
     if (index == NSNotFound) return NO;
+    if (enabled && SGHostedProvider(sources[index][@"builtin"]) && !SGHostedVerified(sources[index][@"builtin"])) return NO;
     if ((![sources[index][@"enabled"] isEqual:@NO])==enabled) return YES;
     NSMutableDictionary *source = [sources[index] mutableCopy]; source[@"enabled"] = @(enabled); sources[index] = source;
     BOOL ok = save(sources); if (ok) sourceListChanged(identifier,enabled); return ok;
@@ -118,12 +181,26 @@ BOOL SGAddonAddSource(NSString *input) {
     if (ok) SGAddonDiagnostic(nil,@"설정",@"소스 추가 · 현재 작업과 준비된 음원 유지",nil);
     return ok;
 }
+BOOL SGAddonAddHostedSource(NSString *provider) {
+    if (!SGHostedProvider(provider)) return NO;
+    NSMutableArray *sources=[SGAddonSources() mutableCopy];
+    for (NSDictionary *source in sources) if ([source[@"builtin"] isEqual:provider]) return YES;
+    if (sources.count>=8) return NO;
+    NSString *name=SGHostedProviderName(provider);
+    [sources addObject:@{@"id":[@"builtin-" stringByAppendingString:provider],@"builtin":provider,
+        @"url":[@"https://api.zarz.moe/providers/" stringByAppendingString:provider],@"name":name,
+        @"description":@"내장 무손실 소스 · 웹 인증 필요 · 서버 제공 여부에 따라 이용할 수 있습니다.",@"enabled":@NO}];
+    BOOL ok=save(sources);
+    if (ok) { @synchronized(handoffLock()) { [sg_removedSources removeObject:[@"builtin-" stringByAppendingString:provider]]; } }
+    return ok;
+}
 BOOL SGAddonRemoveSource(NSString *identifier) {
     NSMutableArray *sources = [SGAddonSources() mutableCopy];
     NSIndexSet *indices = [sources indexesOfObjectsPassingTest:^BOOL(NSDictionary *s, NSUInteger i, BOOL *stop) { return [s[@"id"] isEqual:identifier]; }];
     if (!indices.count) return YES;
     for (NSDictionary *source in [sources objectsAtIndexes:indices])
         SGAddonDiagnosticsNameSource(source[@"id"],source[@"name"]);
+    for (NSDictionary *source in [sources objectsAtIndexes:indices]) if (SGHostedProvider(source[@"builtin"])) SGHostedForget(source[@"builtin"]);
     [sources removeObjectsAtIndexes:indices];
     BOOL ok = save(sources);
     if (ok) {
@@ -217,6 +294,7 @@ static NSDictionary *settingsSnapshot(void) {
     return @{SGKeyWiredSourceOutput:@(SGFlag(SGKeyWiredSourceOutput,NO)), SGKeyAddons:@(SGFlag(SGKeyAddons,NO)), SGKeyAddonCellular:@(SGFlag(SGKeyAddonCellular,NO)),
         SGKeyAddonPlaybackMode:@(SGAddonPlaybackMode()), SGKeyAddonAutoSwitch:@(SGFlag(SGKeyAddonAutoSwitch,YES)),
         SGKeyAddonPrefetchEnabled:@(SGFlag(SGKeyAddonPrefetchEnabled,YES)),
+        SGKeyAddonParallelQuality:@(SGFlag(SGKeyAddonParallelQuality,NO)),
         SGKeyAddonPrefetchCellular:@(SGFlag(SGKeyAddonPrefetchCellular,NO)),
         SGKeyAddonWaitSeconds:@(SGInt(SGKeyAddonWaitSeconds,10)), SGKeySourceWireGuard:@(SGFlag(SGKeySourceWireGuard,NO))};
 }
@@ -267,8 +345,11 @@ void SGAddonRetryCurrentTrack(void) {
 @property(nonatomic) NSUInteger expectedBytes;
 @property(nonatomic, strong) NSValue *boundedRange;
 @property(nonatomic) BOOL mediaRequest;
+@property(nonatomic) BOOL collectErrorJSON;
 @property(nonatomic, strong) NSURL *responseURL;
 @property(nonatomic, strong) SGProgressiveFLAC *progressive;
+@property(nonatomic, strong) SGHostedDeezerDecoder *deezer;
+@property(nonatomic) NSUInteger written;
 @property(nonatomic, copy) NSString *entityTag;
 @property(nonatomic, copy) NSString *retryAfter;
 @property(nonatomic, strong) NSMutableData *body;
@@ -300,33 +381,41 @@ void SGAddonRetryCurrentTrack(void) {
     } else if (self.status == 200 && self.offset) {
         // If-Range mismatch or a server ignoring Range: replace the prefix, never append it twice.
         [self.file truncateAtOffset:0 error:NULL]; [self.file seekToOffset:0 error:NULL];
-        self.received = self.offset = 0;
+        self.received = self.offset = self.written = 0;
     }
     if (!self.prefix && response.expectedContentLength > (int64_t)(self.limit - self.received)) self.failed = YES;
     if (self.status == 200 && response.expectedContentLength > 0)
         self.expectedBytes = self.prefix ? MIN((NSUInteger)response.expectedContentLength, self.limit) : (NSUInteger)response.expectedContentLength;
-    completion(self.failed ? NSURLSessionResponseCancel : NSURLSessionResponseAllow);
+    BOOL boundedError=self.collectErrorJSON && self.status>=400 && response.expectedContentLength<=1024*1024;
+    completion(self.failed && !boundedError ? NSURLSessionResponseCancel : NSURLSessionResponseAllow);
 }
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    if (self.failed) return;
+    if (self.failed && !self.collectErrorJSON) return;
     if (data.length > self.limit - self.received) {
         if (!self.prefix) { self.failed = YES; [task cancel]; return; }
         data = [data subdataWithRange:NSMakeRange(0, self.limit - self.received)];
     }
     self.received += data.length;
     if (self.file) {
-        NSError *error;
-        if (![self.file writeData:data error:&error]) {
+        if (self.deezer) data=[self.deezer appendData:data final:NO];
+        NSError *error=nil;
+        if (!data || ![self.file writeData:data error:&error]) {
             self.fileWriteFailed=YES; self.errorCode=error.code; self.errorDomain=error.domain; self.failed = YES; [task cancel];
-        }
+        } else self.written+=data.length;
     } else [self.body appendData:data];
-    if (!self.failed) [self.progressive publishBytes:self.received total:self.expectedBytes];
+    if (!self.failed) [self.progressive publishBytes:self.written total:self.expectedBytes];
     if (self.prefix && self.received == self.limit) { self.prefixSatisfied = YES; [task cancel]; }
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
     if (error && !self.fileWriteFailed) { self.errorCode=error.code; self.errorDomain=error.domain; }
     if (error && !(self.prefixSatisfied && error.code == NSURLErrorCancelled && [error.domain isEqual:NSURLErrorDomain])) self.failed = YES;
     if (self.expectedBytes && self.received != self.expectedBytes) self.failed = YES;
+    if (self.deezer && !self.failed) {
+        NSData *tail=[self.deezer appendData:NSData.data final:YES]; NSError *writeError=nil;
+        if (!tail || ![self.file writeData:tail error:&writeError]) {
+            self.failed=YES;self.fileWriteFailed=YES;self.errorCode=writeError.code;self.errorDomain=writeError.domain;
+        } else {self.written+=tail.length;[self.progressive publishBytes:self.written total:self.expectedBytes];}
+    }
     [self.file closeFile];
     [self.progressive finish:!self.failed && self.received>0];
     dispatch_semaphore_signal(self.done);
@@ -344,23 +433,27 @@ void SGAddonRetryCurrentTrack(void) {
 // Worker-confined server cooldowns and bounded in-memory lookup cache. There is
 // no fixed requests/minute quota. Source changes never clear server cooldowns.
 static NSMutableDictionary *sg_quiet, *sg_manifests, *sg_jsonCache;
+static NSObject *cacheLock(void) { static NSObject *lock; static dispatch_once_t once; dispatch_once(&once, ^{lock=[NSObject new];});return lock; }
 static void initialize(void) {
-    if (sg_quiet) return;
-    sg_quiet = [NSMutableDictionary dictionary];
-    sg_manifests = [NSMutableDictionary dictionary]; sg_jsonCache = [NSMutableDictionary dictionary];
+    static dispatch_once_t once; dispatch_once(&once, ^{
+        sg_quiet = [NSMutableDictionary dictionary];
+        sg_manifests = [NSMutableDictionary dictionary]; sg_jsonCache = [NSMutableDictionary dictionary];
+    });
 }
 static void clearLookupCache(void) {
-    initialize(); [sg_manifests removeAllObjects]; [sg_jsonCache removeAllObjects];
+    initialize(); @synchronized(cacheLock()) { [sg_manifests removeAllObjects]; [sg_jsonCache removeAllObjects]; }
 }
 static void invalidateSourceLookups(NSString *identifier) {
     initialize();
+    @synchronized(cacheLock()) {
     [sg_manifests removeObjectForKey:identifier];
     NSString *prefix = [identifier stringByAppendingString:@"|"];
     for (NSString *key in sg_jsonCache.allKeys) if ([key hasPrefix:prefix]) [sg_jsonCache removeObjectForKey:key];
+    }
 }
 static BOOL sourceReady(NSString *identifier) {
     initialize();
-    return [sg_quiet[identifier] doubleValue] <= NSDate.date.timeIntervalSince1970;
+    @synchronized(cacheLock()) { return [sg_quiet[identifier] doubleValue] <= NSDate.date.timeIntervalSince1970; }
 }
 static double retryAfterSeconds(NSString *header) {
     if (!header.length) return -1;
@@ -375,7 +468,7 @@ static double retryAfterSeconds(NSString *header) {
     return date ? MAX(0, date.timeIntervalSinceNow) : -1;
 }
 static BOOL superseded(uint64_t generation) {
-    return generation != atomic_load(&sg_generation) ||
+    return (workerState().cancelled && workerState().cancelled()) || generation != atomic_load(&sg_generation) ||
         (sg_background && !keepingInflight(generation) && (sg_activePlan != atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending) > 0));
 }
 static void foregroundFinished(void) {
@@ -411,8 +504,10 @@ static BOOL networkAllowed(BOOL *unmetered) {
     if (unmetered) *unmetered = wifi;
     return allowed;
 }
-static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume, NSValue *range, NSUInteger limit, NSString *accept, BOOL progressive) {
+static SGAddonTransfer *fetchRequest(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume, NSValue *range, NSUInteger limit, NSString *accept, BOOL progressive, NSURLRequest *apiRequest) {
     NSString *stage=sg_requestStage ?: @"소스 요청";
+    BOOL hostedBroker=apiRequest && [url.host.lowercaseString isEqual:@"api.zarz.moe"];
+    if (hostedBroker && SGHostedServerWaiting()) { sg_failure=@"내장 소스 서버가 지정한 재시도 대기 중입니다."; return nil; }
     if (superseded(generation) || !sourcePermitted(identifier)) {
         SGAddonDiagnostic(identifier,stage,@"설정 또는 곡 변경으로 요청 중단",@{@"cancelled":@YES}); return nil;
     }
@@ -438,6 +533,7 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
     transfer.limit = limit;
     transfer.boundedRange = range;
     transfer.mediaRequest = path != nil || ![accept isEqual:@"application/json"];
+    transfer.collectErrorJSON=apiRequest!=nil;
     transfer.done = dispatch_semaphore_create(0);
     if (path) {
         [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:@{NSFileProtectionKey: NSFileProtectionCompleteUntilFirstUserAuthentication}];
@@ -453,10 +549,15 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
         transfer.file = [NSFileHandle fileHandleForWritingAtPath:path];
         if (transfer.offset) [transfer.file seekToEndReturningOffset:NULL error:NULL];
         if (!transfer.file) return nil;
+        transfer.written=transfer.offset;
+        if ([workerState().mediaTransform[@"hostedTransform"] isEqual:@"deezer"]) {
+            transfer.deezer=[[SGHostedDeezerDecoder alloc] initWithTrackID:workerState().mediaTransform[@"mediaTrackID"]];
+            if (!transfer.deezer || transfer.offset) {[transfer.file closeFile];return nil;}
+        }
         if (progressive) transfer.progressive=[[SGProgressiveFLAC alloc] initWithPath:path cancelled:^BOOL { return generation!=atomic_load(&sg_generation); }];
     } else transfer.body = [NSMutableData data];
     NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:transfer delegateQueue:nil];
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    NSMutableURLRequest *request = apiRequest ? [apiRequest mutableCopy] : [NSMutableURLRequest requestWithURL:url];
     if (range) {
         NSRange r = range.rangeValue;
         if (!r.length || r.location > NSUIntegerMax-r.length || r.length>limit) { [transfer.file closeFile]; [session invalidateAndCancel]; return nil; }
@@ -468,7 +569,7 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
     }
     [request setValue:accept forHTTPHeaderField:@"Accept"];
     // Match BitChord iOS's addon compatibility header; this is not app proof.
-    [request setValue:@"BitChord/v1.8" forHTTPHeaderField:@"User-Agent"];
+    if (!apiRequest) [request setValue:@"BitChord/v1.8" forHTTPHeaderField:@"User-Agent"];
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request];
     nw_path_monitor_t monitor = nw_path_monitor_create();
     nw_path_monitor_set_queue(monitor, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
@@ -521,8 +622,11 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
         (policyCancelled ? @"네트워크 정책 변경으로 요청 중단" : transfer.fileWriteFailed ? @"받은 데이터를 파일에 저장하지 못함" :
          transfer.failed || !transfer.received ? @"요청 실패" : @"응답 수신 완료"),requestDetails);
     double serverDelay = retryAfterSeconds(transfer.retryAfter);
+    if (hostedBroker) SGHostedServerResponse(transfer.status,transfer.retryAfter);
     if ((transfer.status == 429 || transfer.status >= 500) && serverDelay > 0) {
+        @synchronized(cacheLock()) {
         sg_quiet[identifier] = @(MAX([sg_quiet[identifier] doubleValue], NSDate.date.timeIntervalSince1970 + serverDelay));
+        }
     }
     if (interrupted) return nil;
     if (transfer.failed || !transfer.received) {
@@ -533,7 +637,25 @@ static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *ident
         else if (transfer.status) sg_failure = [NSString stringWithFormat:@"소스 HTTP %ld 또는 불완전하거나 너무 큰 응답", (long)transfer.status];
         else sg_failure = @"소스 연결 실패 또는 시간 초과";
     }
-    return !transfer.failed && transfer.received && generation == atomic_load(&sg_generation) ? transfer : nil;
+    return generation == atomic_load(&sg_generation) && ((!transfer.failed && transfer.received) || apiRequest) ? transfer : nil;
+}
+static SGAddonTransfer *fetchBounded(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume, NSValue *range, NSUInteger limit, NSString *accept, BOOL progressive) {
+    return fetchRequest(url,path,identifier,generation,resume,range,limit,accept,progressive,nil);
+}
+static SGHostedRequest hostedRequest(NSString *identifier, uint64_t generation) {
+    return ^NSDictionary *(NSURLRequest *request) {
+        SGAddonTransfer *response=fetchRequest(request.URL,nil,identifier,generation,nil,nil,1024*1024,@"application/json",NO,request);
+        if (!response) return nil;
+        id result=[NSJSONSerialization JSONObjectWithData:response.body options:0 error:NULL];
+        if (response.failed || response.status!=200) {
+            NSMutableDictionary *error=[@{@"_http":@(response.status ?: 599)} mutableCopy];
+            // Only protocol enum values leave the private response; no provider error body/logging.
+            if ([result isKindOfClass:NSDictionary.class]) for (NSString *key in @[@"code",@"origin"])
+                if ([result[key] isKindOfClass:NSString.class] && [result[key] length]<80) error[key]=result[key];
+            return error;
+        }
+        return [result isKindOfClass:NSDictionary.class] ? result : nil;
+    };
 }
 static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, uint64_t generation, NSDictionary *resume) {
     return fetchBounded(url,path,identifier,generation,resume,nil,path ? (sg_prefix ? 2*1024*1024 : 128*1024*1024) : 1024*1024,
@@ -544,7 +666,7 @@ static SGAddonTransfer *fetch(NSURL *url, NSString *path, NSString *identifier, 
 // Called by the serial addon worker. Old requests and background preparation must
 // never replace the foreground track's display or its post-download alignment stage.
 static void reportPreparation(uint64_t generation, SGAddonPreparationState stage, NSString *status) {
-    if (sg_background || sg_progressiveOffered) return;
+    if (sg_background || sg_progressiveOffered || workerState().comparingQuality) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (generation==atomic_load(&sg_generation)) SGAddonSetPreparationStage(stage,status);
     });
@@ -557,8 +679,10 @@ static BOOL prepareSegmentsWithinDeadline(NSDictionary *stream, NSString *path, 
     BOOL (^cancelled)(void)=^BOOL { return superseded(generation) || CFAbsoluteTimeGetCurrent()>deadline ||
         (sg_requestDeadline>0 && CFAbsoluteTimeGetCurrent()>sg_requestDeadline); };
     NSDictionary *plan=nil;
+    if ([stream[@"manifestText"] isKindOfClass:NSString.class])
+        plan=SGAddonSegmentPlan([stream[@"manifestText"] dataUsingEncoding:NSUTF8StringEncoding],url,transport);
     NSMutableSet *visited=[NSMutableSet set];
-    for (NSUInteger depth=0;depth<4 && !cancelled();depth++) {
+    for (NSUInteger depth=0;!stream[@"manifestText"] && depth<4 && !cancelled();depth++) {
         if ([visited containsObject:url]) break; [visited addObject:url];
         sg_requestStage=@"분할 음원 목록 조회";
         SGAddonTransfer *response=fetchBounded(url,nil,identifier,generation,nil,nil,1024*1024,
@@ -620,12 +744,12 @@ static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation)
     initialize();
     // URLs can contain private source parameters: memory only, never diagnostics.
     NSString *key = [identifier stringByAppendingFormat:@"|%@", url.absoluteString];
-    NSDictionary *cached = sg_jsonCache[key];
+    NSDictionary *cached; @synchronized(cacheLock()) { cached=sg_jsonCache[key]; }
     double now = NSDate.date.timeIntervalSince1970;
     if ([cached[@"until"] doubleValue] > now) {
         SGAddonDiagnostic(identifier,sg_requestStage ?: @"소스 요청",@"유효한 메모리 응답 재사용",nil); return cached[@"value"];
     }
-    [sg_jsonCache removeObjectForKey:key];
+    @synchronized(cacheLock()) { [sg_jsonCache removeObjectForKey:key]; }
     SGAddonTransfer *response = fetch(url, nil, identifier, generation, nil);
     id value = response ? [NSJSONSerialization JSONObjectWithData:response.body options:0 error:NULL] : nil;
     if (![value isKindOfClass:NSDictionary.class]) {
@@ -635,11 +759,30 @@ static NSDictionary *json(NSURL *url, NSString *identifier, uint64_t generation)
     double until = now + 30;
     if ([value[@"expiresAt"] respondsToSelector:@selector(doubleValue)]) until = MIN(until, [value[@"expiresAt"] doubleValue] - 1);
     if (until > NSDate.date.timeIntervalSince1970) {
+        @synchronized(cacheLock()) {
         for (NSString *old in sg_jsonCache.allKeys) if ([sg_jsonCache[old][@"until"] doubleValue] <= now) [sg_jsonCache removeObjectForKey:old];
         if (sg_jsonCache.count >= 64) [sg_jsonCache removeAllObjects];
         sg_jsonCache[key] = @{@"value":value, @"until":@(until)};
+        }
     }
     return value;
+}
+static NSDictionary *hostedLookup(NSDictionary *source, NSString *value, BOOL stream, uint64_t generation) {
+    initialize();
+    if (superseded(generation) || !sourcePermitted(source[@"id"]) || !SGHostedVerified(source[@"builtin"])) return nil;
+    NSString *key=[NSString stringWithFormat:@"%@|hosted-%@|%@",source[@"id"],stream ? @"stream" : @"search",value];
+    NSDictionary *cached; @synchronized(cacheLock()) {cached=sg_jsonCache[key];} double now=NSDate.date.timeIntervalSince1970;
+    if ([cached[@"until"] doubleValue]>now) return cached[@"value"];
+    NSString *error=nil;
+    NSDictionary *result=stream ? SGHostedStream(source[@"builtin"],value,hostedRequest(source[@"id"],generation),&error) : SGHostedSearch(source[@"builtin"],value,hostedRequest(source[@"id"],generation),&error);
+    if (error) sg_failure=error;
+    if (result && !superseded(generation)) {
+        @synchronized(cacheLock()) {
+        if (sg_jsonCache.count>=64) [sg_jsonCache removeAllObjects];
+        sg_jsonCache[key]=@{@"value":result,@"until":@(now+30)};
+        }
+    }
+    return result;
 }
 static void rememberSourceInfo(NSDictionary *source, NSDictionary *manifest) {
     if ([manifest[@"name"] isKindOfClass:NSString.class]) SGAddonDiagnosticsNameSource(source[@"id"],manifest[@"name"]);
@@ -661,8 +804,12 @@ static void rememberSourceInfo(NSDictionary *source, NSDictionary *manifest) {
 }
 static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     initialize();
+    if (SGHostedProvider(source[@"builtin"])) {
+        if (!SGHostedVerified(source[@"builtin"])) { sg_failure=@"내장 소스 웹 인증이 필요하거나 만료되었습니다. 소스 목록에서 인증하세요."; return nil; }
+        return @{@"name":source[@"name"] ?: source[@"builtin"]};
+    }
     NSString *identifier = source[@"id"];
-    NSDictionary *cached = sg_manifests[identifier];
+    NSDictionary *cached; @synchronized(cacheLock()) {cached=sg_manifests[identifier];}
     if ([cached[@"until"] doubleValue] > NSDate.date.timeIntervalSince1970) return cached[@"value"];
     sg_requestStage=@"소스 정보 조회";
     NSDictionary *value = json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"manifest.json"], @{}), identifier, generation);
@@ -676,7 +823,7 @@ static NSDictionary *manifest(NSDictionary *source, uint64_t generation) {
     double now = NSDate.date.timeIntervalSince1970, until = now + 600;
     if ([value[@"expiresAt"] respondsToSelector:@selector(doubleValue)]) until = MIN(until, [value[@"expiresAt"] doubleValue] - 1);
     if (until <= now) { sg_failure = @"소스 정보가 만료되었습니다. 개인 manifest 링크를 갱신해 주세요"; return nil; }
-    sg_manifests[identifier] = @{@"value": value, @"until": @(until)};
+    @synchronized(cacheLock()) {sg_manifests[identifier] = @{@"value": value, @"until": @(until)};}
     return value;
 }
 void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *)) {
@@ -710,7 +857,7 @@ void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) {
             if (m) {
                 sg_requestStage=@"연결 검사 검색";
                 NSMutableDictionary *params = [SGAddonParameters(m) mutableCopy]; params[@"q"] = @"music";
-                NSDictionary *response = json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"search"], params), identifier, generation);
+                NSDictionary *response = SGHostedProvider(source[@"builtin"]) ? hostedLookup(source,@"music",NO,generation) : json(SGAddonEndpoint(SGAddonBaseURL(source[@"url"]), @[@"search"], params), identifier, generation);
                 ok = [response[@"tracks"] isKindOfClass:NSArray.class];
             }
             break;
@@ -762,7 +909,42 @@ NSDictionary *SGMeasureLosslessFile(NSString *path, double expected) {
              @"channels": @(format.mChannelsPerFrame), @"duration": @(seconds),
              @"averageKbps": @([NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL].fileSize * 8.0 / seconds / 1000)};
 }
-static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, double duration, NSArray *sources, uint64_t generation, NSDictionary *prefixEntry) {
+static NSDictionary *resolveSource(NSDictionary *source, NSString *title, NSString *artist, double duration, uint64_t generation) {
+    if (superseded(generation) || !sourcePermitted(source[@"id"])) return nil;
+    NSDictionary *m = manifest(source, generation);
+    if (!m) return nil;
+    SGAddonDiagnostic(source[@"id"],sg_background ? @"사전 준비" : @"현재 곡 준비",@"일치하는 녹음 검색 시작",nil);
+    NSURL *base = SGAddonBaseURL(source[@"url"]);
+    NSMutableDictionary *params = [SGAddonParameters(m) mutableCopy];
+    params[@"q"] = [NSString stringWithFormat:@"%@ %@", title, artist];
+    sg_requestStage=@"곡 검색";
+    BOOL builtin=SGHostedProvider(source[@"builtin"]);
+    NSDictionary *search = builtin ? hostedLookup(source,params[@"q"],NO,generation) : json(SGAddonEndpoint(base, @[@"search"], params), source[@"id"], generation);
+    id rows = search[@"tracks"];
+    if (![rows isKindOfClass:NSArray.class]) return nil;
+    NSDictionary *candidate = nil;
+    for (id row in rows) if ([row isKindOfClass:NSDictionary.class] && SGAddonTrackMatches(row, title, artist, duration)) { candidate = row; break; }
+    if (!candidate) { SGAddonDiagnostic(source[@"id"],@"곡 검색",@"제목·아티스트·길이가 일치하는 후보 없음",nil); sg_failure = @"검색에 응답했지만 제목, 아티스트, 길이가 일치하는 녹음이 없습니다"; return nil; }
+    NSDictionary *stream = nil;
+    sg_requestStage=@"음원 주소 조회";
+    // BitChord resolves /stream first; a row URL is only a fallback.
+    if ([candidate[@"id"] isKindOfClass:NSString.class] && [candidate[@"id"] length])
+        stream = builtin ? hostedLookup(source,candidate[@"id"],YES,generation) : json(SGAddonEndpoint(base, @[@"stream", candidate[@"id"]], SGAddonParameters(m)), source[@"id"], generation);
+    if (![stream[@"url"] isKindOfClass:NSString.class] && [candidate[@"streamURL"] isKindOfClass:NSString.class]) {
+        NSMutableDictionary *fallback = [candidate mutableCopy];
+        fallback[@"url"] = candidate[@"streamURL"]; stream = fallback;
+    }
+    if (!stream || !SGAddonStreamSupported(stream)) { if (stream) SGAddonDiagnostic(source[@"id"],@"음원 주소 조회",@"지원하지 않는 코덱·암호화·스트림 형식",nil); if (stream) sg_failure = @"지원하지 않는 스트림입니다. 비암호화 스테레오 FLAC/ALAC/PCM이 필요하며 MP3/AAC/Atmos/DRM은 지원하지 않습니다"; return nil; }
+    // As in BitChord, resolved rendition metadata wins over catalogue hints.
+    id expiry = stream[@"expiresAt"];
+    if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970) {
+        SGAddonDiagnostic(source[@"id"],@"음원 주소 조회",@"서버가 반환한 음원 주소의 유효기간이 지남",nil);
+        sg_failure = @"음원 URL이 만료되었습니다. 소스를 갱신하고 다시 시도하세요"; return nil;
+    }
+    if (superseded(generation) || !sourcePermitted(source[@"id"])) return nil;
+    return @{@"source":source,@"manifest":m,@"stream":stream};
+}
+static NSDictionary *prepareSequential(NSString *uri, NSString *title, NSString *artist, double duration, NSArray *sources, uint64_t generation, NSDictionary *prefixEntry, NSDictionary *provided) {
         sg_progressiveOffered=NO;
         sg_lastMediaURL = sg_lastMediaETag = nil;
         NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-addons"];
@@ -780,43 +962,32 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
             if (superseded(generation)) break;
             if (!sourcePermitted(source[@"id"])) continue;
             reportPreparation(generation,SGAddonPreparationSearching,@"애드온 소스 및 일치하는 음원 조회 중");
-            NSDictionary *m = manifest(source, generation);
-            if (!m) continue;
+            NSDictionary *resolved=provided ?: resolveSource(source,title,artist,duration,generation);
+            if (!resolved) continue;
+            NSDictionary *m=resolved[@"manifest"], *stream=resolved[@"stream"];
+            BOOL builtin=SGHostedProvider(source[@"builtin"]);
+            NSString *transport=SGAddonStreamTransport(stream);
             SGAddonDiagnosticsBindFile(path,source[@"id"]);
-            SGAddonDiagnostic(source[@"id"],sg_background ? @"사전 준비" : @"현재 곡 준비",@"일치하는 녹음 검색 시작",nil);
-            NSURL *base = SGAddonBaseURL(source[@"url"]);
-            NSMutableDictionary *params = [SGAddonParameters(m) mutableCopy];
-            params[@"q"] = [NSString stringWithFormat:@"%@ %@", title, artist];
-            sg_requestStage=@"곡 검색";
-            NSDictionary *search = json(SGAddonEndpoint(base, @[@"search"], params), source[@"id"], generation);
-            id rows = search[@"tracks"];
-            if (![rows isKindOfClass:NSArray.class]) continue;
-            NSDictionary *candidate = nil;
-            for (id row in rows) if ([row isKindOfClass:NSDictionary.class] && SGAddonTrackMatches(row, title, artist, duration)) { candidate = row; break; }
-            if (!candidate) { SGAddonDiagnostic(source[@"id"],@"곡 검색",@"제목·아티스트·길이가 일치하는 후보 없음",nil); sg_failure = @"검색에 응답했지만 제목, 아티스트, 길이가 일치하는 녹음이 없습니다"; continue; }
-            NSDictionary *stream = nil;
-            sg_requestStage=@"음원 주소 조회";
-            // BitChord resolves /stream first; a row URL is only a fallback.
-            if ([candidate[@"id"] isKindOfClass:NSString.class] && [candidate[@"id"] length])
-                stream = json(SGAddonEndpoint(base, @[@"stream", candidate[@"id"]], SGAddonParameters(m)), source[@"id"], generation);
-            if (![stream[@"url"] isKindOfClass:NSString.class] && [candidate[@"streamURL"] isKindOfClass:NSString.class]) {
-                NSMutableDictionary *fallback = [candidate mutableCopy];
-                fallback[@"url"] = candidate[@"streamURL"]; stream = fallback;
-            }
-            NSString *transport=stream ? SGAddonStreamTransport(stream) : nil;
-            if (!stream || !SGAddonStreamSupported(stream)) { if (stream) SGAddonDiagnostic(source[@"id"],@"음원 주소 조회",@"지원하지 않는 코덱·암호화·스트림 형식",nil); if (stream) sg_failure = @"지원하지 않는 스트림입니다. 비암호화 스테레오 FLAC/ALAC/PCM이 필요하며 MP3/AAC/Atmos/DRM은 지원하지 않습니다"; continue; }
-            // As in BitChord, resolved rendition metadata wins over catalogue hints.
-            id expiry = stream[@"expiresAt"];
-            if ([expiry respondsToSelector:@selector(doubleValue)] && [expiry doubleValue] <= NSDate.date.timeIntervalSince1970) {
-                SGAddonDiagnostic(source[@"id"],@"음원 주소 조회",@"서버가 반환한 음원 주소의 유효기간이 지남",nil);
-                sg_failure = @"음원 URL이 만료되었습니다. 소스를 갱신하고 다시 시도하세요"; continue;
-            }
             sg_progressiveName=[m[@"name"] isKindOfClass:NSString.class] ? m[@"name"] : @"Addon";
+            BOOL transform=builtin && [stream[@"hostedTransform"] isKindOfClass:NSString.class];
+            if (transform && sg_prefix) { sg_failure=@"이 음원은 암호화·컨테이너 처리를 위해 전체 다운로드가 필요합니다."; continue; }
             sg_requestStage=@"음원 다운로드";
             reportPreparation(generation,SGAddonPreparationDownloading,@"무손실 음원 다운로드 중");
-            SGAddonTransfer *download = transport ? nil : fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation, sg_prefix ? nil : prefixEntry);
+            BOOL streamingDeezer=transform && [stream[@"hostedTransform"] isEqual:@"deezer"];
+            workerState().mediaTransform=streamingDeezer ? stream : nil;
+            SGAddonTransfer *download = transport ? nil : transform ? fetchBounded([NSURL URLWithString:stream[@"url"]],path,source[@"id"],generation,nil,nil,128*1024*1024,@"audio/*,application/octet-stream",streamingDeezer) : fetch([NSURL URLWithString:stream[@"url"]], path, source[@"id"], generation, sg_prefix ? nil : prefixEntry);
+            workerState().mediaTransform=nil;
             if (transport && prepareSegments(stream,path,source[@"id"],generation)) measured=SGMeasureLosslessFile(path,duration);
             else if (download) {
+                if (transform && !streamingDeezer) {
+                    reportPreparation(generation,SGAddonPreparationDecoding,@"내장 소스의 무손실 음원 변환 및 검증 중");
+                    NSString *error=nil;
+                    if (!SGHostedPrepareMedia(stream,path,^BOOL { return superseded(generation) || !sourcePermitted(source[@"id"]) ||
+                        (sg_requestDeadline>0 && CFAbsoluteTimeGetCurrent()>sg_requestDeadline); },&error)) {
+                        sg_failure=error ?: @"내장 소스 음원 변환을 완료하지 못했습니다.";
+                        [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; continue;
+                    }
+                }
                 sg_lastMediaURL = stream[@"url"]; sg_lastMediaETag = download.entityTag;
                 if (sg_prefix) {
                     // Prefixes warm a bounded HTTP/file cache only. They are never submitted to the decoder.
@@ -846,6 +1017,130 @@ static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, d
         }
         if (!measured || generation != atomic_load(&sg_generation)) { [NSFileManager.defaultManager removeItemAtPath:path error:NULL]; path = nil; }
         return path ? @{@"path":path, @"info":measured, @"made":@(CFAbsoluteTimeGetCurrent()), @"url":sg_lastMediaURL ?: @"", @"etag":sg_lastMediaETag ?: @""} : nil;
+}
+
+static NSDictionary *prepare(NSString *uri, NSString *title, NSString *artist, double duration, NSArray *sources, uint64_t generation, NSDictionary *prefixEntry) {
+    // Prefix-only warmups retain their byte budget. They cannot measure a complete file's quality.
+    if (!SGFlag(SGKeyAddonParallelQuality,NO) || sg_prefix || sources.count<2)
+        return prepareSequential(uri,title,artist,duration,sources,generation,prefixEntry,nil);
+    SGAddonWorkerState *parent=workerState();
+    BOOL oldComparing=parent.comparingQuality; double oldDeadline=parent.deadline;
+    void (^oldReady)(NSString *,NSDictionary *)=parent.progressiveReady;
+    parent.comparingQuality=YES; parent.progressiveReady=nil;
+    NSMutableArray<SGAddonQualityTransfer *> *transfers=[NSMutableArray array];
+    double comparisonEnd=CFAbsoluteTimeGetCurrent()+10;
+    parent.deadline=parent.deadline>0 ? MIN(parent.deadline,comparisonEnd) : comparisonEnd;
+    double deadline=parent.deadline; BOOL background=parent.background;
+    uint64_t plan=parent.activePlan;
+    NSMutableArray *failures=[NSMutableArray array];
+    NSMutableArray *unique=[NSMutableArray array]; NSMutableSet *ids=[NSMutableSet set];
+    for (NSDictionary *source in sources) {
+        NSString *identifier=source[@"id"];
+        if (!identifier.length || [ids containsObject:identifier]) continue;
+        [ids addObject:identifier]; [unique addObject:source]; if(unique.count==8)break;
+    }
+    SGAddonDiagnostic(nil,@"동시 조회",@"활성 소스 조회 시작 · 실제 파일 검증 후 품질 선택",nil);
+    reportPreparation(generation,SGAddonPreparationSearching,@"소스 동시 조회 · 검증된 고음질 음원 비교 중");
+    NSDictionary *best=nil;
+    @try {
+        best=SGAddonRaceSources(unique,^NSDictionary *(NSDictionary *source, BOOL (^stop)(void)) {
+            SGAddonWorkerState *local=[SGAddonWorkerState new];
+            local.background=background; local.activePlan=plan; local.deadline=deadline;
+            local.comparingQuality=YES; local.cancelled=stop;
+            NSMutableDictionary *thread=NSThread.currentThread.threadDictionary;
+            id previous=thread[sourceWorkerKey]; thread[sourceWorkerKey]=local;
+            NSDictionary *result=nil;
+            @try { result=resolveSource(source,title,artist,duration,generation); }
+            @finally {
+                if(local.failure) @synchronized(failures) {if(failures.count<8)[failures addObject:local.failure];}
+                if(previous)thread[sourceWorkerKey]=previous;else[thread removeObjectForKey:sourceWorkerKey];
+            }
+            if (!result) return nil;
+            NSMutableDictionary *withStop=[result mutableCopy]; withStop[@"raceStop"]=[stop copy];
+            return withStop;
+        },^NSDictionary *(NSDictionary *resolved) {
+            SGAddonQualityTransfer *pending=[SGAddonQualityTransfer new];
+            @synchronized(transfers) {[transfers addObject:pending];}
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{ @autoreleasepool {
+                SGAddonWorkerState *local=[SGAddonWorkerState new];
+                local.background=background; local.activePlan=plan; local.deadline=deadline;
+                local.progressiveDuration=duration; local.comparingQuality=YES;
+                BOOL (^raceStop)(void)=resolved[@"raceStop"];
+                __weak SGAddonWorkerState *weakLocal=local;
+                // After a probe, the comparator owns the decision. Its global stop must not cancel the winner.
+                local.cancelled=^BOOL { return pending.rejected || (!weakLocal.progressiveOffered && raceStop()); };
+                NSMutableDictionary *thread=NSThread.currentThread.threadDictionary;
+                id previous=thread[sourceWorkerKey]; thread[sourceWorkerKey]=local;
+                local.progressiveReady=^(NSString *path,NSDictionary *measurement) {
+                    NSMutableDictionary *info=[measurement mutableCopy];
+                    info[@"trackURI"]=uri; info[@"sourceID"]=resolved[@"source"][@"id"];
+                    info[@"sourceName"]=weakLocal.progressiveName ?: @"Addon";
+                    pending.candidate=@{@"path":path,@"info":info,@"qualityTransfer":pending};
+                    dispatch_semaphore_signal(pending.available);
+                    // Keep the same URLSession/file. The delegate may keep receiving bytes here.
+                    dispatch_semaphore_wait(pending.decision,DISPATCH_TIME_FOREVER);
+                    // The comparison budget ends at selection, not at completion of this download.
+                    weakLocal.deadline=0;
+                };
+                @try {
+                    pending.result=prepareSequential(uri,title,artist,duration,@[resolved[@"source"]],generation,prefixEntry,resolved);
+                    pending.failure=local.failure;
+                    if (!pending.candidate) {
+                        pending.candidate=pending.result;
+                        dispatch_semaphore_signal(pending.available);
+                    }
+                    if (pending.rejected) discard(pending.result);
+                } @finally {
+                    // Break the worker-state/block retain cycle before returning this pool thread.
+                    local.progressiveReady=nil; local.cancelled=nil;
+                    if(previous)thread[sourceWorkerKey]=previous;else[thread removeObjectForKey:sourceWorkerKey];
+                    dispatch_semaphore_signal(pending.finished);
+                }
+            }});
+            dispatch_semaphore_wait(pending.available,DISPATCH_TIME_FOREVER);
+            return pending.candidate;
+        },^BOOL {
+            // Explicit parent snapshots: a child invoking stop() must not recursively read its own stop block.
+            return generation!=atomic_load(&sg_generation) || CFAbsoluteTimeGetCurrent()>deadline ||
+                (background && !keepingInflight(generation) && (plan!=atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending)>0));
+        },^(NSDictionary *entry){
+            SGAddonQualityTransfer *pending=entry[@"qualityTransfer"];
+            if (pending) { pending.rejected=YES; dispatch_semaphore_signal(pending.decision); }
+            else discard(entry);
+        });
+        if (generation!=atomic_load(&sg_generation) ||
+            (background && !keepingInflight(generation) && (plan!=atomic_load(&sg_prefetchGeneration) || atomic_load(&sg_foregroundPending)>0))) {
+            SGAddonQualityTransfer *pending=best[@"qualityTransfer"];
+            if(pending) {pending.rejected=YES;dispatch_semaphore_signal(pending.decision);}
+            else discard(best);
+            best=nil;
+        }
+        SGAddonQualityTransfer *selected=best[@"qualityTransfer"];
+        if (selected) {
+            void (^publish)(NSString *,NSDictionary *)=oldReady;
+            if (!publish && background && keepingInflight(generation)) {
+                @synchronized(handoffLock()) {publish=[sg_inflightReady copy];}
+            }
+            parent.progressiveName=best[@"info"][@"sourceName"];
+            if (publish) publish(best[@"path"],best[@"info"]);
+            SGAddonDiagnostic(best[@"info"][@"sourceID"],@"동시 조회",@"부분 파일의 디코더 형식 확인 · 선택한 다운로드 계속",nil);
+            dispatch_semaphore_signal(selected.decision);
+        }
+        // All candidates are either complete or explicitly cancelled; no worker/file may outlive its owner.
+        for (SGAddonQualityTransfer *pending in transfers) {
+            dispatch_semaphore_wait(pending.finished,DISPATCH_TIME_FOREVER);
+            if(pending.failure) @synchronized(failures) {if(failures.count<8)[failures addObject:pending.failure];}
+        }
+        if (selected) {best=selected.result;parent.progressiveOffered=oldReady!=nil;}
+        // Probe entries retain their transfer only while comparison is in progress.
+        for (SGAddonQualityTransfer *pending in transfers) pending.candidate=nil;
+        if(best) {
+            SGAddonDiagnostic(best[@"info"][@"sourceID"],@"동시 조회",SGAddonMeasuredHiRes(best[@"info"]) ? @"고해상도 무손실 실측 확인 · 선택 완료" : @"검증된 후보 중 최고 품질 선택 완료",nil);
+        } else if(!parent.failure) @synchronized(failures) { parent.failure=failures.firstObject ?: @"동시 조회에서 검증된 무손실 파일을 준비하지 못했습니다."; }
+    } @finally {
+        parent.comparingQuality=oldComparing; parent.deadline=oldDeadline; parent.progressiveReady=oldReady;
+    }
+    return best;
 }
 
 static void discard(NSDictionary *entry) {
@@ -996,7 +1291,7 @@ void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {
         // queue does not repeatedly resolve and download every 60 seconds.
         double nextRetry = 0, now = NSDate.date.timeIntervalSince1970;
         for (NSDictionary *source in sources) {
-            double until = [sg_quiet[source[@"id"]] doubleValue];
+            double until; @synchronized(cacheLock()) {until=[sg_quiet[source[@"id"]] doubleValue];}
             if (until > now && (!nextRetry || until < nextRetry)) nextRetry = until;
         }
         BOOL missing = NO;

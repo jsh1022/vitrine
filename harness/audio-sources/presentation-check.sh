@@ -13,26 +13,31 @@ for mode in Native Redesigned; do
   perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/$mode/Player/InlineLyrics.x" > "$OUT/${mode}InlineLyrics.m"
 done
 perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Native/Player/FullArtwork.x" > "$OUT/NativeFullArtwork.m"
+perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/AudioSources/SGAddonExpiryNotice.x" > "$OUT/SGAddonExpiryNotice.m"
 OBJ="$OUT/presentation-objects"
 mkdir -p "$OBJ"
+rm -f "$OBJ"/*.o
 SOURCES=("$ROOT/harness/audio-sources/presentation.m" "$ROOT/harness/audio-sources/presentation-stubs.m"
   "$ROOT/harness/scene.m" "$SRC/Shared/AudioSources/AudioSourcesSettings.m"
   "$SRC/Shared/AudioSources/SGAddonSourcesPage.m" "$SRC/Shared/AudioSources/SGAddonProtocol.m"
   "$SRC/Shared/AudioSources/SGAddonSegments.m"
+  "$SRC/Shared/AudioSources/SGHostedLossless.m" "$SRC/Shared/AudioSources/SGHostedLosslessPage.m"
+  "$SRC/Shared/AudioSources/SGHostedAuthPolicy.m"
+  "$SRC/Shared/AudioSources/SGSourceSecrets.m"
   "$SRC/Shared/AudioSources/PlaybackDetails.m" "$SRC/Shared/AudioSources/SGAudioPresentation.m"
   "$SRC/Shared/AudioSources/SGAudioPipeline.m" "$SRC/Shared/AudioSources/SGPlaybackQuality.m"
   "$SRC/Core/SGGlass.m" "$SRC/Core/SGViewTree.m" "$OUT/WireGuardProxy.m"
-  "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m" "$OUT/NativeFullArtwork.m" "$OUT/NativeInlineLyrics.m" "$OUT/RedesignedInlineLyrics.m"
+  "$OUT/SGAddonExpiryNotice.m" "$OUT/NativePlaybackQuality.m" "$OUT/RedesignedPlaybackQuality.m" "$OUT/NativeFullArtwork.m" "$OUT/NativeInlineLyrics.m" "$OUT/RedesignedInlineLyrics.m"
   "$SRC/Shared/Lyrics/KaraokeTiming.m" "$SRC/Shared/AdBlock/Protobuf.m")
 for index in "${!SOURCES[@]}"; do
   xcrun --sdk iphonesimulator clang -target "$(uname -m)-apple-ios17.0-simulator" \
     -isysroot "$SDK" -fobjc-arc -fblocks -Wall -Werror -Wno-deprecated-declarations \
-    -I"$SRC" -I"$SRC/Native/Player" -c "${SOURCES[$index]}" -o "$OBJ/$index.o"
+    -I"$SRC" -I"$SRC/Shared/AudioSources" -I"$SRC/Native/Player" -I"$SRC/Redesigned/Player" -c "${SOURCES[$index]}" -o "$OBJ/$index.o"
 done
 xcrun swiftc -swift-version 5 -parse-as-library -target "$(uname -m)-apple-ios17.0-simulator" \
   -sdk "$SDK" "$SRC/Shared/AudioSources/AudioPipelineSheet.swift" "$OBJ"/*.o \
   -framework Foundation -framework UIKit -framework SwiftUI -framework QuartzCore \
-  -framework UniformTypeIdentifiers -framework AVFoundation -framework AudioToolbox \
+  -framework UniformTypeIdentifiers -framework AVFoundation -framework AudioToolbox -framework WebKit -framework Security \
   -o "$APP/AudioPresentation"
 python3 - "$APP" <<'PY'
 from pathlib import Path

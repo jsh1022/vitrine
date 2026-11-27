@@ -30,7 +30,7 @@ spotifyglass_CFLAGS := -fobjc-arc -ISources -DSG_VERSION=\"$(SG_VERSION)\"
 # SG_DRIVER=1 for those, and every other build (make release, the release workflow's .deb) leaves it out.
 SG_DRIVER ?= 0
 spotifyglass_CFLAGS += -DSG_DRIVER=$(SG_DRIVER)
-spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog Network Security SwiftUI
+spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog Network Security SwiftUI WebKit
 # zlib unpacks KuGou's KRC lyrics (Shared/LyricsSources/KuGou.m).
 spotifyglass_LIBRARIES := z
 # Runtime swizzling instead of Substrate so the dylib has no extra dependency inside the IPA.
@@ -42,6 +42,9 @@ spotifyglass_LOGOS_DEFAULT_GENERATOR := internal
 # it is a prerequisite of the link and linked in; only the two files using it see its headers.
 SG_AUDIO := ../vendor/audio
 spotifyglass_OBJ_FILES := $(SG_AUDIO)/build/ios/libsgaudio.a
+SG_HOSTED_MEDIA := ../vendor/hosted-media
+spotifyglass_OBJ_FILES += $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavformat.a $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavcodec.a $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavutil.a
+Sources/Shared/AudioSources/SGHostedMedia.m_CFLAGS := -I$(SG_HOSTED_MEDIA)/build/ios/install/include
 Sources/Shared/AudioEffects/SGDSPCrossfeed.m_CFLAGS := -isystem $(SG_AUDIO)/libbs2b
 Sources/Shared/AudioEffects/SGDSPLiveprog.m_CFLAGS := -isystem $(SG_AUDIO)/wdl/eel2
 
@@ -59,7 +62,10 @@ endif
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 # The library is brought up to date before the tweak's instance builds, so the link finds it current.
-spotifyglass.all.tweak.variables: sg-audio
+spotifyglass.all.tweak.variables: sg-audio sg-hosted-media
+.PHONY: sg-hosted-media
+sg-hosted-media:
+	@PLATFORM=ios bash $(SG_HOSTED_MEDIA)/build.sh
 ifeq ($(WIREGUARD),1)
 spotifyglass.all.tweak.variables: sg-wireguard
 .PHONY: sg-wireguard

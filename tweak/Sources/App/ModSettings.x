@@ -90,6 +90,7 @@ static UIViewController *modSettingsPage(void) {
         redesignedHome,
         home,
         pageRow(@"플레이어", @"play.fill", UIColor.systemPinkColor, ^UIViewController *{ return SGPlayerSettingsPage(); }),
+        pageRow(@"무손실", @"waveform", UIColor.systemTealColor, ^UIViewController *{ return SGLosslessSettingsPage(); }),
         pageRow(@"가사", @"quote.bubble.fill", UIColor.systemOrangeColor, ^UIViewController *{ return SGLyricsSettingsPage(); }),
         albums,
         artists,

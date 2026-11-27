@@ -1,6 +1,8 @@
 // Source management only. Credentials remain in Keychain; cells never display URLs.
 #import "SGAddons.h"
 #import "SGAddonProtocol.h"
+#import "SGHostedLossless.h"
+#import "SGHostedLosslessPage.h"
 #import "SGAudioPresentation.h"
 #import "Core/SGCore.h"
 #import "Settings/SGPage.h"
@@ -37,10 +39,11 @@
 - (NSString *)detailOf:(NSDictionary *)source {
     NSString *detail = [source[@"description"] isKindOfClass:NSString.class] ? source[@"description"] : nil;
     NSString *version = [source[@"version"] isKindOfClass:NSString.class] ? source[@"version"] : nil;
+    if (SGHostedProvider(source[@"builtin"])) return SGHostedVerified(source[@"builtin"]) ? @"내장 무손실 소스 · 인증됨\n서버가 제공하는 음원을 검증·정렬하여 재생합니다." : @"내장 무손실 소스 · 인증 필요\n탭하여 웹 인증을 진행하세요.";
     return [@[version.length ? [@"버전 " stringByAppendingString:version] : @"", detail.length ? detail : @"소스 정보를 새로고침하면 설명을 확인할 수 있습니다."] componentsJoinedByString:@"\n"];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 2; }
-- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return section == 0 ? self.sources.count : 1; }
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { return section == 0 ? self.sources.count : 1 + SGHostedProviderIdentifiers().count; }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section { return section == 0 ? @"켜진 소스를 위에서부터 조회합니다" : nil; }
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
     return section == 0 ? @"오른쪽 손잡이를 드래그하여 순서를 바꿉니다. 소스를 탭하면 전체 설명·정보 새로고침·검사·삭제 메뉴가 열립니다. 꺼진 소스는 조회하지 않습니다." : nil;
@@ -49,7 +52,8 @@
     UITableViewCell *cell = SGDequeueCell(table, @"addon-source");
     if (path.section == 1) {
         cell.accessoryView = nil; cell.editingAccessoryView = nil; cell.showsReorderControl = NO;
-        SGFillCell(cell, @"추가 음원 서비스 연결", @"발급받은 HTTPS 루트 또는 manifest 링크로 추가", nil, @"plus");
+        NSString *title=path.row==0 ? @"추가 음원 서비스 연결" : [NSString stringWithFormat:@"내장 %@ 추가", SGHostedProviderName(SGHostedProviderIdentifiers()[(NSUInteger)path.row-1])];
+        SGFillCell(cell, title, path.row==0 ? @"발급받은 HTTPS 루트 또는 manifest 링크로 추가" : @"웹 인증 후 사용 · 중계 서버 제공 여부에 따라 이용 가능", nil, @"plus");
         return cell;
     }
     NSDictionary *source = self.sources[(NSUInteger)path.row];
@@ -63,15 +67,28 @@
     UISwitch *toggle = [UISwitch new];
     toggle.accessibilityIdentifier = source[@"id"];
     toggle.accessibilityLabel = [self nameOf:source];
-    toggle.on = enabled;
+    toggle.on = enabled && (!SGHostedProvider(source[@"builtin"]) || SGHostedVerified(source[@"builtin"]));
     [toggle addTarget:self action:@selector(toggleSource:) forControlEvents:UIControlEventValueChanged];
     cell.accessoryView = toggle; cell.editingAccessoryView = toggle;
     cell.showsReorderControl = YES;
     return cell;
 }
 - (void)toggleSource:(UISwitch *)sender {
+    for (NSDictionary *source in self.sources) if ([source[@"id"] isEqual:sender.accessibilityIdentifier] && sender.on && SGHostedProvider(source[@"builtin"]) && !SGHostedVerified(source[@"builtin"])) {
+        sender.on=NO; [self authenticate:source]; return;
+    }
     if (!SGAddonSetSourceEnabled(sender.accessibilityIdentifier, sender.on)) [self showMessage:@"저장하지 못했습니다. 기기 잠금을 해제하고 다시 시도해 주세요."];
     [self reloadSources];
+}
+- (void)authenticate:(NSDictionary *)source {
+    __weak SGAddonSourcesController *weakSelf=self;
+    SGShowAudioController(SGHostedLosslessAuthPage(source[@"builtin"],^(BOOL verified) {
+        if (verified) {
+            BOOL found=NO; for(NSDictionary *s in SGAddonSources()) if([s[@"id"] isEqual:source[@"id"]])found=YES;
+            if (found && !SGAddonSetSourceEnabled(source[@"id"],YES)) [weakSelf showMessage:@"인증은 완료했지만 소스를 켜지 못했습니다. 다시 켜 주세요."];
+        }
+        [weakSelf reloadSources];
+    }));
 }
 - (BOOL)tableView:(UITableView *)table canMoveRowAtIndexPath:(NSIndexPath *)path { return path.section == 0; }
 - (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)path { return path.section == 0; }
@@ -109,11 +126,25 @@
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)path {
     [table deselectRowAtIndexPath:path animated:YES];
-    if (path.section == 1) { [self addSource]; return; }
+    if (path.section == 1) {
+        if (path.row==0) [self addSource];
+        else {
+            NSString *provider=SGHostedProviderIdentifiers()[(NSUInteger)path.row-1];
+            if (!SGAddonAddHostedSource(provider)) [self showMessage:@"내장 소스를 추가하지 못했습니다. 최대 개수와 기기 잠금 상태를 확인하세요."];
+            [self reloadSources];
+        }
+        return;
+    }
     NSDictionary *source = self.sources[(NSUInteger)path.row];
     NSString *identifier = source[@"id"];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[self nameOf:source] message:[self detailOf:source] preferredStyle:UIAlertControllerStyleAlert];
     __weak SGAddonSourcesController *weakSelf = self;
+    if (SGHostedProvider(source[@"builtin"])) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"웹 인증" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [weakSelf authenticate:source]; }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"인증 정보 삭제" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+            SGAddonSetSourceEnabled(identifier,NO); SGHostedForget(source[@"builtin"]); [weakSelf reloadSources];
+        }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"정보 새로고침" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [weakSelf refreshInfo:identifier]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"소스 검사" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         SGAddonTestSource(identifier, ^(NSString *status) { [weakSelf reloadSources]; [weakSelf showMessage:status]; });

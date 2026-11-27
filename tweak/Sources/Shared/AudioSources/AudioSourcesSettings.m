@@ -73,6 +73,8 @@ UIViewController *SGAudioSourcesPage(void) {
     };
     SGModRow *cellular = SGOptionRow(@"셀룰러 다운로드 허용", @"꺼짐: 비과금 네트워크만 사용합니다. 파일은 최대 128 MiB입니다", SGKeyAddonCellular);
     cellular.changed = ^(BOOL on) { SGAddonSettingsChanged(SGKeyAddonCellular); };
+    SGModRow *parallelQuality = SGOptionRow(@"동시 조회 · 최고 음질 우선", @"최대 10초 비교 · 고해상도 무손실 확인 시 바로 선택", SGKeyAddonParallelQuality);
+    parallelQuality.changed = ^(BOOL on) { SGAddonSettingsChanged(SGKeyAddonParallelQuality); };
 
     SGModRow *playbackMode = SGChoiceRow(@"애드온 재생 방식", nil, SGKeyAddonPlaybackMode,
         @[@"빠른 재생", @"연속 재생 우선", @"애드온 우선 재생"], 1);
@@ -111,7 +113,7 @@ UIViewController *SGAudioSourcesPage(void) {
         sections:@[
             SGNotedSection(@"재생", @[enabled, cellular, playbackMode, autoSwitch, prefetch, cellularFull, wait,
                 SGActionRow(@"현재 곡 다시 시도", @"각 소스의 요청 제한 준수", ^{ SGAddonRetryCurrentTrack(); }), SGStatActionRow(@"준비 상태", @"탭하여 자세히 보기", ^NSString *{ return SGAddonStatusSummary(); }, ^{ SGShowAddonPreparationDetails(); })], @"HTTPS 정적 VOD를 지원합니다. 직접 제공되는 스테레오 FLAC/ALAC 또는 무압축 PCM WAV/AIFF와 HLS의 fMP4 EXT-X-MAP/단일 직접 세그먼트, DASH 단일 Period의 SegmentBase/full file, SegmentList, 또는 최대 2048개 세그먼트의 duration/Timeline을 사용할 수 있습니다. 전경 직접 FLAC은 알려진 전체 크기가 128 MiB 이하이고 바이트가 연속되며 완전한 FLAC 메타데이터와 native 코덱·스테레오·레이트·깊이·길이 검사를 통과하면 다운로드 중 조기 전환을 시도합니다. 필요한 PCM은 worker에서 새 바이트를 기다리고 render ring이 부족하면 Spotify가 계속 재생됩니다. 기존 3초 정렬 검사는 유지되며 초기 대기 시간은 조기 전환 수락 시 끝납니다. 남은 전송은 최대 120초이며 실패하면 외부 재생을 취소합니다. 자라는 파일을 native parser가 열지 못하면 전체 다운로드 후 처리합니다. 다른 직접 형식과 HLS/DASH는 전체 파일을 받은 뒤 준비하며, 세그먼트는 AVAssetReader로 WAV 변환합니다. 암호화·DRM·라이브·discontinuity·Atmos·MP3/AAC는 지원하지 않습니다. 노래방이나 1× 이외의 속도에서는 Spotify 오디오를 유지합니다. 전체 파일 준비에는 Wi-Fi 또는 전체 셀룰러 다운로드 허용이 필요합니다. 백그라운드 다음 곡 사전 준비는 기존처럼 유지되고 접두부 방식은 세그먼트 스트림을 건너뜁니다. 안전한 전환에는 Spotify 오디오와 파일의 3초 상관 분석이 필요하므로 첫 샘플부터 애드온 음원으로 재생된다고 보장할 수 없습니다."),
-            SGNotedSection(@"소스", @[SGPageRow(@"음원을 찾는 순서", ^UIViewController *{ return SGAddonSourcesPage(); })], @"소스 이름과 설명을 확인하고, 사용 여부와 조회 순서를 설정합니다."),
+            SGNotedSection(@"소스", @[parallelQuality, SGPageRow(@"음원을 찾는 순서", ^UIViewController *{ return SGAddonSourcesPage(); })], @"동시 조회를 켜면 활성 소스를 함께 조회하고 최대 10초 동안 비교합니다. 직접 FLAC과 내장 Deezer는 다운로드 중인 일부를 디코더로 확인해 품질을 비교하며, 고해상도 무손실 후보가 확인되면 바로 선택하고 나머지 요청을 취소합니다. 선택한 다운로드는 이어받아 기존 오디오 정렬·전환을 진행합니다. 부분 검사를 지원하지 않는 형식은 전체 파일을 확인합니다. 그런 후보가 없으면 시간 내 검증이 끝난 후보 중 품질이 가장 높은 것을 고릅니다. 검증된 후보가 없으면 Spotify 기본 스트림을 유지합니다. 공급자 표기만으로 품질을 판단하지 않습니다. 조회량과 대기 시간이 늘 수 있습니다. 기존 곡 매칭·오디오 정렬과 접두부 사전 준비 범위는 그대로 유지합니다. 설정 변경은 현재 재생과 준비된 음원을 건드리지 않고 새 준비부터 반영합니다. 끄면 기존 소스 순서대로 조회합니다. 소스 이름과 설명을 확인하고 사용 여부와 순서도 설정할 수 있습니다."),
             SGNotedSection(@"유선 출력", @[wired,
                 SGStatActionRow(@"출력 상태", @"탭하여 자세히 보기", ^NSString *{ return SGWiredOutputStatus()[@"state"]; }, ^{
                     message(@"유선 출력", SGWiredOutputStatus()[@"detail"]);

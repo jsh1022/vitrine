@@ -10,7 +10,13 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter \
   "$SRC/Shared/AudioSources/SGAddonProtocol.m" "$SRC/Shared/AudioSources/SGAddonSegments.m" -framework Foundation -o "$OUT/protocol"
 "$OUT/protocol"
 bash "$ROOT/harness/audio-sources/diagnostics-check.sh"
+bash "$ROOT/harness/audio-sources/hosted-check.sh"
+bash "$ROOT/harness/audio-sources/source-race-check.sh"
+bash "$ROOT/harness/audio-sources/hosted-webview-check.sh"
+bash "$ROOT/harness/audio-sources/hosted-media-check.sh"
+PLATFORM=ios bash "$ROOT/vendor/hosted-media/build.sh"
 bash "$ROOT/harness/audio-sources/settings-check.sh"
+SG_STREAMING_QUALITY_TEST=1 bash "$ROOT/harness/audio-sources/settings-check.sh"
 bash "$ROOT/harness/audio-sources/progressive-check.sh"
 bash "$ROOT/harness/lossless/anchor-check.sh"
 bash "$ROOT/harness/lossless/wired-check.sh"
@@ -26,6 +32,10 @@ for name in Lossless SGSourceEvents SpeedPitch SpeedPitchMenu WireGuardProxy; do
     -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
     -include Foundation/Foundation.h -I"$SRC" -I"$SRC/Shared/$part" "$OUT/$name.m"
 done
+perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/AudioSources/SGAddonExpiryNotice.x" > "$OUT/SGAddonExpiryNotice.m"
+xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
+  -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
+  -I"$SRC" -I"$SRC/Shared/AudioSources" "$OUT/SGAddonExpiryNotice.m"
 perl "$LOGOS/bin/logos.pl" -c generator=internal "$SRC/Shared/AudioSources/SGAddonPlaybackWait.x" > "$OUT/SGAddonPlaybackWait.m"
 xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
   -fobjc-arc -fblocks -fsyntax-only -Wall -Werror -Wno-deprecated-declarations \
@@ -49,7 +59,7 @@ for enabled in 0 1; do
     case "$source" in */Shared/AudioSources/*) deprecations=-Werror=deprecated-declarations ;; esac
     xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -isysroot "$SDK" \
       -fobjc-arc -fblocks -fsyntax-only -Wall -Werror "$deprecations" \
-      -DSG_WIREGUARD="$enabled" '-DSG_VERSION="test"' -I"$SRC" \
+      -DSG_WIREGUARD="$enabled" '-DSG_VERSION="test"' -I"$SRC" -I"$ROOT/vendor/hosted-media/build/ios/install/include" \
       -I"$ROOT/vendor/wireguard/build" "$source"
   done
 done

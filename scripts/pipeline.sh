@@ -222,8 +222,10 @@ mkdir -p "$PATCH/$APP_DIR"
 cp "$ADDON_DEB" "$PATCH/${APP_DIR}VitrineAddon.deb"
 cp "$ROOT/vendor/wireguard/THIRD_PARTY_LICENSES.txt" "$PATCH/${APP_DIR}WireGuard-Licenses.txt"
 cp "$ROOT/vendor/wireguard/COPYING" "$PATCH/${APP_DIR}WireGuard-Copying.txt"
+cp "$ROOT/vendor/hosted-media/COPYING.LGPLv2.1" "$PATCH/${APP_DIR}HostedMedia-LGPL.txt"
+cp "$ROOT/vendor/hosted-media/README.md" "$PATCH/${APP_DIR}HostedMedia-Source.txt"
 OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
-(cd "$PATCH" && zip -q "$OUT_ABS" "${APP_DIR}VitrineAddon.deb" "${APP_DIR}WireGuard-Licenses.txt" "${APP_DIR}WireGuard-Copying.txt")
+(cd "$PATCH" && zip -q "$OUT_ABS" "${APP_DIR}VitrineAddon.deb" "${APP_DIR}WireGuard-Licenses.txt" "${APP_DIR}WireGuard-Copying.txt" "${APP_DIR}HostedMedia-LGPL.txt" "${APP_DIR}HostedMedia-Source.txt")
 rm -rf "$PATCH"
 echo "    $ADDON_DEB"
 

@@ -56,10 +56,21 @@ UIViewController *SGTopController(void) {
     return top;
 }
 NSArray<NSDictionary *> *SGAddonSources(void) { return @[]; }
+NSArray<NSString *> *SGPresentationExpiredSources;
+NSArray<NSString *> *SGAddonExpiredSourceNames(void) { return SGPresentationExpiredSources ?: @[]; }
 BOOL SGAddonAddSource(NSString *input) { return NO; }
+BOOL SGAddonAddHostedSource(NSString *provider) { return NO; }
 BOOL SGAddonRemoveSource(NSString *identifier) { return YES; }
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *)) { completion(@"Test result"); }
 void SGAddonRetryCurrentTrack(void) {}
+// Network/playback are fixture dependencies; this harness exercises production UIKit presentation.
+void SGAddonSettingsChanged(NSString *key) { (void)key; }
+void SGShowAddonPreparationDetails(void) {}
+BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL registerView) { (void)view; (void)registerView; return NO; }
+NSURLSessionConfiguration *SGSourceSessionConfiguration(NSString **reason) {
+    if (reason) *reason=@"presentation fixture has no network engine";
+    return nil;
+}
 void SGAddonUpdateUpcoming(NSArray<NSDictionary *> *tracks) {}
 NSString *SGAddonStatus(void) { return @"Idle"; }
 NSString *SGAddonStatusSummary(void) { return @"Idle"; }

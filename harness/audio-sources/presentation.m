@@ -1,12 +1,14 @@
 #import <UIKit/UIKit.h>
 #import "Settings/SGModPage.h"
 #import "Shared/AudioSources/SGAddons.h"
+#import "Shared/AudioSources/SGHostedLossless.h"
 #import "Shared/AudioSources/SGAudioPresentation.h"
 #import "Shared/AudioSources/SGWireGuard.h"
 #import "Shared/AudioSources/SGPlaybackQuality.h"
 #import "Core/SGViewTree.h"
 
 extern NSArray<SGModRow *> *SGPresentationRows;
+extern NSArray<NSString *> *SGPresentationExpiredSources;
 extern BOOL SGPresentationExternal, SGPresentationNativePCM;
 extern NSDictionary *SGPresentationSourceInfo, *SGPresentationPreparedInfo;
 extern SGAddonPreparationState SGPresentationPreparation;
@@ -179,10 +181,48 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
     waitFor(^BOOL { return self.nav.view.window != nil; }, ^{ [self step:0]; }, 200);
     return YES;
 }
+- (void)checkExpiryNotice {
+    SGPresentationExpiredSources=@[@"Qobuz"];
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    waitFor(^BOOL {
+        UIViewController *shown=self.nav.presentedViewController;
+        return [shown isKindOfClass:UIAlertController.class] && !shown.isBeingPresented && !shown.transitionCoordinator;
+    },^{
+        UIAlertController *alert=(id)self.nav.presentedViewController;
+        if(![alert.title isEqual:@"소스 인증이 만료되었습니다"] || ![alert.message containsString:@"Qobuz"] || alert.actions.count!=2 || alert.overrideUserInterfaceStyle!=UIUserInterfaceStyleDark) {fail(@"expiry notice content or dark appearance missing");return;}
+        UIAlertAction *move=nil; for(UIAlertAction *action in alert.actions) if([action.title isEqual:@"이동"])move=action;
+        if(!move) {fail(@"expiry notice navigation action missing");return;}
+        void (^handler)(UIAlertAction *)=[move valueForKey:@"handler"];
+        if(!handler){fail(@"expiry navigation action has no handler");return;}
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+        if(self.nav.presentedViewController!=alert || alert.presentedViewController) {fail(@"duplicate expiry notice");return;}
+        [alert dismissViewControllerAnimated:YES completion:^{
+            handler(move);
+            waitFor(^BOOL {
+                UINavigationController *shown=(id)self.nav.presentedViewController;
+                return [shown isKindOfClass:UINavigationController.class] && [shown.topViewController.title isEqual:@"음원을 찾는 순서"] && !shown.isBeingPresented && !shown.transitionCoordinator;
+            },^{
+                UINavigationController *shown=(id)self.nav.presentedViewController;
+                if(shown.overrideUserInterfaceStyle!=UIUserInterfaceStyleDark || ![shown.topViewController.navigationItem.leftBarButtonItem.title isEqual:@"닫기"]) {fail(@"source management sheet needs dark appearance and dismissal");return;}
+                [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+                [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,400*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+                    if(shown.presentedViewController) {fail(@"expiry notice interrupted existing source management sheet");return;}
+                    SGPresentationExpiredSources=nil;
+                    [shown dismissViewControllerAnimated:YES completion:^{
+                        passed(@"PASS source expiry notice: local names, duplicate suppression, direct management navigation and modal protection");
+                        checkBlockedTransport();
+                    }];
+                });
+            },200);
+        }];
+    },200);
+}
 - (void)step:(NSUInteger)index {
     progress([NSString stringWithFormat:@"step %lu", (unsigned long)index]);
     if (index == 8) {
-        checkBlockedTransport(); return;
+        [self checkExpiryNotice]; return;
     }
     if (index == 7) {
         SGPresentationArtwork = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(8, 8)] imageWithActions:^(UIGraphicsImageRendererContext *context) {
@@ -302,6 +342,11 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             [badge sendActionsForControlEvents:UIControlEventTouchUpInside];
         }, 200);
     } else if (index == 0) {
+        SGModRow *parallelQuality = nil;
+        for (SGModRow *row in SGPresentationRows) if ([row.title isEqual:@"동시 조회 · 최고 음질 우선"]) parallelQuality = row;
+        if (!parallelQuality || ![parallelQuality.key isEqual:SGKeyAddonParallelQuality] || parallelQuality.defaultOn || !parallelQuality.changed) {
+            fail(@"parallel quality lookup must exist, use its preference key and default off"); return;
+        }
         SGModRow *entry = nil;
         for (SGModRow *row in SGPresentationRows) if ([row.title isEqual:@"음원을 찾는 순서"]) entry = row;
         if (!entry.page) { fail(@"missing source-management page entry"); return; }
@@ -312,13 +357,21 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         [table layoutIfNeeded];
         NSIndexPath *add = [NSIndexPath indexPathForRow:0 inSection:1];
         if (![controller.title isEqual:@"음원을 찾는 순서"] || [table.dataSource numberOfSectionsInTableView:table] != 2 ||
-            [table.dataSource tableView:table numberOfRowsInSection:1] != 1) {
+            [table.dataSource tableView:table numberOfRowsInSection:1] != 4) {
             fail(@"source-management add section missing"); return;
         }
         UITableViewCell *cell = [table.dataSource tableView:table cellForRowAtIndexPath:add];
         UIListContentConfiguration *content = (id)cell.contentConfiguration;
         if (![content isKindOfClass:UIListContentConfiguration.class] || ![content.text isEqual:@"추가 음원 서비스 연결"]) {
             fail(@"production add-source row missing"); return;
+        }
+        NSArray<NSString *> *providers = SGHostedProviderIdentifiers();
+        if (providers.count != 3) { fail(@"hosted provider list must contain three providers"); return; }
+        for (NSInteger i=1;i<=3;i++) {
+            UITableViewCell *builtin=[table.dataSource tableView:table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:i inSection:1]];
+            UIListContentConfiguration *configuration=(UIListContentConfiguration *)builtin.contentConfiguration;
+            NSString *expected=[NSString stringWithFormat:@"내장 %@ 추가", SGHostedProviderName(providers[(NSUInteger)i-1])];
+            if (![configuration isKindOfClass:UIListContentConfiguration.class] || ![configuration.text isEqual:expected]) { fail(@"built-in source add row missing"); return; }
         }
         if (![table.delegate respondsToSelector:@selector(tableView:didSelectRowAtIndexPath:)]) { fail(@"source-management row action missing"); return; }
         [table.delegate tableView:table didSelectRowAtIndexPath:add];

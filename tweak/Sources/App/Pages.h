@@ -16,5 +16,6 @@ NSString *SGRedesignUntestedWarning(void);
 SGModRow *SGRedesignedUIRow(void);
 UIViewController *SGAppearancePage(void);   // the stored look's accent and AMOLED, the font and the app icon
 UIViewController *SGPlayerSettingsPage(void);
+UIViewController *SGLosslessSettingsPage(void);
 UIViewController *SGLyricsSettingsPage(void);   // with Sing (Shared/Sing) on it
 UIViewController *SGNavbarPage(void);       // the tab editor of whichever look is stored

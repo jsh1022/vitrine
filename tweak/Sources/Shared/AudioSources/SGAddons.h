@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #define SGKeyAddons @"spotifyglass.sources.addons"
 #define SGKeyAddonCellular @"spotifyglass.sources.cellular"
+#define SGKeyAddonParallelQuality @"spotifyglass.sources.parallelQuality"
 #define SGKeyAddonPlaybackMode @"spotifyglass.redesign.sources.playbackMode"
 #define SGKeyAddonAutoSwitch @"spotifyglass.redesign.sources.autoSwitch"
 #define SGKeyAddonPrefetchCellular @"spotifyglass.redesign.sources.prefetchCellular"
@@ -20,11 +21,14 @@ void SGAddonFinishPlaybackWait(void);
 // Main thread. URLs and profile text live only in Keychain.
 NSArray<NSDictionary *> *SGAddonSources(void);
 NSArray<NSDictionary *> *SGAddonEnabledSources(void);
+// Canonical provider names only; never exposes URLs, tokens or credentials. No network request.
+NSArray<NSString *> *SGAddonExpiredSourceNames(void);
 BOOL SGAddonSetSourceEnabled(NSString *identifier, BOOL enabled);
 BOOL SGAddonMoveSource(NSString *identifier, NSUInteger index);
 void SGAddonRefreshSourceInfo(NSString *identifier, void (^completion)(NSString *error));
 UIViewController *SGAddonSourcesPage(void);
 BOOL SGAddonAddSource(NSString *input);
+BOOL SGAddonAddHostedSource(NSString *provider);
 BOOL SGAddonRemoveSource(NSString *identifier);
 void SGAddonTestSource(NSString *identifier, void (^completion)(NSString *status));
 void SGAddonCancel(void);

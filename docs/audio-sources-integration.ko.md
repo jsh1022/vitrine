@@ -99,7 +99,7 @@ Spotify 9.1.78/9.1.88/9.1.90의 본인 decrypted IPA가 필요하며, 결과 IPA
 
 ## 설정 순서
 
-1. `Settings → Mod Settings → Player → Lossless files`를 켜고 Spotify를 한 번 다시 실행합니다. 오디오 훅은 시작할 때 설치됩니다.
+1. `설정 → Mod Settings → 무손실 → 무손실 파일`를 켜고 Spotify를 한 번 다시 실행합니다. 오디오 훅은 시작할 때 설치됩니다.
 2. `Lossless sources & WireGuard → Add source`에서 본인이 사용할 수 있는 애드온의 생성된 HTTPS 링크를 붙여넣습니다. GitHub 저장소 링크나 HTML 설정 페이지는 사용할 수 없습니다.
 3. 소스 항목에서 `Test manifest`를 실행합니다. 이 검사는 manifest 계약과 연결만 검사하며, 해당 곡의 매칭이나 실제 재생 성공까지 보장하지 않습니다.
 4. `HTTP lossless addons`를 켭니다. 기본값은 휴대전화 데이터 다운로드 차단이며, 필요하면 `Allow cellular downloads`를 켭니다.
@@ -134,3 +134,37 @@ Spotify는 큐·컨트롤·가사 타이밍을 계속 담당하고 자체 스트
 - Vitrine 레이어 검사·패치 공백 검사·셸 문법 검사·워크플로 YAML 파싱 수행.
 
 **아직 실행하지 않은 검증**: Foundation 프로토콜 fixture 실행(`bash harness/audio-sources/check.sh`의 Mac 실행 파일), 실제 URLSession과 SOCKS5의 iPhone 통합, 실제 애드온 서버에서의 음원 준비, Spotify 기기 재생·전환·탐색·백그라운드·UI 레이아웃, 전체 Theos 링크·서명·IPA 설치. 기존 오디오 handoff harness는 Linux에 `xcrun`이 없어 실행할 수 없었습니다. `Audio sources checks` 워크플로에 Mac fixture와 iOS 소스 검사를 추가했으며, 전체 오디오 동작 검증은 기존 handoff harness와 실기기에서 진행해야 합니다.
+
+## 내장 Qobuz/Tidal 소스
+
+`Lossless sources & WireGuard`의 소스 목록에서 **내장 Qobuz 추가** 또는 **내장 Tidal 추가**를 선택해 등록합니다. 새 소스는 꺼진 상태로 추가됩니다. 중계 서버의 Turnstile 웹 인증을 마치면 해당 소스가 켜집니다. 이 인증은 Qobuz나 Tidal 계정 로그인이 아니라 `api.zarz.moe/v2` 중계 서버의 인증 절차입니다. 앱은 bootstrap이 제공한 인증 페이지를 열고, 사용자가 완료한 grant를 서버와 교환해 세션을 이 기기의 Keychain에 보관합니다. 캡차를 자동 처리하거나 우회하지 않습니다. WKWebView는 앱의 URLSession WireGuard 터널을 사용하지 않으므로, 터널 설정이 켜져 있거나 활성화되어 있으면 인증 화면을 차단합니다.
+
+이후 중계 서버 요청에는 HMAC 서명과 재생 ticket을 사용합니다. 요청은 `Vitrine/1.0` User-Agent 및 adapter protocol version `qobuz-web@1.2.21` 또는 `tidal-web@1.2.5`를 보냅니다. Qobuz 음원은 FLAC, Tidal 음원은 DASH로 받아 기존 로컬 파일 준비 및 오디오 정렬 경로에 넘깁니다. 실제 주소 발급까지의 인증 흐름은 사용자가 캡차를 완료하지 않아 실시간으로 확인하지 못했습니다.
+
+참고 구현은 [04pril/Laya](https://github.com/04pril/Laya)의 `ZarzSession.kt`, `LosslessProviders.kt`, `DashAudio.kt`이며, 프로토콜 흐름을 참고해 Vitrine의 Objective-C 코드로 구현했습니다. Laya는 GPL-3.0이며, 참고 파일은 Mornye/SpotiFLAC(LGPL-3.0)의 유래를 표시합니다.
+
+인증 웹뷰는 Turnstile의 자식 프레임 `about:blank`·`about:srcdoc`을 허용하며, 최상위 탐색은 HTTPS 중계 서버로 제한합니다. 페이지가 `window.MornyeGrant.postMessage(...)`로 전달하는 grant도 수신합니다. JavaScript 수신은 중계 서버의 최상위 프레임에서만 허용하고, 실제 세션 교환은 기존 서버 검증을 거칩니다. 커스텀 URL 및 WebKit의 unsupported-URL 오류로 전달되는 결과도 처리합니다. ‘다시 시도’는 이전 시도를 취소하고 새 challenge를 발급받으며, 캡차 자체를 자동 처리하지 않습니다. 관련 설정 근거는 [Cloudflare의 모바일 WebView 문서](https://developers.cloudflare.com/turnstile/get-started/mobile-implementation/)입니다. 실제 iPhone에서 보고된 무한 확인의 해소 여부는 기기 재확인이 필요합니다.
+
+웹뷰 회귀 검증: `hosted-webview-check.sh`는 실제 production 인증 페이지를 링크한 시뮬레이터 앱에서 합성 HTML을 사용합니다. 두 자식 프레임의 문서가 로드된 뒤 브리지를 통해 정확히 한 번 grant가 native 교환 stub에 전달되는 것을 실행별 영수증으로 확인했습니다. 실제 Cloudflare 위젯·실제 grant·실제 서버 세션 교환은 이 테스트에 포함되지 않습니다.
+
+2026-11-27 로컬 검증: `hosted-check.sh`의 고정 HMAC 서명·응답 형식·ticket 발급 순서·세션 거부/갱신·서버 Retry-After 검사, `audio-sources/check.sh`, Native/Redesigned `presentation-check.sh`, 내장 소스의 인증 전 활성화 차단과 삭제 시 자격 증명 제거를 포함한 `settings-check.sh`, `lossless/handoff-check.sh`(failures=0), 레이어 및 한국어 리소스 검사를 통과했습니다. Spotify 9.1.90 로컬 IPA에 새 인증 코드와 WebKit 연결이 포함된 것을 확인했고 ZIP 무결성 검사도 통과했습니다. 기존 빌드 스크립트의 `SG_UNSIGNED=1`로 개인 인증서 서명·설치 없이 패키징했습니다. 이 결과는 위의 실제 서버 인증·실기기 재생 미검증 범위를 해소하지 않습니다.
+
+## 내장 Deezer 소스
+
+소스 목록에서 **내장 Deezer 추가**를 선택합니다. `api.zarz.moe/v2` 중계 서버와 동일한 인증·ticket 흐름을 사용하며 앱 버전 헤더는 `deezer@1.3.5`입니다. 실제 서비스 세션의 음원 발급 및 iPhone 재생은 미확인입니다.
+
+Deezer의 Blowfish-CBC 형식은 다운로드하면서 2048바이트 블록 세 개 중 암호화된 블록을 복호화합니다. 네트워크 청크가 블록 경계와 달라도 최대 2047바이트의 미완성 블록을 보관하고, 마지막 짧은 블록은 원본 그대로 처리합니다. 복호화된 연속 구간만 부분 FLAC 디코더에 공개합니다. 재인코딩하지 않으며 기존 디코더 검증과 128 MiB 제한·취소 처리를 유지합니다. 기존 완성 파일 변환 API는 성공 시에만 임시 파일로 원본을 교체합니다. 미디어 키는 로그에 남기지 않습니다. FFmpeg 빌드·라이선스 설명은 [vendor/hosted-media/README.md](../vendor/hosted-media/README.md)에 있습니다.
+
+Amazon Music은 사용자 요청으로 제거했습니다. 기존 등록 항목과 해당 인증 정보는 소스 목록을 읽을 때 정리하며 다른 공급자 등록은 유지합니다. Amazon 검색·인증·CENC 변환 경로는 제공하지 않습니다.
+
+## 동시 조회 · 최고 음질 우선
+
+기본값은 꺼짐이며 기존 순차 조회를 유지합니다. 켜면 활성 소스의 검색·주소 조회와 후보 다운로드를 동시에 진행합니다. 직접 FLAC 및 내장 Deezer의 복호화된 FLAC은 일부 수신한 상태에서 기존 부분 FLAC 디코더로 비트 깊이·샘플레이트를 확인해 비교합니다. 최소 64 KiB와 메타데이터 전체, 뒤따르는 음원 데이터 32 KiB 이상이 필요하며 디코더가 열리지 않으면 더 받습니다. ALAC·PCM·분할 스트림 등 기존 부분 검사 경로가 없는 형식은 완성 파일 검사를 유지합니다. 공급자가 주장하는 품질은 선택 근거로 쓰지 않습니다. 실측 비트 깊이, 샘플레이트 순으로 비교하며 동률이면 설정된 소스 순서를 우선합니다. 실측 16-bit 초과 또는 48 kHz 초과 무손실 후보가 확인되면 즉시 선택합니다.
+
+비교 예산은 최대 10초이며 기존 애드온 대기 시간이 더 짧으면 그 시간을 따릅니다. 제한까지 검증된 후보 중 최고 품질을 선택하고, 후보가 없으면 Spotify 기본 스트림을 유지합니다. 취소된 요청을 정리하는 시간과 기존 오디오 정렬 시간은 별도입니다. 선택된 FLAC은 같은 다운로드·파일을 유지해 기존 오디오 정렬·전환에 전달하고, 탈락한 요청은 취소합니다. 부분 검사 성공은 파일 전체의 무결성 보장이 아니며 후속 다운로드 실패 시 기존 실패 알림과 원래 스트림 복귀 처리를 유지합니다. 접두부만 준비하는 사전 준비는 기존 범위와 순차 조회를 유지합니다. 설정 변경은 다음 준비부터 적용하고 현재 재생을 다시 요청하지 않습니다.
+
+## 내장 소스 인증 만료 알림
+
+앱 시작 또는 백그라운드에서 돌아올 때, 사용 중인 내장 소스의 기존 인증 상태를 로컬에서 확인합니다. 저장된 서버 만료 시각이 지났거나 이전 요청에서 gateway의 `SESSION_INVALID`/`VERIFY_REQUIRED`를 받아 인증이 무효화된 경우에만 알림을 띄웁니다. 매번 서버에 상태 요청을 보내지 않습니다. 최초 미인증·수동으로 끈 소스·외부 애드온·일반 접속 실패나 provider 오류는 만료 알림 대상이 아닙니다. 소스 스위치가 인증 무효로 꺼져 보이더라도 사용 설정이 유지된 소스는 알림 대상입니다.
+
+‘이동’은 기존 음원 소스 추가·관리 화면을 직접 엽니다. 알림은 앱을 연 회차마다 한 번만 시도하고 로그인·설정 등 기존 시트가 열려 있으면 겹치지 않게 기다립니다. 재인증 성공 또는 소스 삭제 시 만료 기록을 정리합니다. 개인 주소나 인증 값은 알림에 표시하지 않습니다.
