@@ -43,7 +43,8 @@ spotifyglass_LOGOS_DEFAULT_GENERATOR := internal
 SG_AUDIO := ../vendor/audio
 spotifyglass_OBJ_FILES := $(SG_AUDIO)/build/ios/libsgaudio.a
 SG_HOSTED_MEDIA := ../vendor/hosted-media
-spotifyglass_OBJ_FILES += $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavformat.a $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavcodec.a $(SG_HOSTED_MEDIA)/build/ios/install/lib/libavutil.a
+SG_HOSTED_ARCHIVES := $(addprefix $(SG_HOSTED_MEDIA)/build/ios/install/lib/,libavformat.a libavcodec.a libavutil.a)
+spotifyglass_OBJ_FILES += $(SG_HOSTED_ARCHIVES)
 Sources/Shared/AudioSources/SGHostedMedia.m_CFLAGS := -I$(SG_HOSTED_MEDIA)/build/ios/install/include
 Sources/Shared/AudioEffects/SGDSPCrossfeed.m_CFLAGS := -isystem $(SG_AUDIO)/libbs2b
 Sources/Shared/AudioEffects/SGDSPLiveprog.m_CFLAGS := -isystem $(SG_AUDIO)/wdl/eel2
@@ -66,6 +67,13 @@ spotifyglass.all.tweak.variables: sg-audio sg-hosted-media
 .PHONY: sg-hosted-media
 sg-hosted-media:
 	@PLATFORM=ios bash $(SG_HOSTED_MEDIA)/build.sh
+# Theos links in recursive make invocations too. Give the actual archive paths a
+# producer there, rather than relying only on the outer instance's variables hook.
+# The one shared prerequisite runs once per invocation even with parallel linking.
+$(SG_HOSTED_ARCHIVES): | sg-hosted-media
+	@test -s "$@" || { echo "Missing hosted-media archive after build: $@" >&2; exit 1; }
+# SGHostedMedia needs generated FFmpeg headers before its compile can start.
+Sources/Shared/AudioSources/SGHostedMedia.m: | sg-hosted-media
 ifeq ($(WIREGUARD),1)
 spotifyglass.all.tweak.variables: sg-wireguard
 .PHONY: sg-wireguard

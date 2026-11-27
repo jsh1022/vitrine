@@ -30,6 +30,14 @@ if [ ! -f "$OUT/config.h" ]; then
     --disable-swscale --disable-swresample --enable-demuxer=mov --enable-muxer=flac \
     --enable-parser=flac --enable-decoder=flac --enable-protocol=file --enable-zlib > configure.log 2>&1
 fi
-make -C "$OUT" -j4 > "$OUT/make.log" 2>&1
-make -C "$OUT" install > "$OUT/install.log" 2>&1
+# Theos uses GNU make 4.x and exports flags that macOS's make 3.81 misreads
+# (notably -Otarget, which can turn into touch mode). This is an independent
+# build: do not inherit its jobserver, options, command-line overrides or level.
+HOSTED_MAKE=make
+if command -v gmake >/dev/null 2>&1; then HOSTED_MAKE=gmake; fi
+env -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES -u MAKELEVEL "$HOSTED_MAKE" -C "$OUT" -j4 > "$OUT/make.log" 2>&1
+env -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES -u MAKELEVEL "$HOSTED_MAKE" -C "$OUT" install > "$OUT/install.log" 2>&1
+for archive in libavformat.a libavcodec.a libavutil.a; do
+  test -s "$OUT/install/lib/$archive" || { echo "Missing hosted-media archive after install: $archive" >&2; exit 1; }
+done
 echo "$OUT/install"
