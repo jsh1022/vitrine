@@ -58,7 +58,7 @@ static const CGFloat kVolumeLift = 10;
 // "airplayaudio" is the name iOS 16 knows; iOS 18 calls it airplay.audio and keeps this one as its alias.
 static NSString *const kConnectSymbol = @"airplayaudio", *const kQueueSymbol = @"list.bullet";
 
-static char kEncoreKey;
+static char kEncoreKey, kConnectHitKey;
 static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kQueueIconKey, kLyricsGlyphKey, kReachKey, kRowKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
 
@@ -68,6 +68,77 @@ static UIView *arrangedAround(UIView *view, UIView *host) {
         if ([v.superview isKindOfClass:UIStackView.class]) return v;
     }
     return nil;
+}
+
+// An arranged element can hold several controls on a newer Spotify layout.
+// Never hide, move or restrict the hit area of a sibling control through it.
+static BOOL containsFooterControl(UIView *view, NSArray<UIView *> *controls, UIView *except) {
+    if (!view) return NO;
+    for (UIView *control in controls) {
+        if (control != except && (control == view || [control isDescendantOfView:view])) return YES;
+    }
+    return NO;
+}
+
+static UIView *footerBranch(UIView *view, UIView *host, NSArray<UIView *> *controls) {
+    if (!view) return nil;
+    if (containsFooterControl(view, controls, view)) return nil;
+    UIView *arranged = arrangedAround(view, host);
+    return arranged && !containsFooterControl(arranged, controls, view) ? arranged : view;
+}
+
+@interface SGRFooterChange : NSObject
+@property(nonatomic, weak) UIView *view;
+@property(nonatomic) CGFloat alpha;
+@property(nonatomic) BOOL interactive, accessibilityHidden, concealed, moved;
+@property(nonatomic) CGAffineTransform originalTransform, appliedTransform;
+@end
+@implementation SGRFooterChange
+@end
+static char kFooterChangesKey;
+
+static SGRFooterChange *footerChange(UIView *host, UIView *view) {
+    NSMutableArray<SGRFooterChange *> *changes = objc_getAssociatedObject(host, &kFooterChangesKey);
+    if (!changes) {
+        changes = [NSMutableArray array];
+        objc_setAssociatedObject(host, &kFooterChangesKey, changes, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (SGRFooterChange *change in changes) if (change.view == view) return change;
+    SGRFooterChange *change = [SGRFooterChange new]; change.view = view;
+    change.alpha = view.alpha; change.interactive = view.userInteractionEnabled;
+    change.accessibilityHidden = view.accessibilityElementsHidden;
+    change.originalTransform = view.transform;
+    [changes addObject:change];
+    return change;
+}
+
+static void restoreFooterChanges(UIView *host) {
+    for (SGRFooterChange *change in objc_getAssociatedObject(host, &kFooterChangesKey)) {
+        UIView *view = change.view;
+        if (!view) continue;
+        if (change.concealed) {
+            if (view.alpha == 0) view.alpha = change.alpha;
+            if (!view.userInteractionEnabled) view.userInteractionEnabled = change.interactive;
+            if (view.accessibilityElementsHidden) view.accessibilityElementsHidden = change.accessibilityHidden;
+        }
+        if (change.moved && CGAffineTransformEqualToTransform(view.transform, change.appliedTransform)) view.transform = change.originalTransform;
+        objc_setAssociatedObject(view, &kConnectHitKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    objc_setAssociatedObject(host, &kFooterChangesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void concealFooterView(UIView *view, UIView *host, NSArray<UIView *> *controls) {
+    if (!view || containsFooterControl(view, controls, nil)) return;
+    footerChange(host, view).concealed = YES;
+    SGRPlayerVanish(view);
+}
+
+static CGFloat moveFooterControl(UIView *view, UIView *drawn, UIView *host, CGFloat x) {
+    if (!view) return -1;
+    SGRFooterChange *change = footerChange(host, view);
+    CGFloat from = SGRPlayerTranslateArranged(view, drawn, CGPointMake(CGRectGetMidX(drawn.bounds), CGRectGetMidY(drawn.bounds)), host, x);
+    change.appliedTransform = view.transform; change.moved = YES;
+    return from;
 }
 
 // Where `point` of `view` is in the host with the arranged view's own transform left out.
@@ -297,7 +368,6 @@ static UIView *connectGlyphIn(UIView *holder) {
 // hardly before it. So the row's view that holds it takes touches only in a square over the glyph, the size
 // of the row's other two; Spotify's own views inside still handle them. The square is kept on that view, and
 // its class answers from it, as it does for every other view of the class.
-static char kConnectHitKey;
 static NSMutableDictionary<NSString *, NSValue *> *sg_origPointInside;   // class name -> original IMP
 
 static BOOL connectPointInside(UIView *self, SEL _cmd, CGPoint point, UIEvent *event) {
@@ -446,6 +516,7 @@ void SGRPlayerLowerRow(UIView *row) {
 
 %hook _TtC20NowPlaying_ModesImpl18FooterElementsUnit
 - (void)viewDidLayoutSubviews {
+    restoreFooterChanges(((UIViewController *)self).viewIfLoaded);
     %orig;
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host) return;
@@ -453,6 +524,11 @@ void SGRPlayerLowerRow(UIView *row) {
     [SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); }) layoutIfNeeded];
     CGFloat width = host.bounds.size.width, middleY = CGRectGetMidY(host.bounds);
     BOOL rtl = host.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    UIView *connect = SGRFindByIdentifier(host, @"Components.ConnectButtonOutputSwitcher", &kConnectKey);
+    UIView *queue = SGRFindByIdentifier(host, @"QueueButtonNowPlaying", &kQueueKey);
+    NSMutableArray<UIView *> *protected = [NSMutableArray array];
+    if (connect) [protected addObject:connect];
+    if (queue) [protected addObject:queue];
 
     // Share; Spotify's clip button, hidden in every clean tree, which would turn up where the queue moves to; and
     // "From <friend>" on a track a friend shared, which sits in the middle of the row, over Connect, which the row
@@ -464,9 +540,9 @@ void SGRPlayerLowerRow(UIView *row) {
     SGRFindByIdentifiers(host, goneIdentifiers, goneKeys, gone);
     UIView *share = gone[0];
     for (NSUInteger i = 0; i < 3; i++) {
-        SGRPlayerVanish(gone[i]);
-        // The arranged view goes too: a view that takes touches swallows them even with nothing on it.
-        SGRPlayerVanish(arrangedAround(gone[i], host));
+        concealFooterView(gone[i], host, protected);
+        // Only an exclusive wrapper may disappear with its unwanted control.
+        concealFooterView(arrangedAround(gone[i], host), host, protected);
     }
 
     SGRGlyphButton *lyrics = SGRPlayerLyricsGlyphIn(host);
@@ -474,16 +550,15 @@ void SGRPlayerLowerRow(UIView *row) {
     lyrics.center = CGPointMake(round(width * (rtl ? kTrailing : kLeading)), middleY);
     SGRPlayerLyricsChanged();
 
-    UIView *connect = SGRFindByIdentifier(host, @"Components.ConnectButtonOutputSwitcher", &kConnectKey);
     UIView *glyph = SGRPlayerConnectGlyphIn(host, connect);
-    CGFloat connectFrom = glyph ? SGRPlayerTranslateArranged(arrangedAround(connect, host), glyph, CGPointMake(CGRectGetMidX(glyph.bounds), CGRectGetMidY(glyph.bounds)), host, round(width * kMiddle)) : -1;
+    UIView *connectBranch = footerBranch(connect, host, protected);
+    CGFloat connectFrom = glyph ? moveFooterControl(connectBranch, glyph, host, round(width * kMiddle)) : -1;
 
-    UIView *queue = SGRFindByIdentifier(host, @"QueueButtonNowPlaying", &kQueueKey);
     standInForQueue((SPTEncoreIconView *)SGRFindByIdentifier(queue, @"Encore.IconView", &kQueueIconKey));
-    CGFloat queueFrom = SGRPlayerTranslateArranged(arrangedAround(queue, host), queue, CGPointMake(CGRectGetMidX(queue.bounds), CGRectGetMidY(queue.bounds)), host, round(width * (rtl ? kLeading : kTrailing)));
+    CGFloat queueFrom = moveFooterControl(footerBranch(queue, host, protected), queue, host, round(width * (rtl ? kLeading : kTrailing)));
 
     SGRPlayerLowerRow(host);
-    SGRPlayerCoverConnect(arrangedAround(connect, host), glyph);
+    SGRPlayerCoverConnect(connectBranch, glyph);
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{

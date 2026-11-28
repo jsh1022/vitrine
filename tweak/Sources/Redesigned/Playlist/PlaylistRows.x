@@ -24,12 +24,11 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Playlist.h"
-#import "Redesigned/Kit/SGRTrackPopularity.h"
 
 // Under the text rather than the whole row, as the Music app draws it; the trailing end clears the page margin.
 static const CGFloat kHairline = 0.5, kHairlineGap = 12;
 
-static char kRowKey, kTrackRowKey, kArtKey, kArtHolderKey, kSubtitleKey, kLineKey, kToolbarKey, kPopularityTitleKey;
+static char kRowKey, kTrackRowKey, kArtKey, kArtHolderKey, kSubtitleKey, kLineKey, kToolbarKey;
 
 @interface SGRRowArtHolder : NSObject
 @property (nonatomic, weak) UIView *view;
@@ -95,7 +94,7 @@ static UIView *rowIn(UIView *cell) {
 static BOOL applyRow(UIView *cell) {
     clearSurface(cell);
     UIView *row = rowIn(cell);
-    if (!row) { SGRTrackPopularityRow(cell, nil); return NO; }
+    if (!row) return NO;
     clearSurface(row);
 
     CGFloat leading = SGRSideMargin + 48 + kHairlineGap;
@@ -116,17 +115,12 @@ static BOOL applyRow(UIView *cell) {
         UILabel *label = (UILabel *)v;
         if (![label.textColor isEqual:SGRSecondary()]) label.textColor = SGRSecondary();
     });
-    SGRTrackPopularityRow(cell, identified(row, @"Track.Row.Content.Title", &kPopularityTitleKey));
 
     applyHairline(row, leading);
     return YES;
 }
 
 %hook _TtC35ListUXPlatform_FreeTierPlaylistImpl25ElementCollectionViewCell
-- (void)prepareForReuse {
-    SGRTrackPopularityRow((UIView *)self, nil);
-    %orig;
-}
 - (void)layoutSubviews {
     %orig;
     UIView *cell = (UIView *)self;
@@ -150,10 +144,6 @@ static BOOL applyRow(UIView *cell) {
 // The rows of the songs liked by one artist are another cell (a UITableView's, Track.Row painted the base surface)
 // with the same row kit in it, so they get the playlist's row: no paint, rounded artwork, the hairline.
 %hook SPTEncoreSwipeableTableViewCell
-- (void)prepareForReuse {
-    SGRTrackPopularityRow((UIView *)self, nil);
-    %orig;
-}
 - (void)layoutSubviews {
     %orig;
     UIView *cell = (UIView *)self;

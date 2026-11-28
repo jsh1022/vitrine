@@ -40,8 +40,6 @@
 // What is behind the player, chosen on the Player page (PlayerSettings.m).
 // SGRKeyPlayerMotion is the switch the choice replaced: until a choice is stored, it picks Still or Colors.
 #define SGRKeyPlayerBackground @"spotifyglass.redesign.player.background"
-#define SGRKeyPlayerPopularity @"spotifyglass.redesign.player.popularity"
-void SGRPlayerPopularitySettingsChanged(void);
 #define SGRKeyPlayerStaticCover @"spotifyglass.redesign.player.staticCoverFallback"
 #define SGRKeyPlayerFillArtwork @"spotifyglass.redesign.player.fillArtworkToBottom"
 #define SGRKeyPlayerMotion @"spotifyglass.redesign.player.movingBackground"
