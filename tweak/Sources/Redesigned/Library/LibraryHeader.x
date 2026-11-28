@@ -64,8 +64,15 @@ static void vanish(UIView *view) {
 }
 
 static UIView *childNamed(UIView *host, NSString *marker) {
+    // Keep Spotify's existing direct-child layout first. Newer library layouts put the header
+    // inside UIKit stack views; do not broaden this into a walk through arbitrary containers.
     for (UIView *sub in host.subviews) {
         if ([NSStringFromClass(sub.class) containsString:marker]) return sub;
+    }
+    for (UIView *sub in host.subviews) {
+        if (![sub isKindOfClass:UIStackView.class]) continue;
+        UIView *found = childNamed(sub, marker);
+        if (found) return found;
     }
     return nil;
 }

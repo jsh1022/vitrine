@@ -5,6 +5,7 @@
 // gives the page the pass it gets on the way back from a playlist, `steady` builds the header with the model
 // already in it. `nocreate` leaves Create out of the model, `norecents` Recents (the account the tree is of).
 #import <UIKit/UIKit.h>
+#import "Core/SGViewTree.h"
 #import <os/log.h>
 
 #define HLog(fmt, ...) os_log(OS_LOG_DEFAULT, "[harness] %{public}s", [NSString stringWithFormat:(fmt), ##__VA_ARGS__].UTF8String)
@@ -133,6 +134,10 @@ static const CGFloat kHeaderHeight = 159.33;
     self.content.frame = self.bounds;
     self.list.frame = self.content.bounds;
     self.header.frame = CGRectMake(0, 0, self.bounds.size.width, kHeaderHeight);
+    if ([self.header.superview isKindOfClass:UIStackView.class]) {
+        self.header.superview.frame = CGRectMake(0, 0, self.bounds.size.width, kHeaderHeight);
+        [self.header.superview layoutIfNeeded];
+    }
     UIEdgeInsets inset = self.list.contentInset;
     inset.top = kHeaderHeight;
     self.list.contentInset = inset;
@@ -300,6 +305,27 @@ static UIView *chips(UIView *filters) {
     }
     CGFloat textRight = title ? CGRectGetMinX(title.frame) + MIN(title.bounds.size.width, [title.text sizeWithAttributes:@{NSFontAttributeName: title.font}].width) : 0;
     UIView *filters = [header valueForKey:@"filters"];
+    BOOL stacked = [NSProcessInfo.processInfo.arguments containsObject:@"stacked"];
+    BOOL verify = [NSProcessInfo.processInfo.arguments containsObject:@"verify"];
+    if ((stacked || verify) && [moment isEqualToString:@"first look"]) {
+        __block UIView *spotifyTitle = nil;
+        SGForEachView(header, ^(UIView *view) {
+            if ([view.accessibilityIdentifier isEqualToString:@"YourLibraryHeader.title"]) spotifyTitle = view;
+        });
+        BOOL valid = (!stacked || [header.superview isKindOfClass:UIStackView.class]) &&
+                     spotifyTitle && spotifyTitle.alpha < 0.01 && title.alpha > 0.99 &&
+                     [title.text isEqualToString:@"Your Library"];
+        HLog(@"stacked header/title check: %@", valid ? @"PASS" : @"FAIL");
+        if (verify) {
+            NSString *run = NSProcessInfo.processInfo.environment[@"SG_LIBRARY_RUN_ID"] ?: @"";
+            NSURL *directory = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+            NSData *receipt = [NSJSONSerialization dataWithJSONObject:@{@"passed":@(valid), @"stacked":@(stacked), @"run":run} options:0 error:NULL];
+            BOOL written = [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:NULL] &&
+                [receipt writeToURL:[directory URLByAppendingPathComponent:@"library-result.json"] atomically:YES];
+            fprintf(stderr, "%s library layout verification\n", valid && written ? "PASS" : "FAIL"); fflush(stderr);
+            exit(valid && written ? 0 : 1);
+        }
+    }
     HLog(@"%@: %@; title text %.0f-%.0f, header %.0fpt, list inset %.0f, chips %@", moment,
          [parts componentsJoinedByString:@", "], CGRectGetMinX(title.frame), textRight,
          header.bounds.size.height, self.page.list.contentInset.top,
@@ -310,6 +336,7 @@ static UIView *chips(UIView *filters) {
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     BOOL steady = [args containsObject:@"steady"];
+    BOOL stacked = [args containsObject:@"stacked"];
     BOOL back = [args containsObject:@"back"];
     NSArray<NSString *> *model = @[@"recents", @"search", @"plus"];
     if ([args containsObject:@"nocreate"]) model = @[@"recents", @"search"];
@@ -341,6 +368,16 @@ static UIView *chips(UIView *filters) {
 
     _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView *header = (id)box(page, _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView.class, CGRectMake(0, 0, page.bounds.size.width, kHeaderHeight), nil);
     page.header = header;
+    if (stacked) {
+        [header removeFromSuperview];
+        UIStackView *headerStack = [[UIStackView alloc] initWithFrame:CGRectMake(0, 0, page.bounds.size.width, kHeaderHeight)];
+        headerStack.axis = UILayoutConstraintAxisVertical;
+        headerStack.alignment = UIStackViewAlignmentFill;
+        headerStack.distribution = UIStackViewDistributionFill;
+        [page addSubview:headerStack];
+        [headerStack addArrangedSubview:header];
+        [header.heightAnchor constraintEqualToConstant:kHeaderHeight].active = YES;
+    }
     header.gradient = box(header, _TtCO22Reprise_LiquidGlassKit11LiquidGlass12GradientView.class, header.bounds, @"LiquidGlass.GradientView");
     header.gradient.backgroundColor = [UIColor colorWithWhite:0 alpha:0.85];
     header.row = box(header, UIView.class, CGRectMake(0, 62, header.bounds.size.width, 48), nil);

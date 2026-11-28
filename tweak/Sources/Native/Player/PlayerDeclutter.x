@@ -21,6 +21,7 @@ static const struct { __unsafe_unretained NSString *marker, *key; } cards[] = {
     {@"LiveEvents_", SGHideLiveEvents},
     {@"WatchFeed_", SGHideExploreArtist},
     {@"Creator_Credits", SGHideCredits},
+    {@"CreatorElements_Credits", SGHideCredits},
     {@"Merch_", SGHideMerch},
     {@"RelatedContentRecommendations", SGHideRecommendations},
 };

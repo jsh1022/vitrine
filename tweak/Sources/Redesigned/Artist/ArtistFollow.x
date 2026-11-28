@@ -127,7 +127,9 @@ static id currentProvider(void) {
 }
 %end
 
-// The Follow element asks Curation's provider, which wraps the collection one.
+// Older Curation wraps the collection provider through this Objective-C entry point.
+// 9.2.2 no longer exposes it; collection/state-provider hooks above remain the source.
+%group LegacyCurationFollow
 %hook _TtC21Curation_PlatformImpl30CUPStateProviderImplementation
 - (id)subscribeCollectionStateForURL:(id)url inContext:(id)context completion:(id)completion {
     Ivar ivar = class_getInstanceVariable(object_getClass(self), "collectionPlatformStateProvider");
@@ -135,6 +137,8 @@ static id currentProvider(void) {
     return %orig;
 }
 %end
+
+%end // LegacyCurationFollow
 
 #pragma mark - one subscription per page
 
@@ -225,5 +229,9 @@ BOOL SGRArtistFollowing(UIView *page, NSString *moreIdentifier, BOOL *following,
 %ctor {
     if (!SGRedesignedUI()) return;
     %init;
+    Class curation = NSClassFromString(@"_TtC21Curation_PlatformImpl30CUPStateProviderImplementation");
+    if ([curation instancesRespondToSelector:NSSelectorFromString(@"subscribeCollectionStateForURL:inContext:completion:")]) {
+        %init(LegacyCurationFollow);
+    }
     SGRequireClasses(@[@"SPTCollectionPlatformState", @"_TtC23Collection_PlatformImpl35CollectionPlatformStateProviderImpl"]);
 }

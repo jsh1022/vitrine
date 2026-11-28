@@ -17,6 +17,12 @@ static void takeDown(UIView *view) {
 %hook _TtC19AdsPlatform_AdsImpl14AdsServiceImpl
 - (void)load { SGAdBlockCountOne(@"Ad services"); }
 %end
+%hook _TtC28AdsPlatform_AdsBaseSwiftImpl23AdsBaseSwiftServiceImpl
+- (void)load { SGAdBlockCountOne(@"Ad services"); }
+%end
+%hook _TtC23AdsPlatform_AdsBaseImpl18AdsBaseServiceImpl
+- (void)load { SGAdBlockCountOne(@"Ad services"); }
+%end
 %hook _TtC29AdsNowPlaying_InStreamAdsImpl18InStreamAdsService
 - (void)load { SGAdBlockCountOne(@"Ad services"); }
 %end
