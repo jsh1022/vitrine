@@ -16,8 +16,9 @@
 // Spotify has no lyrics control down here, so that one is the Kit's glyph button, and it turns the
 // lyrics in the player on and off (PlayerLyrics.x): filled while they are up, dimmed and dead for a
 // track that has none.
-// Spotify's icons (SGRKeyPlayerSpotifyIcons) leaves Connect's and the queue's glyphs Spotify's, and draws the Lyrics
+// Spotify's icons (SGRKeyPlayerSpotifyIcons) leaves the queue's glyph Spotify's, and draws the Lyrics
 // glyph as Spotify's Encore "lyrics", lit in the primary color while the lyrics are up.
+// Connect always uses the AirPlay audio glyph, including when Spotify's icons are selected.
 //
 // The row sits lower than Spotify puts it, just over the home indicator the way the Music app's does
 // (issue #54): the footer unit's view is translated down, the controls follow it part of the way, and a
@@ -304,7 +305,6 @@ static void takeConnectImage(UIImageView *drawn) {
 // tells the stand-in; the clear image set back in reports too, and stops there. Each pass looks too, at the cost of a
 // compare, for a view the image cannot be watched on.
 static void standInForConnect(UIImageView *drawn) {
-    if (SGRPlayerSpotifyIcons()) return;
     BOOL made = objc_getAssociatedObject(drawn, &kStandInKey) != nil;
     if (!standIn(drawn, kConnectSymbol)) return;
     takeConnectImage(drawn);

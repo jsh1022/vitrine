@@ -134,8 +134,8 @@ static NSDictionary *call(NSString *p, NSString *path, NSDictionary *body, NSDic
 static NSString *queryURL(NSString *base, NSDictionary *params) { return SGAddonEndpoint([NSURL URLWithString:base],@[],params).absoluteString; }
 static NSDictionary *currentSession(NSString *p, SGHostedRequest send) {
     NSDictionary *old=record(p); NSDate *end=expiry(old);
-    // Renew near expiry without replacing a still-valid session if the network fails.
-    if (!usable(old) || !end || end.timeIntervalSinceNow>3600) return old;
+    // Renew within two hours of expiry, keeping the valid session if the network fails.
+    if (!usable(old) || !end || end.timeIntervalSinceNow>7200) return old;
     static NSMutableDictionary *lastRefresh;
     @synchronized(lock()) {
         if (!lastRefresh) lastRefresh=[NSMutableDictionary dictionary];

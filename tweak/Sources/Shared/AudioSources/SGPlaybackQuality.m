@@ -64,10 +64,10 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
         [stack addArrangedSubview:row];
     }
     UIButton *details = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIButtonConfiguration *configuration = [UIButtonConfiguration tintedButtonConfiguration];
+    UIButtonConfiguration *configuration = [UIButtonConfiguration filledButtonConfiguration];
     configuration.title = @"상세 재생 정보 보기";
     configuration.baseForegroundColor = UIColor.labelColor;
-    configuration.baseBackgroundColor = UIColor.secondarySystemFillColor;
+    configuration.baseBackgroundColor = [UIColor colorWithWhite:1 alpha:0.18];
     configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     configuration.contentInsets = NSDirectionalEdgeInsetsMake(10, 12, 10, 12);
     details.configuration = configuration;
