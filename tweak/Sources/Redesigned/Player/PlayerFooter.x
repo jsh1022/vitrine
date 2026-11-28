@@ -19,6 +19,7 @@
 // Spotify's icons (SGRKeyPlayerSpotifyIcons) leaves the queue's glyph Spotify's, and draws the Lyrics
 // glyph as Spotify's Encore "lyrics", lit in the primary color while the lyrics are up.
 // Connect always uses the AirPlay audio glyph, including when Spotify's icons are selected.
+// If Spotify omits its queue control, a glyph of our own opens Spotify's existing queue route.
 //
 // The row sits lower than Spotify puts it, just over the home indicator the way the Music app's does
 // (issue #54): the footer unit's view is translated down, the controls follow it part of the way, and a
@@ -61,6 +62,7 @@ static NSString *const kConnectSymbol = @"airplayaudio", *const kQueueSymbol = @
 
 static char kEncoreKey, kConnectHitKey;
 static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kQueueIconKey, kLyricsGlyphKey, kReachKey, kRowKey;
+static char kQueueFallbackKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
 
 // The view the footer's stack view arranges around `view`.
@@ -554,8 +556,29 @@ void SGRPlayerLowerRow(UIView *row) {
     UIView *connectBranch = footerBranch(connect, host, protected);
     CGFloat connectFrom = glyph ? moveFooterControl(connectBranch, glyph, host, round(width * kMiddle)) : -1;
 
+    CGFloat queueX = round(width * (rtl ? kLeading : kTrailing));
     standInForQueue((SPTEncoreIconView *)SGRFindByIdentifier(queue, @"Encore.IconView", &kQueueIconKey));
-    CGFloat queueFrom = moveFooterControl(footerBranch(queue, host, protected), queue, host, round(width * (rtl ? kLeading : kTrailing)));
+    CGFloat queueFrom = moveFooterControl(footerBranch(queue, host, protected), queue, host, queueX);
+    SGRGlyphButton *fallback = objc_getAssociatedObject(host, &kQueueFallbackKey);
+    if (queue) {
+        // Spotify can supply its control on a later layout; keep only one entry point.
+        [fallback removeFromSuperview];
+        objc_setAssociatedObject(host, &kQueueFallbackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        if (!fallback) {
+            fallback = [SGRGlyphButton buttonWithSymbol:kQueueSymbol pointSize:kLyricsGlyphSize title:@"재생목록"];
+            fallback.accessibilityIdentifier = @"vitrine.player.queue-fallback";
+            fallback.glyph.tintColor = SGRSecondary();
+            fallback.onTap = ^{
+                SGOpenSpotifyURI([NSURL URLWithString:@"spotify:now-playing:queue"]);
+            };
+            objc_setAssociatedObject(host, &kQueueFallbackKey, fallback, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        fallback.bounds = CGRectMake(0, 0, 44, 44);
+        fallback.center = CGPointMake(queueX, middleY);
+        if (fallback.superview != host) [host addSubview:fallback];
+        if (SGRPlayerSpotifyIcons()) SGRPlayerEncoreGlyphIn(fallback, @"queue").transform = CGAffineTransformMakeScale(0.85, 0.85);
+    }
 
     SGRPlayerLowerRow(host);
     SGRPlayerCoverConnect(connectBranch, glyph);
