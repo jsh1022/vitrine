@@ -342,6 +342,9 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
 
     SGModRow *lowData = SGOptionRow(@"저데이터 모드에서 다운로드", @"곡당 최대 약 7 MB", SGKeyMotionLowData);
     lowData.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundAnimated; };
+    SGModRow *popularity = SGOptionRow(@"곡 인기도 표시", @"트랙 목록과 재생화면 상단에 불꽃 아이콘과 인기도를 표시합니다", SGRKeyPlayerPopularity);
+    popularity.defaultOn = YES;
+    popularity.changed = ^(BOOL on) { SGRPlayerPopularitySettingsChanged(); };
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;
 
@@ -365,6 +368,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
         ], @"앨범 커버의 비율을 유지하며 양옆이 잘릴 수 있습니다. 어두운 그라데이션으로 컨트롤의 가독성을 유지합니다."),
         SGNotedSection(nil, fluid, @"밝기가 100%를 넘으면 흰색 글자를 읽기 어려울 수 있습니다. 일시정지하면 배경이 멈춥니다. 애니메이션과 시각화의 유동 배경에도 이 설정을 사용합니다."),
         SGNotedSection(@"컨트롤", @[SGSwitchRow(@"음량", nil, SGRKeyPlayerVolume),
+                                      popularity,
                                       SGOptionRow(@"커버 색상 따르기", nil, SGRKeyPlayerFollowsCover),
                                       SGOptionRow(@"Spotify 아이콘", @"가사, 기기, 대기열 및 AI DJ 버튼", SGRKeyPlayerSpotifyIcons)],
                        @"음량 슬라이더를 컨트롤 아래에 표시합니다. 이 iPhone 또는 Spotify가 재생 중인 다른 기기의 음량을 조절합니다. 커버 색상 따르기는 좋아요, 셔플, 반복, 기기, 대기열 버튼과 미니플레이어의 기기·좋아요 버튼에 현재 곡의 커버 색상을 적용합니다. Spotify 아이콘은 컨트롤 아래 행에 Music 앱 대신 Spotify의 아이콘을 사용합니다."),

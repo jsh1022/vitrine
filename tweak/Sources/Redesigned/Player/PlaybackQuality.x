@@ -91,15 +91,26 @@
         }
         if ([view isKindOfClass:UISlider.class]) slider = (UISlider *)view;
     });
-    if (!elapsed || !remaining || !slider) { self.button.hidden = YES; return; }
+    BOOL regular = host.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular;
+    if (!slider || (!regular && (!elapsed || !remaining))) { self.button.hidden = YES; return; }
     UIView *overlay = host;
     for (UIView *view = host.superview; view; view = view.superview) {
         if ([view.accessibilityIdentifier isEqualToString:@"scrolling_npv_collection_view_accessibility_identifier"]) { overlay = view; break; }
     }
-    CGRect left = [elapsed convertRect:elapsed.bounds toView:overlay];
-    CGRect right = [remaining convertRect:remaining.bounds toView:overlay];
+    // A wide player need not use the phone's scrolling collection. Keep the badge
+    // outside a short/clipped duration host without changing Spotify's seek hit area.
+    if (regular && overlay == host) {
+        for (UIView *parent=host.superview; parent && ![parent isKindOfClass:UIWindow.class]; parent=parent.superview) {
+            if (parent.bounds.size.height >= host.bounds.size.height + 50 && parent.bounds.size.width >= host.bounds.size.width) {overlay=parent;break;}
+        }
+    }
+    CGRect left = elapsed ? [elapsed convertRect:elapsed.bounds toView:overlay] : CGRectZero;
+    CGRect right = remaining ? [remaining convertRect:remaining.bounds toView:overlay] : CGRectZero;
     if (CGRectGetMinX(left) > CGRectGetMinX(right)) { CGRect swap = left; left = right; right = swap; }
     CGFloat available = CGRectGetMinX(right) - CGRectGetMaxX(left) - 16;
+    BOOL betweenTimes = elapsed && remaining && available >= 64;
+    CGRect sliderTouch = [slider convertRect:slider.bounds toView:overlay];
+    if (regular && !betweenTimes) available = sliderTouch.size.width - 16;
     CGRect track = [slider convertRect:[slider trackRectForBounds:slider.bounds] toView:overlay];
     if (available < 64) { self.button.hidden = YES; return; }
     if (!self.button) {
@@ -129,9 +140,9 @@
     CGFloat width = MIN(available, MAX(96, wanted));
     CGFloat height = 36;
     CGFloat centre = CGRectGetMidX([host convertRect:host.bounds toView:overlay]);
-    CGFloat x = MAX(CGRectGetMaxX(left) + 8, MIN(centre - width / 2, CGRectGetMinX(right) - 8 - width));
+    CGFloat x = betweenTimes ? MAX(CGRectGetMaxX(left) + 8, MIN(centre - width / 2, CGRectGetMinX(right) - 8 - width)) :
+        MAX(CGRectGetMinX(sliderTouch)+8,MIN(centre-width/2,CGRectGetMaxX(sliderTouch)-8-width));
     CGFloat centreY = MAX(CGRectGetMidY(left), CGRectGetMaxY(track) + 24);
-    CGRect sliderTouch = [slider convertRect:slider.bounds toView:overlay];
     centreY = MAX(centreY, CGRectGetMaxY(sliderTouch) + height / 2 + 2);
     self.button.frame = CGRectMake(x, centreY - height / 2, width, height);
     self.button.hidden = NO;

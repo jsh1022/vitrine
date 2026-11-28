@@ -14,6 +14,7 @@ extern NSDictionary *SGPresentationSourceInfo, *SGPresentationPreparedInfo;
 extern SGAddonPreparationState SGPresentationPreparation;
 extern BOOL SGPresentationStaticCover;
 extern UIImage *SGPresentationArtwork;
+BOOL SGPresentationDurationTimestamps = YES;
 
 @interface _TtC21NowPlaying_ScrollImpl27NPVBackgroundViewController : UIViewController
 @end
@@ -40,11 +41,14 @@ extern UIImage *SGPresentationArtwork;
     [super viewDidLoad];
     _slider = [UISlider new];
     _slider.accessibilityIdentifier = @"fixture.seek-slider";
-    _elapsed = [UILabel new]; _remaining = [UILabel new];
-    _elapsed.text = @"0:26"; _remaining.text = @"-2:25";
-    _elapsed.accessibilityIdentifier = @"now-playing-time-take-label-internal";
-    _remaining.accessibilityIdentifier = @"now-playing-time-remaning-label-internal";
-    [self.view addSubview:_slider]; [self.view addSubview:_elapsed]; [self.view addSubview:_remaining];
+    [self.view addSubview:_slider];
+    if (SGPresentationDurationTimestamps) {
+        _elapsed = [UILabel new]; _remaining = [UILabel new];
+        _elapsed.text = @"0:26"; _remaining.text = @"-2:25";
+        _elapsed.accessibilityIdentifier = @"now-playing-time-take-label-internal";
+        _remaining.accessibilityIdentifier = @"now-playing-time-remaning-label-internal";
+        [self.view addSubview:_elapsed]; [self.view addSubview:_remaining];
+    }
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -363,6 +367,41 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
             for (UIGestureRecognizer *gesture in badge.gestureRecognizers)
                 if ([gesture isKindOfClass:UITapGestureRecognizer.class] && ((UITapGestureRecognizer *)gesture).numberOfTapsRequired == 1) singleTap = YES;
             if (![hit isDescendantOfView:badge] || !singleTap) { fail(@"quality control must accept an ordinary tap outside the scrub unit bounds"); return; }
+
+            // A regular-width player can omit the phone's scrolling collection and its timestamps.
+            // Keep the fixture host short and clipped so the production badge must move to its roomier parent.
+            SGPresentationDurationTimestamps = NO;
+            UIViewController *wideScreen = [UIViewController new];
+            wideScreen.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            wideScreen.view.frame = self.window.bounds;
+            wideScreen.view.backgroundColor = UIColor.blackColor;
+            UIViewController *wideUnit = [_TtC20NowPlaying_ModesImpl19DurationElementUnit new];
+            [wideScreen addChildViewController:wideUnit];
+            UITraitCollection *regularWidth = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassRegular];
+            [wideScreen setOverrideTraitCollection:regularWidth forChildViewController:wideUnit];
+            CGFloat wideWidth = wideScreen.view.bounds.size.width - 40;
+            wideUnit.view.frame = CGRectMake(20, 120, wideWidth, 28);
+            wideUnit.view.clipsToBounds = YES;
+            [wideScreen.view addSubview:wideUnit.view];
+            [wideUnit didMoveToParentViewController:wideScreen];
+            [self.nav pushViewController:wideScreen animated:NO];
+            [wideUnit.view setNeedsLayout]; [wideUnit.view layoutIfNeeded];
+            [wideScreen.view layoutIfNeeded];
+            UIButton *wideBadge = (UIButton *)identified(wideScreen.view, @"vitrine.playback-quality");
+            UISlider *wideSlider = (UISlider *)identified(wideUnit.view, @"fixture.seek-slider");
+            if (!wideBadge || wideBadge.hidden || !wideBadge.window || wideBadge.superview != wideScreen.view ||
+                identified(wideUnit.view, @"now-playing-time-take-label-internal") ||
+                identified(wideUnit.view, @"now-playing-time-remaning-label-internal")) {
+                fail(@"regular-width badge must remain visible in the roomier parent without timestamps"); return;
+            }
+            CGRect wideBadgeFrame = [wideBadge convertRect:wideBadge.bounds toView:wideScreen.view];
+            CGRect wideSliderHit = [wideSlider convertRect:wideSlider.bounds toView:wideScreen.view];
+            if (CGRectIntersectsRect(wideBadgeFrame, wideSliderHit)) {
+                fail(@"regular-width quality badge hit area overlaps the seek slider"); return;
+            }
+            passed(@"PASS regular-width quality badge without timestamps stays visible outside clipped duration host and slider hit area");
+            [self.nav popViewControllerAnimated:NO];
+            SGPresentationDurationTimestamps = YES;
             [badge sendActionsForControlEvents:UIControlEventTouchUpInside];
         }, 200);
     } else if (index == 0) {

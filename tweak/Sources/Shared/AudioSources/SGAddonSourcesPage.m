@@ -39,7 +39,25 @@
 - (NSString *)detailOf:(NSDictionary *)source {
     NSString *detail = [source[@"description"] isKindOfClass:NSString.class] ? source[@"description"] : nil;
     NSString *version = [source[@"version"] isKindOfClass:NSString.class] ? source[@"version"] : nil;
-    if (SGHostedProvider(source[@"builtin"])) return SGHostedVerified(source[@"builtin"]) ? @"내장 무손실 소스 · 인증됨\n서버가 제공하는 음원을 검증·정렬하여 재생합니다." : @"내장 무손실 소스 · 인증 필요\n탭하여 웹 인증을 진행하세요.";
+    if (SGHostedProvider(source[@"builtin"])) {
+        NSString *provider = source[@"builtin"];
+        BOOL verified = SGHostedVerified(provider);
+        NSDate *expiry = SGHostedAuthenticationExpiry(provider);
+        NSString *expiryDetail = @"만료 시각 정보 없음";
+        if (expiry) {
+            NSDateFormatter *formatter = [NSDateFormatter new];
+            formatter.locale = [NSLocale localeWithLocaleIdentifier:@"ko_KR"];
+            formatter.timeZone = NSTimeZone.localTimeZone;
+            formatter.dateFormat = @"yyyy.MM.dd HH:mm";
+            expiryDetail = [@"인증 만료: " stringByAppendingString:[formatter stringFromDate:expiry]];
+        }
+        NSMutableArray<NSString *> *details = [NSMutableArray arrayWithObjects:
+            verified ? @"내장 무손실 소스 · 인증됨" : @"내장 무손실 소스 · 인증 필요",
+            expiryDetail,
+            nil];
+        if (!verified) [details addObject:@"탭하여 웹 인증을 진행하세요."];
+        return [details componentsJoinedByString:@"\n"];
+    }
     return [@[version.length ? [@"버전 " stringByAppendingString:version] : @"", detail.length ? detail : @"소스 정보를 새로고침하면 설명을 확인할 수 있습니다."] componentsJoinedByString:@"\n"];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table { return 2; }

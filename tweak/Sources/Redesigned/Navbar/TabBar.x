@@ -132,13 +132,13 @@ UIImage *SGRNavbarGlyph(NSDictionary *entry, BOOL active) {
 
 #pragma mark - the system bar
 
-// A name too long for its tab (one of the user's own, a split tab's circle) shrinks a little before UIKit cuts
-// it short, to 8 pt from 10.
+// A name too long for its tab (one of the user's own, a split tab's circle) shrinks before UIKit cuts it short.
 void SGRShrinkTabTitles(UIView *bar) {
     SGForEachView(bar, ^(UIView *v) {
-        if (![v isKindOfClass:UILabel.class] || ((UILabel *)v).adjustsFontSizeToFitWidth) return;
-        ((UILabel *)v).adjustsFontSizeToFitWidth = YES;
-        ((UILabel *)v).minimumScaleFactor = 0.8;
+        if (![v isKindOfClass:UILabel.class]) return;
+        UILabel *label = (UILabel *)v;
+        label.adjustsFontSizeToFitWidth = YES;
+        label.minimumScaleFactor = 0.6;
     });
 }
 

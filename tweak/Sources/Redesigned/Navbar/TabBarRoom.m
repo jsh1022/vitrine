@@ -42,6 +42,8 @@ void SGRHoldHomeForModSettings(UIView *stockBar) {
 // message bar.
 static const CGFloat kStockRow = 49;
 static CGFloat sg_room, sg_glassHeight;
+static CGFloat sg_measuredWidth = -1;
+static UIUserInterfaceSizeClass sg_measuredSizeClass = UIUserInterfaceSizeClassUnspecified;
 
 CGFloat SGRTabBarRoom(void) {
     return sg_room;
@@ -52,7 +54,13 @@ CGFloat SGRTabBarRoom(void) {
 // it ever reached the bar again, the bar would ask for more room every pass, so what it asks for with
 // no room made is what is kept.
 CGFloat SGRTabBarGlassHeight(UITabBar *bar, UIView *stockBar) {
-    if (sg_room < 0.5 || sg_glassHeight <= 0) sg_glassHeight = [bar sizeThatFits:CGSizeMake(stockBar.bounds.size.width, kStockRow)].height;
+    CGFloat width = stockBar.bounds.size.width;
+    UIUserInterfaceSizeClass sizeClass = stockBar.traitCollection.horizontalSizeClass;
+    if (sg_room < 0.5 || sg_glassHeight <= 0 || fabs(sg_measuredWidth - width) >= 0.5 || sg_measuredSizeClass != sizeClass) {
+        sg_glassHeight = [bar sizeThatFits:CGSizeMake(width, kStockRow)].height;
+        sg_measuredWidth = width;
+        sg_measuredSizeClass = sizeClass;
+    }
     return sg_glassHeight;
 }
 

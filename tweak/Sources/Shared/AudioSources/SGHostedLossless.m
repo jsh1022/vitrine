@@ -59,6 +59,7 @@ static BOOL usable(NSDictionary *r) {
         (!str(r[@"expires_at"]).length || (end && end.timeIntervalSinceNow>0));
 }
 BOOL SGHostedVerified(NSString *p) { return SGHostedProvider(p) && usable(record(p)); }
+NSDate *SGHostedAuthenticationExpiry(NSString *p) { return SGHostedProvider(p) ? expiry(record(p)) : nil; }
 BOOL SGHostedAuthenticationExpired(NSString *p) {
     if (!SGHostedProvider(p)) return NO;
     NSDictionary *r=record(p);

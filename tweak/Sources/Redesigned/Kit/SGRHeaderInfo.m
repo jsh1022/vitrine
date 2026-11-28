@@ -39,7 +39,7 @@ static BOOL setText(UILabel *label, NSString *text) {
 }
 
 // The most a title picture takes: a share of the text's width, and a height near three lines of the title.
-static const CGFloat kLogoWidthShare = 0.8, kLogoMaxHeight = 64;
+static const CGFloat kLogoWidthShare = 0.9, kLogoMaxHeight = 80;
 // Between the creator's picture and the name.
 static const CGFloat kPictureGap = 8;
 

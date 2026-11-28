@@ -42,7 +42,7 @@ static const CGFloat kMinHero = 120, kMinCover = 80;
 
 static char kCoverKey, kMetaKey, kPlayKey, kLayoutKey, kToolbarKey, kScrimKey, kBarScrimKey;
 static char kShuffleKey, kAddKey, kDownloadKey, kPlainDownloadKey, kInfoKey, kBlockHeightKey, kBlockWatchedKey;
-static char kHeroKey, kHeroHeightKey, kRestPlaneKey, kRowKey, kRowWatchedKey, kMoreKey, kCreatorKey, kPinnedMoreKey, kSortKey, kTitleKey;
+static char kHeroKey, kHeroHeightKey, kRestPlaneKey, kPlaneWidthKey, kRowKey, kRowWatchedKey, kMoreKey, kCreatorKey, kPinnedMoreKey, kSortKey, kTitleKey;
 
 #pragma mark - finding things
 
@@ -208,6 +208,14 @@ static UIImageView *coverImageIn(UIView *cover) {
 // The hero sits in the plane Spotify's color wash is drawn on, which slides away as the header collapses, so
 // Core Animation carries it and its frame is only measured at rest: reading the header per frame flickers.
 // Pulled down past the top the plane grows and the hero stretches with it, bottom kept in place.
+static BOOL sideBySide(UIView *block, UIView *cover, UIView *root) {
+    if (!block || !cover || !root || root.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassRegular) return NO;
+    if ([cover isDescendantOfView:block]) return NO;
+    CGRect a=[block convertRect:block.bounds toView:root], b=[cover convertRect:cover.bounds toView:root];
+    BOOL separate=CGRectGetMinX(a)>=CGRectGetMaxX(b)-1 || CGRectGetMinX(b)>=CGRectGetMaxX(a)-1;
+    return separate && MIN(CGRectGetMaxY(a),CGRectGetMaxY(b))>MAX(CGRectGetMinY(a),CGRectGetMinY(b));
+}
+
 static void applyHero(UIView *layout, UIView *cover, UIView *plane, UIView *block, CGFloat reach, CGFloat stretch) {
     if (!plane || !block) return;
     SGRPlaylistHero *hero = objc_getAssociatedObject(plane, &kHeroKey);
@@ -218,6 +226,17 @@ static void applyHero(UIView *layout, UIView *cover, UIView *plane, UIView *bloc
     if (hero.superview != plane) [plane insertSubview:hero atIndex:0];
     else if (plane.subviews.firstObject != hero) [plane sendSubviewToBack:hero];
 
+    // Wide Spotify headers may place the artwork beside the metadata. Keep that
+    // separation instead of expanding the artwork across the metadata column.
+    if (SGRFullBleedCovers() && sideBySide(block,cover,layout)) {
+        CGRect frame=[cover convertRect:cover.bounds toView:plane];
+        if (!CGRectIsEmpty(frame)) {
+            hero.hidden=NO; hero.autoresizingMask=UIViewAutoresizingNone;
+            if (!CGRectEqualToRect(hero.frame,frame)) hero.frame=frame;
+            [hero followCover:coverImageIn(cover)]; conceal(cover);
+        }
+        return;
+    }
     // Grow-only: a header still loading puts the block higher than it ends up.
     CGFloat height = [objc_getAssociatedObject(hero, &kHeroHeightKey) doubleValue];
     CGFloat top = CGRectGetMinY(block.frame);
@@ -436,8 +455,11 @@ static SGRHeaderInfo *applyInfo(UIView *block, UIView *headerRoot, UIViewControl
         if (sub != info) conceal(sub);
     }
     // The page's width, centered on the screen: Spotify's block is 16pt narrower than the page (386 of 402).
-    CGFloat x = -[block convertPoint:CGPointZero toView:headerRoot].x;
-    CGRect frame = CGRectMake(round(x), 0, headerRoot.bounds.size.width, block.bounds.size.height);
+    UIView *cover=SGRFindByIdentifier(headerRoot,@"Components.Header.UI.ArtworkImage",&kCoverKey);
+    BOOL columns=sideBySide(block,cover,headerRoot);
+    CGFloat x = columns ? 0 : -[block convertPoint:CGPointZero toView:headerRoot].x;
+    CGFloat width = columns ? block.bounds.size.width : headerRoot.bounds.size.width;
+    CGRect frame = CGRectMake(round(x), 0, width, block.bounds.size.height);
     if (!CGRectEqualToRect(info.frame, frame)) info.frame = frame;
     showPlaylist(info, block, headerRoot, viewModelOf(headerVC));
 
@@ -551,7 +573,19 @@ static UIView *blockIn(UIView *layout, UIView *cover, UIView *fullbleed) {
     UIView *block = nil;
     CGFloat wide = layout.bounds.size.width * 0.6;
     for (UIView *sub in layout.subviews) {
-        if (sub == cover || sub == fullbleed || [sub isKindOfClass:SGRPlaylistHero.class] || sub.bounds.size.width < wide) continue;
+        if (sub == cover || sub == fullbleed || [sub isKindOfClass:SGRPlaylistHero.class]) continue;
+        if (sub.bounds.size.width < wide) {
+            if (layout.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassRegular || sub.bounds.size.width < 200) continue;
+            // The play button can live in a separate foreground plane. Identify
+            // the metadata by its existing title/menu identifiers as well.
+            __block BOOL metadata = NO;
+            SGForEachView(sub, ^(UIView *v) {
+                NSString *identifier = v.accessibilityIdentifier;
+                if ([identifier isEqual:@"Encore.Label-internal"] ||
+                    [identifier hasPrefix:@"Components.UI.ContextMenuButton"]) metadata = YES;
+            });
+            if (!metadata) continue;
+        }
         if (!block || CGRectGetMinY(sub.frame) > CGRectGetMinY(block.frame)) block = sub;
     }
     return block;
@@ -570,6 +604,13 @@ static void applyHeader(UIView *layout) {
     if (!block) return;
 
     UIView *plane = applyBackground(layout);
+    double previousWidth=[objc_getAssociatedObject(plane,&kPlaneWidthKey) doubleValue];
+    if (fabs(previousWidth-plane.bounds.size.width)>0.5) {
+        objc_setAssociatedObject(plane,&kPlaneWidthKey,@(plane.bounds.size.width),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(plane,&kRestPlaneKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(objc_getAssociatedObject(plane,&kHeroKey),&kHeroHeightKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(block,&kBlockHeightKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     applyToolbar(headerRoot);
     applyScrims(headerRoot);
     SGRHeaderInfo *info = applyInfo(block, headerRoot, headerVC);

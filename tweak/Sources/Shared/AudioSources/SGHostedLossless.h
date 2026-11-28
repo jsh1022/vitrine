@@ -6,6 +6,8 @@ BOOL SGHostedProvider(NSString *provider);
 NSArray<NSString *> *SGHostedProviderIdentifiers(void);
 NSString *SGHostedProviderName(NSString *provider);
 BOOL SGHostedVerified(NSString *provider);
+// Server-provided authentication expiry only; nil when absent or unparseable.
+NSDate *SGHostedAuthenticationExpiry(NSString *provider);
 // Local evidence only: an elapsed server expiry or explicit gateway reauthentication response.
 BOOL SGHostedAuthenticationExpired(NSString *provider);
 BOOL SGHostedServerWaiting(void);

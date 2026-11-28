@@ -32,24 +32,31 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
 }
 
 @interface SGPlaybackQualityPopover : UIViewController <UIPopoverPresentationControllerDelegate>
+@property(nonatomic, strong) UIStackView *contentStack;
 @end
 @implementation SGPlaybackQualityPopover
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    self.view.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1];
+    // Let UIKit draw the same translucent material and arrow as other system presentations.
+    self.view.backgroundColor = UIColor.clearColor;
     NSDictionary *info = SGPlaybackQualityInfo();
     UILabel *title = [UILabel new]; title.text = @"오디오 품질";
-    title.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold]; title.textColor = UIColor.whiteColor;
+    title.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    title.adjustsFontForContentSizeCategory = YES; title.textColor = UIColor.labelColor;
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[title]];
-    stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 12;
+    self.contentStack = stack;
+    stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 10;
+    [stack setCustomSpacing:16 afterView:title];
     NSArray *names = @[@"음질", @"샘플레이트", @"출력", @"리샘플링", @"소스"];
     NSArray *keys = @[@"quality", @"sourceRate", @"outputRate", @"resampling", @"source"];
     for (NSUInteger i = 0; i < names.count; ++i) {
         UILabel *name = [UILabel new]; name.text = names[i]; name.textColor = UIColor.secondaryLabelColor;
-        name.font = [UIFont systemFontOfSize:14];
-        UILabel *value = [UILabel new]; value.text = info[keys[i]]; value.textColor = UIColor.whiteColor;
-        value.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium]; value.numberOfLines = 2;
+        name.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        name.adjustsFontForContentSizeCategory = YES; name.numberOfLines = 0;
+        UILabel *value = [UILabel new]; value.text = info[keys[i]]; value.textColor = UIColor.labelColor;
+        value.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline] scaledFontForFont:[UIFont systemFontOfSize:15 weight:UIFontWeightMedium]];
+        value.adjustsFontForContentSizeCategory = YES; value.numberOfLines = 0;
         value.textAlignment = NSTextAlignmentRight;
         [name.widthAnchor constraintEqualToConstant:90].active = YES;
         UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[name, value]];
@@ -57,9 +64,15 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
         [stack addArrangedSubview:row];
     }
     UIButton *details = [UIButton buttonWithType:UIButtonTypeSystem];
-    [details setTitle:@"상세 재생 정보 보기" forState:UIControlStateNormal]; details.tintColor = UIColor.whiteColor;
+    UIButtonConfiguration *configuration = [UIButtonConfiguration tintedButtonConfiguration];
+    configuration.title = @"상세 재생 정보 보기";
+    configuration.baseForegroundColor = UIColor.labelColor;
+    configuration.baseBackgroundColor = UIColor.secondarySystemFillColor;
+    configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    configuration.contentInsets = NSDirectionalEdgeInsetsMake(10, 12, 10, 12);
+    details.configuration = configuration;
     details.accessibilityIdentifier = @"vitrine.audio-quality.details";
-    [details.heightAnchor constraintEqualToConstant:36].active = YES;
+    [details.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     [details addTarget:self action:@selector(showDetails) forControlEvents:UIControlEventTouchUpInside];
     [stack addArrangedSubview:details];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -68,9 +81,23 @@ NSDictionary<NSString *, NSString *> *SGPlaybackQualityInfo(void) {
         [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:18],
         [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-18],
         [stack.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:18],
-        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.bottomAnchor constant:-12],
+        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.bottomAnchor constant:-8],
     ]];
     self.view.accessibilityIdentifier = @"vitrine.audio-quality.popover";
+    [self updateContentSize];
+}
+- (void)updateContentSize {
+    CGFloat width = self.preferredContentSize.width > 0 ? self.preferredContentSize.width : 310;
+    if (self.view.window && self.view.bounds.size.width > 36) width = self.view.bounds.size.width;
+    CGSize content = [self.contentStack systemLayoutSizeFittingSize:CGSizeMake(width - 36, UILayoutFittingCompressedSize.height)
+        withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGSize size = CGSizeMake(width, ceil(content.height) + 18 + 8);
+    if (fabs(self.preferredContentSize.height - size.height) > 0.5 || fabs(self.preferredContentSize.width - size.width) > 0.5)
+        self.preferredContentSize = size;
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self updateContentSize];
 }
 - (void)showDetails {
     [self dismissViewControllerAnimated:YES completion:^{ SGShowPlaybackDetails(); }];
@@ -87,10 +114,10 @@ void SGShowPlaybackQuality(UIView *anchor) {
     if (!NSThread.isMainThread || !anchor.window) return;
     SGPlaybackQualityPopover *controller = [SGPlaybackQualityPopover new];
     controller.modalPresentationStyle = UIModalPresentationPopover;
-    controller.preferredContentSize = CGSizeMake(310, 285);
+    [controller loadViewIfNeeded];
     UIPopoverPresentationController *popover = controller.popoverPresentationController;
     popover.sourceView = anchor; popover.sourceRect = anchor.bounds;
     popover.permittedArrowDirections = UIPopoverArrowDirectionDown | UIPopoverArrowDirectionUp;
-    popover.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1]; popover.delegate = controller;
+    popover.backgroundColor = nil; popover.delegate = controller;
     SGShowAudioController(controller);
 }

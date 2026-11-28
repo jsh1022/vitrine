@@ -22,6 +22,7 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Home.h"
+#import "HomeLayout.h"
 
 // Tries at finding the tab's name before settling for the English one: a miss walks the window.
 static const NSUInteger kTitleTries = 8;
@@ -333,6 +334,9 @@ static CGFloat layoutPill(UIView *header, UIStackView *stack, UIView *face) {
     CGFloat maxX = face ? CGRectGetMaxX(faceFrame) + kPillPad : header.bounds.size.width - SGRSideMargin;
     CGFloat midY = face ? CGRectGetMidY(faceFrame) : CGRectGetMidY(untransformed(stack));
     CGRect pill = CGRectMake(round(maxX - width), round(midY - kPillHeight / 2), width, kPillHeight);
+    // A stale child position during a size-class transition can put the pill outside the newly sized header.
+    // Keep both controls together inside the live bounds until Spotify's next layout has settled.
+    pill = SGRHomeClampPillToWidth(pill, header.bounds.size.width, SGRSideMargin);
     place(glass, pill);
     place(buttons, pill);
     CGRect filter = CGRectMake(kPillPad, 0, kPillButton, kPillHeight);
@@ -384,7 +388,7 @@ static void layoutTint(UIView *view) {
         paintTint(tint, NO);
     }
     if (tint.superview != page) [page insertSubview:tint atIndex:0];
-    CGRect frame = CGRectMake(0, 0, page.bounds.size.width, kTintHeight);
+    CGRect frame = SGRHomeTintFrame(page.bounds.size, kTintHeight);
     if (!CGRectEqualToRect(tint.frame, frame)) tint.frame = frame;
     for (UIView *sub in page.subviews) {
         if ([sub isKindOfClass:UICollectionView.class] && ![sub.backgroundColor isEqual:UIColor.clearColor]) sub.backgroundColor = UIColor.clearColor;
@@ -521,7 +525,12 @@ static void follow(UIView *view) {
     if (!feed) SGForEachView(view, ^(UIView *v) {
         if (!feed && [v isKindOfClass:UIScrollView.class] && v.bounds.size.height > 300) feed = (UIScrollView *)v;
     });
-    if (feed) followFeed(feed);
+    if (feed) {
+        followFeed(feed);
+        // The first feed can arrive after the header's last pass. Reconnect the page tint here too,
+        // using the page's current width rather than leaving a missing or rotation-sized old view.
+        layoutTint(sg_pageView);
+    }
 }
 
 static void layoutHeader(UIViewController *page);

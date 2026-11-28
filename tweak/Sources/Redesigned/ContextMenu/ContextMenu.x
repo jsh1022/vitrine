@@ -441,7 +441,7 @@ static void raiseHost(UIWindow *window) {
     BOOL _early, _wasEarly;
     // Direct: Spotify's sheet asked for, and when; it did not come; the menu closed with nothing for it to do,
     // so it goes as it comes; a row picked on it presented something of Spotify's.
-    BOOL _requested, _failed, _dropOnArrival, _rowPresented;
+    BOOL _requested, _failed, _dropOnArrival, _rowPresented, _sheetPresentationCompleted;
     CFTimeInterval _requestedAt;
 }
 
@@ -568,9 +568,17 @@ static void raiseHost(UIWindow *window) {
     __weak SGRMenuSession *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kRequestWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         SGRMenuSession *session = weakSelf;
-        if (!session || session.presented) return;
+        if (!session || session->_sheetPresentationCompleted) return;
+        // Adoption assigns `presented` before UIKit accepts the presentation. A rejected
+        // cross-window popover must not leave every deferred menu row loading forever.
+        if (session.presented.presentingViewController && session.presented.viewIfLoaded.window && !session.presented.isBeingDismissed) {
+            session->_sheetPresentationCompleted = YES;
+            [session sheetArrived];
+            return;
+        }
         if (sg_requesting == session) sg_requesting = nil;
         session->_failed = YES;
+        [session->_poll invalidate]; session->_poll = nil;
         SGLog(@"system menu: Spotify's sheet did not come %.0f s after it was asked for", kRequestWindow);
         session->_waiting = NO;
         NSArray<dispatch_block_t> *waiting = session->_whenRead;
@@ -591,8 +599,32 @@ static void raiseHost(UIWindow *window) {
           controllersIn(presented), self.takenAt - _requestedAt, self.takenAt - self.touchedAt);
     UIViewController *root = host.rootViewController;
     void (^present)(void) = ^{
+        UIPopoverPresentationController *popover = presented.popoverPresentationController;
+        if (popover) {
+            // UIKit requires a popover's anchor to belong to the presenting window.
+            // Preserve the visible anchor's position while moving Spotify's sheet offscreen.
+            UIView *source = popover.sourceView;
+            CGRect sourceRect = popover.sourceRect;
+            if (!source.window) { source = self.anchor; sourceRect = source.bounds; }
+            [root loadViewIfNeeded];
+            CGRect rect = CGRectZero;
+            if (source.window) {
+                if (CGRectIsEmpty(sourceRect) || CGRectIsNull(sourceRect)) sourceRect = source.bounds;
+                CGRect inSourceWindow = [source convertRect:sourceRect toView:source.window];
+                CGRect inHost = [host convertRect:inSourceWindow fromWindow:source.window];
+                rect = [root.view convertRect:inHost fromView:host];
+            }
+            CGRect bounds = root.view.bounds;
+            if (CGRectIsEmpty(rect) || !isfinite(rect.origin.x) || !isfinite(rect.origin.y) || !CGRectIntersectsRect(rect,bounds))
+                rect = CGRectMake(CGRectGetMidX(bounds),CGRectGetMidY(bounds),1,1);
+            else rect = CGRectIntersection(rect,bounds);
+            popover.barButtonItem = nil;
+            popover.sourceView = root.view;
+            popover.sourceRect = rect;
+        }
         sg_redirecting = YES;
         [root presentViewController:presented animated:NO completion:^{
+            self->_sheetPresentationCompleted = YES;
             if (completion) completion();
             [self sheetArrived];
         }];

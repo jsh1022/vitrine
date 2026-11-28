@@ -4,6 +4,9 @@
 // for one track with lyrics, so the redesign's own code is what is being looked at. The player itself
 // is a mock the harness drives: SGRHarnessSetTrack reports a track change to every observer.
 #import <UIKit/UIKit.h>
+
+// Popularity networking/header rendering is outside this player's layout fixtures.
+void SGRPlayerPopularitySettingsChanged(void) {}
 #import "Shared/Lyrics/Lyrics.h"
 #import "Headers/SPTPlayer.h"
 #import "Shared/Player/PlayerState.h"

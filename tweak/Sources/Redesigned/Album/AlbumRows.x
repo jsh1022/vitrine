@@ -29,6 +29,7 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Album.h"
+#import "Redesigned/Kit/SGRTrackPopularity.h"
 
 // Under the text rather than the whole row, as the Music app draws it; the trailing end clears the page
 // margin.
@@ -226,6 +227,7 @@ static void applyRow(UIView *cell, UIView *page) {
 
     applyHairline(row);
     if (hidesCredits()) applyCredit(cell, row, page);
+    SGRTrackPopularityRow(cell, SGRFindByIdentifier(row, @"EncoreConsumerMobile.View.Granular.Title", &kTitleKey));
 }
 
 #pragma mark - the cells
@@ -251,13 +253,14 @@ static BOOL isTrackContent(UIView *content) {
     restoreCredit((UIView *)self);
     %orig;
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
-    if (!isTrackContent(cell.contentView.subviews.firstObject)) return;
+    if (!isTrackContent(cell.contentView.subviews.firstObject)) { SGRTrackPopularityRow(cell, nil); return; }
     UIView *page = SGRAlbumPageOf(cell);
     if (page) applyRow(cell, page);
 }
 
 - (void)prepareForReuse {
     %orig;
+    SGRTrackPopularityRow((UIView *)self, nil);
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     if (restoreCredit(cell) || isTrackContent(cell.contentView.subviews.firstObject)) [cell setNeedsLayout];
 }

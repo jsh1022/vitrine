@@ -1,5 +1,8 @@
 // What the harness does not compile: the accent hook (SGRAccent.x) and the repaint hook (SGRRepaint.x).
 #import <UIKit/UIKit.h>
+
+// This fixture has no authenticated Spotify track model or popularity service.
+void SGRTrackPopularityRow(UIView *cell, UIView *subtitle) {}
 UIColor *SGRAccentColor(void) { return nil; }
 __weak UIView *sgr_nowPlayingRoot = nil;
 NSHashTable<UIView *> *sgr_nowPlayingPainted = nil;
