@@ -28,14 +28,14 @@ static void place(SGRPopularityRowBinding *binding, UIView *cell) {
     // A truncated/marquee label has no free space beside its text.
     if (textWidth > frame.size.width + 0.5) return;
     binding.number.text = binding.value.stringValue;
-    CGFloat width = ceil([binding.number sizeThatFits:CGSizeMake(CGFLOAT_MAX, 20)].width) + 26;
+    CGFloat width = ceil([binding.number sizeThatFits:CGSizeMake(CGFLOAT_MAX, 16)].width) + 22;
     CGFloat x = CGRectGetMinX(frame) + textWidth + 8;
-    CGFloat y = CGRectGetMidY(frame) - 10;
+    CGFloat y = CGRectGetMidY(frame) - 8;
     // Stay inside the label's original text slot, never under explicit/menu controls.
-    if (x + width > CGRectGetMaxX(frame) || y < 0 || y + 20 > cell.bounds.size.height) return;
-    badge.frame = CGRectMake(x, y, width, 20);
-    badge.layer.cornerRadius = 10;
-    binding.number.frame = CGRectMake(19, 0, width - 25, 20);
+    if (x + width > CGRectGetMaxX(frame) || y < 0 || y + 16 > cell.bounds.size.height) return;
+    badge.frame = CGRectMake(x, y, width, 16);
+    badge.layer.cornerRadius = 8;
+    binding.number.frame = CGRectMake(17, 0, width - 22, 16);
     badge.backgroundColor = [UIColor colorWithWhite:0.10 alpha:UIAccessibilityIsReduceTransparencyEnabled() ? 1 : 0.35];
     badge.accessibilityLabel = [NSString stringWithFormat:@"인기도 %@", binding.value];
     badge.hidden = NO;
@@ -62,7 +62,7 @@ void SGRTrackPopularityRow(UIView *cell, UIView *title) {
         UIImageView *flame = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"flame.fill"
             withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:9 weight:UIImageSymbolWeightMedium]]];
         flame.tintColor = UIColor.whiteColor; flame.contentMode = UIViewContentModeScaleAspectFit;
-        flame.frame = CGRectMake(6, 5, 9, 10); [binding.badge addSubview:flame];
+        flame.frame = CGRectMake(5, 3, 9, 10); [binding.badge addSubview:flame];
         binding.number = [UILabel new]; binding.number.font = [UIFont monospacedDigitSystemFontOfSize:9 weight:UIFontWeightMedium];
         binding.number.textColor = UIColor.whiteColor; [binding.badge addSubview:binding.number];
         objc_setAssociatedObject(cell, &kBinding, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
