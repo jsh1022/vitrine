@@ -189,6 +189,30 @@ static void waitFor(BOOL (^predicate)(void), void (^done)(void), NSUInteger trie
         UIViewController *shown=self.nav.presentedViewController;
         return [shown isKindOfClass:UIAlertController.class] && !shown.isBeingPresented && !shown.transitionCoordinator;
     },^{
+        UIAlertController *first=(id)self.nav.presentedViewController;
+        // Spotify can dismiss launch UI or replace its root after the first active event.
+        [first dismissViewControllerAnimated:NO completion:^{
+            self.nav=[[UINavigationController alloc] initWithRootViewController:SGAudioSourcesPage()];
+            self.window.rootViewController=self.nav;
+            waitFor(^BOOL {
+                UIViewController *shown=self.nav.presentedViewController;
+                return shown!=first && [shown isKindOfClass:UIAlertController.class] && shown.viewIfLoaded.window && !shown.isBeingPresented && !shown.transitionCoordinator;
+            },^{
+                UIViewController *restored=self.nav.presentedViewController;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+                    if(self.nav.presentedViewController!=restored || !restored.viewIfLoaded.window) {fail(@"expiry notice disappeared without a user choice");return;}
+                    passed(@"PASS source expiry recovery: unexpected dismissal and launch root replacement preserve pending notice");
+                    [self verifyExpiryNotice];
+                });
+            },120);
+        }];
+    },200);
+}
+- (void)verifyExpiryNotice {
+    waitFor(^BOOL {
+        UIViewController *shown=self.nav.presentedViewController;
+        return [shown isKindOfClass:UIAlertController.class] && !shown.isBeingPresented && !shown.transitionCoordinator;
+    },^{
         UIAlertController *alert=(id)self.nav.presentedViewController;
         if(![alert.title isEqual:@"소스 인증이 만료되었습니다"] || ![alert.message containsString:@"Qobuz"] || alert.actions.count!=2 || alert.overrideUserInterfaceStyle!=UIUserInterfaceStyleDark) {fail(@"expiry notice content or dark appearance missing");return;}
         UIAlertAction *move=nil; for(UIAlertAction *action in alert.actions) if([action.title isEqual:@"이동"])move=action;
